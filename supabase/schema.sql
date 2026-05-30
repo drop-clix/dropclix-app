@@ -48,7 +48,7 @@ create table post_analytics (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null references posts(id),
   client_id uuid not null references clients(id),
-  window text not null check (window in ('w24','w3','w7','eom')),
+  metric_window text not null check (metric_window in ('w24','w3','w7','eom')),
   platform text not null,
   views integer default 0,
   likes integer default 0,
@@ -62,7 +62,7 @@ create table post_analytics (
   ctr numeric(5,2) default 0,
   yt_id text,
   recorded_at timestamptz default now(),
-  unique(post_id, platform, window)
+  unique(post_id, platform, metric_window)
 );
 
 -- PIPELINE ITEMS
