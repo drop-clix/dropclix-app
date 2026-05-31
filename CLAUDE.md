@@ -470,5 +470,32 @@ src/
 - **Auth user ID**: `893475d0-f0ba-4570-a1f6-5110cd2c9e18`
 - **Client ID**: `913f1794-1506-4449-b56c-b683809cefc3`
 
+### Session 10 — Vercel deploy + custom domain ✅
+- Authenticated Vercel CLI as `drop-clix` org
+- Created Vercel project `dropclix/dropclix-app` (linked via `vercel link --yes`)
+- Added all 3 env vars to production environment:
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+  - `SUPABASE_SECRET_KEY`
+- Deployed to production — build succeeded, all 12 routes (10 dynamic, 2 static)
+- Added custom domain `portal.drop-clix.com` to Vercel project
+- DNS: domain is on Cloudflare — requires A record `portal → 76.76.21.21` (or CNAME `portal → cname.vercel-dns.com`) with proxy OFF (DNS only / grey cloud)
+- Confirmed no Next.js branding in source (`devIndicators: false` already set in Session 9, title = "Drop CLIX Portal")
+
+## Deployment
+
+- **Production URL**: https://dropclix-app.vercel.app
+- **Custom domain (pending DNS)**: https://portal.drop-clix.com
+- **Vercel project**: https://vercel.com/dropclix/dropclix-app
+- **GitHub auto-deploy**: Not yet connected — do via Vercel dashboard → Settings → Git → connect `drop-clix/dropclix-app` (requires Vercel GitHub App authorization on the repo)
+
+## DNS setup for portal.drop-clix.com (Cloudflare)
+
+In Cloudflare DNS for `drop-clix.com`, add:
+- Type: **A** (or CNAME → `cname.vercel-dns.com`)
+- Name: `portal`
+- Value: `76.76.21.21`
+- Proxy: **OFF** (DNS only — grey cloud, NOT orange) — required for Vercel SSL
+
 ## Next sessions
-- Session 10: Vercel deploy + custom domain
+- Session 11: GitHub auto-deploy (connect repo via Vercel dashboard after DNS verified)
