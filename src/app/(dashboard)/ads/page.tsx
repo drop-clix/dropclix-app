@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getPortalContext } from '@/lib/supabase/portal'
 import { AdsClient } from '@/components/portal/AdsClient'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -43,19 +42,9 @@ export type AdCreative = {
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export default async function AdsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('client_id')
-    .eq('id', user.id)
-    .single()
-
-  const clientId = profile?.client_id as string | null
-  const fallback  = '00000000-0000-0000-0000-000000000000'
-  const cid       = clientId ?? fallback
+  const { supabase, clientId } = await getPortalContext()
+  const fallback = '00000000-0000-0000-0000-000000000000'
+  const cid      = clientId ?? fallback
 
   type RawCampaign = {
     id: string; name: string; date: string; objective: string; status: string;

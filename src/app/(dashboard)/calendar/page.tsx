@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getPortalContext } from '@/lib/supabase/portal'
 import { CalendarClient } from '@/components/portal/CalendarClient'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -20,17 +19,8 @@ export type CalendarEvent = {
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export default async function CalendarPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('client_id')
-    .eq('id', user.id)
-    .single()
-
-  const cid = (profile?.client_id as string | null) ?? '00000000-0000-0000-0000-000000000000'
+  const { supabase, clientId } = await getPortalContext()
+  const cid = clientId ?? '00000000-0000-0000-0000-000000000000'
 
   type RawEvent = {
     id: string; title: string; platform: string

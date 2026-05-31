@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getPortalContext } from '@/lib/supabase/portal'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -248,18 +247,8 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export default async function AnglesPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('client_id')
-    .eq('id', user.id)
-    .single()
-
-  const cid     = (profile?.client_id as string | null) ?? '00000000-0000-0000-0000-000000000000'
-  const fallback = 'w24' // unused, just for reference
+  const { supabase, clientId } = await getPortalContext()
+  const cid = clientId ?? '00000000-0000-0000-0000-000000000000'
 
   type RawPost = {
     post_id: string; title: string; platform: string[]; pillar: string | null;

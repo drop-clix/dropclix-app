@@ -2,6 +2,10 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { PortalNav } from '@/components/portal/PortalNav'
 import { SignOutButton } from '@/components/portal/SignOutButton'
+import { cookies } from 'next/headers'
+import { exitImpersonation } from '@/app/admin/actions'
+
+const IMPERSONATE_COOKIE = 'dropclix_impersonate_client_id'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -15,14 +19,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .eq('id', user.id)
     .single()
 
-  // Admin users go to their own page, not the client dashboard
-  if (profile?.role === 'admin') redirect('/admin')
+  let clientId = profile?.client_id as string | null
+  let isImpersonating = false
 
-  const { data: client } = profile?.client_id
+  if (profile?.role === 'admin') {
+    const cookieStore = await cookies()
+    const impersonateId = cookieStore.get(IMPERSONATE_COOKIE)?.value
+    if (!impersonateId) redirect('/admin')
+    clientId = impersonateId
+    isImpersonating = true
+  }
+
+  const { data: client } = clientId
     ? await supabase
         .from('clients')
         .select('name, slug')
-        .eq('id', profile.client_id)
+        .eq('id', clientId)
         .single()
     : { data: null }
 
@@ -65,10 +77,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           >
             Client
           </p>
-          <p
-            className="text-[12px] font-light"
-            style={{ color: '#f2ede4' }}
-          >
+          <p className="text-[12px] font-light" style={{ color: '#f2ede4' }}>
             {client?.name ?? profile?.email ?? 'Portal'}
           </p>
         </div>
@@ -78,18 +87,32 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <PortalNav />
         </div>
 
-        {/* Bottom: sign out */}
+        {/* Bottom: impersonation exit OR sign out */}
         <div
           className="px-6 py-5 flex items-center justify-between"
           style={{ borderTop: '1px solid #141414' }}
         >
-          <p
-            className="text-[9px] tracking-[.1em] truncate max-w-[120px]"
-            style={{ color: '#2a2a2a' }}
-          >
-            {profile?.email ?? user.email}
-          </p>
-          <SignOutButton />
+          {isImpersonating ? (
+            <form action={exitImpersonation} className="w-full">
+              <button
+                type="submit"
+                className="text-[9px] tracking-[.1em] uppercase cursor-pointer"
+                style={{ color: '#c9a96e' }}
+              >
+                ← Exit Portal
+              </button>
+            </form>
+          ) : (
+            <>
+              <p
+                className="text-[9px] tracking-[.1em] truncate max-w-[120px]"
+                style={{ color: '#2a2a2a' }}
+              >
+                {profile?.email ?? user.email}
+              </p>
+              <SignOutButton />
+            </>
+          )}
         </div>
       </aside>
 

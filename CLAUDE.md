@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# Drop Clix — App
+# Drop CLIX — App
 
 Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*` → `src/*`.
 
@@ -380,7 +380,11 @@ src/
       ads/page.tsx                 ← Session 6
       calendar/page.tsx            ← Session 6.5
       goals/page.tsx               ← Session 6.7
-    admin/page.tsx
+      report-card/page.tsx         ← Session 7
+      studio/page.tsx              ← Session 7
+    admin/
+      page.tsx                     ← Session 9 (View Portal → buttons)
+      actions.ts                   ← Session 9 (impersonateClient, exitImpersonation)
     globals.css
     layout.tsx
   components/portal/
@@ -390,12 +394,13 @@ src/
     PipelineClient.tsx
     AdsClient.tsx
     CalendarClient.tsx
-    ReportCardClient.tsx   ← Session 7 (week/month grade viewer)
-    StudioClient.tsx       ← Session 7 (script review + production queue)
+    ReportCardClient.tsx   ← Session 7
+    StudioClient.tsx       ← Session 7
   lib/supabase/
     client.ts
     server.ts
     admin.ts
+    portal.ts              ← Session 9 (getPortalContext helper)
   proxy.ts
 ```
 
@@ -427,6 +432,31 @@ src/
 - **Report Card type note**: `ScoreComponents` is exported as a named array type from the page; client imports it
 - **Studio note**: no write operations; read-only view of pipeline items (no approval API needed for MVP)
 
+### Session 9 — Admin portal view + Next.js branding removal ✅
+- Created `src/lib/supabase/portal.ts` — `getPortalContext()` helper:
+  - Returns `{ supabase, clientId, userEmail, isImpersonating }`
+  - If admin with impersonation cookie set → returns impersonated clientId
+  - If admin with no cookie → redirects to /admin
+  - All 9 dashboard pages now call this instead of doing their own auth/profile fetch
+- Created `src/app/admin/actions.ts` — two server actions:
+  - `impersonateClient(formData)` — validates admin role, sets `dropclix_impersonate_client_id` cookie (8h), redirects to `/`
+  - `exitImpersonation()` — deletes cookie, redirects to `/admin`
+- Updated `src/app/admin/page.tsx`:
+  - Each client row now has a "View Portal →" button (form action calling `impersonateClient`)
+  - Removed the stale "Session 3 complete" status box
+- Updated `src/app/(dashboard)/layout.tsx`:
+  - Admins with impersonation cookie → portal loads for that client, sidebar shows "← Exit Portal" button
+  - Admins without cookie → still redirected to /admin
+- Updated `next.config.ts` — `devIndicators: false` removes the Next.js N icon from all pages
+- Updated all 9 dashboard pages to use `getPortalContext()` (analytics, angles, pipeline, ads, calendar, goals, report-card, studio, dashboard)
+
+## Key decisions / gotchas (Session 9)
+- **Admin impersonation**: Cookie-based, 8h TTL, server-only (`httpOnly: true`). Cookie name: `dropclix_impersonate_client_id`.
+- **getPortalContext()**: Import from `@/lib/supabase/portal`. Returns supabase client + clientId + userEmail + isImpersonating. Do NOT use separate `createClient()` + profile fetch in dashboard pages.
+- **Exit Portal**: Sidebar shows "← Exit Portal" form button when `isImpersonating = true`. Calls `exitImpersonation()` action → clears cookie → /admin.
+- **devIndicators**: Set to `false` in `next.config.ts`. Removes the N triangle overlay in dev mode.
+- **No cookie clearing on /admin load**: Cookie is only cleared via "Exit Portal" action. Admin page shows normally regardless of cookie state (cookie only matters in dashboard layout).
+
 ## Next sessions
-- Session 9: Real Nick login — create Supabase auth user for nick@spartasolar.com, link to client_id
-- Session 10: Vercel deploy + custom domain
+- Session 10: Real Nick login — create Supabase auth user for nick@spartasolar.com, link to client_id
+- Session 11: Vercel deploy + custom domain

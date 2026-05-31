@@ -1,20 +1,10 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getPortalContext } from '@/lib/supabase/portal'
 import { StudioClient } from '@/components/portal/StudioClient'
 import type { StudioItem } from '@/components/portal/StudioClient'
 
 export default async function StudioPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('client_id')
-    .eq('id', user.id)
-    .single()
-
-  const cid = (profile?.client_id as string | null) ?? '00000000-0000-0000-0000-000000000000'
+  const { supabase, clientId } = await getPortalContext()
+  const cid = clientId ?? '00000000-0000-0000-0000-000000000000'
 
   type RawRow = {
     id: string; post_id: string; title: string; platform: string[]

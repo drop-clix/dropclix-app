@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getPortalContext } from '@/lib/supabase/portal'
 import { AnalyticsClient } from '@/components/portal/AnalyticsClient'
 
 // ── Types shared with AnalyticsClient ──────────────────────────────────────
@@ -33,17 +32,7 @@ const EMPTY_WIN: WindowData = {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export default async function AnalyticsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('client_id')
-    .eq('id', user.id)
-    .single()
-
-  const clientId = profile?.client_id as string | null
+  const { supabase, clientId } = await getPortalContext()
   const fallback = '00000000-0000-0000-0000-000000000000'
 
   // Fetch all posts + their analytics in one query

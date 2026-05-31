@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getPortalContext } from '@/lib/supabase/portal'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -118,17 +117,8 @@ function GoalCard({
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export default async function GoalsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('client_id')
-    .eq('id', user.id)
-    .single()
-
-  const cid = (profile?.client_id as string | null) ?? '00000000-0000-0000-0000-000000000000'
+  const { supabase, clientId } = await getPortalContext()
+  const cid = clientId ?? '00000000-0000-0000-0000-000000000000'
 
   type RawGoal = { metric: string; target: number; period: string }
   type RawPost = {

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { SignOutButton } from '@/components/portal/SignOutButton'
+import { impersonateClient } from './actions'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -16,7 +17,6 @@ export default async function AdminPage() {
 
   if (profile?.role !== 'admin') redirect('/')
 
-  // Fetch all clients for overview
   const { data: clients } = await supabase
     .from('clients')
     .select('id, name, email, slug, created_at')
@@ -89,26 +89,32 @@ export default async function AdminPage() {
                       {client.email}
                     </p>
                   </div>
-                  <p
-                    className="text-[8px] tracking-[.14em] uppercase px-2 py-1"
-                    style={{ background: '#141414', color: '#c9a96e' }}
-                  >
-                    {client.slug}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <p
+                      className="text-[8px] tracking-[.14em] uppercase px-2 py-1"
+                      style={{ background: '#141414', color: '#c9a96e' }}
+                    >
+                      {client.slug}
+                    </p>
+                    <form action={impersonateClient}>
+                      <input type="hidden" name="clientId" value={client.id} />
+                      <button
+                        type="submit"
+                        className="text-[9px] tracking-[.14em] uppercase px-3 py-1.5 font-medium cursor-pointer"
+                        style={{
+                          background: 'rgba(201,169,110,.12)',
+                          color: '#c9a96e',
+                          border: '1px solid rgba(201,169,110,.25)',
+                        }}
+                      >
+                        View Portal →
+                      </button>
+                    </form>
+                  </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
-
-        {/* Session status */}
-        <div
-          className="mt-10 px-6 py-5 text-[11px] font-light"
-          style={{ background: '#080808', border: '1px solid #141414', color: '#444', lineHeight: 1.8 }}
-        >
-          <span style={{ color: '#c9a96e' }}>Session 3 complete.</span>{' '}
-          Login page styled. Dashboard page live with Supabase queries.
-          Next: Session 4 — Analytics + Pipeline tabs.
         </div>
 
       </div>

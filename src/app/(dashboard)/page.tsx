@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getPortalContext } from '@/lib/supabase/portal'
 
 /* ── Types ──────────────────────────────────────── */
 type Post = {
@@ -80,18 +79,7 @@ function EmptyTableRow() {
 
 /* ── Page ───────────────────────────────────────── */
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role, client_id, email')
-    .eq('id', user.id)
-    .single()
-
-  const clientId = profile?.client_id as string | null
+  const { supabase, clientId, userEmail } = await getPortalContext()
 
   /* ── Queries run in parallel ──────────────────── */
   const [postsRes, analyticsRes, pipelineRes, recentRes] = await Promise.all([
@@ -149,7 +137,7 @@ export default async function DashboardPage() {
   const recentPosts = (recentRes.data ?? []) as Post[]
 
   /* ── Page header greeting ─────────────────────── */
-  const clientName = profile?.email?.split('@')[0] ?? 'there'
+  const clientName = userEmail?.split('@')[0] ?? 'there'
 
   return (
     <div className="p-10 max-w-[1200px]">
