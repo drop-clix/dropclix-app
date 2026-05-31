@@ -1,6 +1,43 @@
 @import "tailwindcss";
 
+@theme {
+  --color-gold:   #c9a96e;
+  --color-gold2:  #e8d5a3;
+  --color-black:  #060606;
+  --color-portal: #080808;
+  --color-card:   #0a0a0a;
+  --color-border: #141414;
+  --color-text:   #f2ede4;
+  --color-muted:  #555555;
+  --color-dim:    #333333;
+
+  --font-jakarta: "Plus Jakarta Sans", sans-serif;
+  --font-dm:      "DM Sans", sans-serif;
+}
+
+/* ── Base ─────────────────────────────── */
 body {
   background: #060606;
   color: #f2ede4;
+  font-family: "DM Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ── Gold gradient text ───────────────── */
+.text-gold-gradient {
+  background: linear-gradient(135deg, #e8d5a3 0%, #c9a96e 50%, #a07840 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Animated gold underbar on KPI cards */
+.kpi-bar::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0;
+  width: 0; height: 2px;
+  background: linear-gradient(90deg, #c9a96e, #e8d5a3);
+  transition: width 0.8s ease;
+}
+.kpi-bar.bar-lit::after { width: 100%; }

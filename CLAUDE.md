@@ -6,10 +6,9 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 
 ## Sessions
 
-### Session 1 — Project scaffold
+### Session 1 — Project scaffold ✅
 - Created `dropclix-app` with Next.js 16, Supabase SSR, Tailwind 4
 - Wrote `supabase/schema.sql` (all tables) and `supabase/rls.sql` (all RLS policies)
-- Status: **complete**
 
 ### Session 2 — Auth layer ✅
 - Created `src/lib/supabase/client.ts` — browser singleton via `createBrowserClient`
@@ -17,18 +16,417 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 - Created `src/proxy.ts` — Next.js 16 renamed `middleware.ts` → `proxy.ts`; export must be named `proxy` not `middleware`
 - Created `src/app/(auth)/login/page.tsx` — client component login form
 - Created `src/app/(dashboard)/layout.tsx` — server component dashboard shell with role badge
-- Created `src/app/admin/page.tsx` — admin-only page (middleware + server-side double-check)
-- Dev server confirmed running; login page renders at localhost:3002/login
-- Status: **complete**
+- Created `src/app/admin/page.tsx` — admin-only page (proxy + server-side double-check)
+
+### Session 3 — Login + Dashboard ✅
+- Deleted `src/app/page.tsx` (conflicted with `(dashboard)/page.tsx` for `/` route)
+- Restyled login page — full Drop CLIX gold/black design; role-based redirect (admin→/admin, client→/)
+- Restyled dashboard layout — 220px gold/black sidebar; admin role bounced to /admin from layout
+- Created `src/app/(dashboard)/page.tsx` — KPI cards, pipeline status strip, recent posts table
+- Created `src/components/portal/PortalNav.tsx` — `usePathname` active state
+- Created `src/components/portal/SignOutButton.tsx` — `supabase.auth.signOut()` + router.push
+- Added Tailwind 4 `@theme` tokens in `globals.css`
+
+### Session 4 — Analytics tab ✅
+- Created `src/app/(dashboard)/analytics/page.tsx` — server component; fetches posts joined with
+  `post_analytics` in a single Supabase query, flattens into `PostRow[]`, passes to client
+- Created `src/components/portal/AnalyticsClient.tsx` — fully interactive client component:
+  - Platform tabs: IG / TT / YT (TT and YT show empty state gracefully)
+  - Window tabs: 24 Hr / 3 Day / 7 Day / EOM — switches all metrics and KPIs live
+  - Pillar filter: All / Sales Tips / Self Development / Service/Love / Volume/50-150 / Time Management / Other
+  - Sortable columns: Views, Likes, Comments, Saves, Shares, ER%, Watch%, Date
+  - ER% formula: `(likes + comments + shares + saves) / views × 100` — matches original portal
+  - Tier badges: Elite ≥12% (green), Strong 7–12% (blue), Avg 4–7% (amber), Kill <4% (red)
+  - Decision badges: Double Down (gold), Iterate (amber), Kill (red)
+  - KPI strip: Posts in view, Total Views, Avg ER%, Avg Watch% — all reactive to filters
+  - Tier legend + ER formula note at bottom
+- Unlocked analytics link in `PortalNav.tsx` (removed `soon: true`)
+- Named state variable `win` not `window` to avoid shadowing browser global
+- TypeScript clean: zero errors in source files (pre-existing .next/types error from deleted page.tsx is unrelated)
+
+### Session 8 — Nick data migration ✅
+- Extracted all SEED_* data from `portal-nick-updated.html` via Python + Node (line 766+)
+- Storage key confirmed: `dropclix_nick_v4`
+- Wrote `scripts/migrate-nick.mjs` — idempotent; `--run` to insert, `--force` to wipe + re-insert
+- Migrated: 43 posts, 176 analytics rows (4 windows each; eom = w7 data), 93 pipeline items,
+  6 ad campaigns, 4 creatives, 4 audiences, 48 calendar events
+- Verified: 676,307 total views, 22,733 likes live in eom window
+- Portal status mapping: SCRIPT LAB→SCRIPTED, FILMED→FILMING, NEEDS REVISION→REVIEWING, DEAD→CANCELLED
 
 ## Key decisions / gotchas
 
 - **Next.js 16 proxy**: `middleware.ts` is deprecated. Use `src/proxy.ts` with `export function proxy()`.
 - **cookies() is async**: Always `const cookieStore = await cookies()` in server components.
 - **Env var names**: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY), `SUPABASE_SECRET_KEY` (not SERVICE_ROLE_KEY).
-- **Role check in proxy AND page**: Proxy handles redirect; page re-checks to be safe.
-- **Login redirect**: After sign-in, goes to `/admin`. Clients will redirect to `/` (home).
-- **Port**: 3000 may be in use; dev server falls back to 3002.
+- **Role check in proxy AND page/layout**: Proxy handles redirect; layout re-checks to be safe.
+- **Login redirect**: After sign-in, role fetched client-side → admin goes `/admin`, client goes `/`.
+- **No `app/page.tsx`**: Deleted — `app/(dashboard)/page.tsx` owns the `/` route via route group.
+- **Admin on dashboard**: Layout redirects admin role to `/admin`, so `/` is client-only.
+- **Dashboard queries**: Use `metric_window = 'eom'` for aggregate totals. Pipeline active = not POSTED/CANCELLED.
+- **Analytics data join**: `posts.select('..., post_analytics(...)')` — Supabase returns analytics as nested array keyed by `metric_window`.
+- **ER formula**: `(likes + comments + shares + saves) / views × 100` — matches the original HTML portal.
+- **State naming**: Use `win` not `window` for WindowKey state variables (avoids browser global shadowing).
+- **Port**: Dev server falls back; check `.next/dev/logs/next-development.log` for actual port.
+- **Tailwind 4 theme**: Colors in `globals.css` `@theme {}` block, not `tailwind.config.js`.
+- **Nick client ID**: `913f1794-1506-4449-b56c-b683809cefc3` (slug: "nick", email: nick@spartasolar.com)
+- **Test client**: `test@client.com` (role=client) linked to Nick's client_id — use for portal testing
+- **Re-run migration**: `node scripts/migrate-nick.mjs --force` to wipe + re-insert
+
+## Current file structure (src/)
+
+```
+src/
+  app/
+    (auth)/login/page.tsx          ← gold/black login
+    (dashboard)/
+      layout.tsx                   ← sidebar, auth guard, admin redirect
+      page.tsx                     ← dashboard KPIs
+      analytics/page.tsx           ← analytics page (server)  ← Session 4
+    admin/page.tsx
+    globals.css
+    layout.tsx
+  components/portal/
+    PortalNav.tsx                  ← usePathname active state
+    SignOutButton.tsx
+    AnalyticsClient.tsx            ← interactive analytics table  ← Session 4
+  lib/supabase/
+    client.ts
+    server.ts
+  proxy.ts
+```
+
+### Session 5 — Pipeline tab ✅
+- Created `src/lib/supabase/admin.ts` — service-role client (bypasses RLS); server-only import
+- Created `src/app/(dashboard)/pipeline/actions.ts` — `updatePipelineStatus` server action:
+  - Validates status against allowlist
+  - Verifies caller is authenticated + owns the item (non-admins restricted to their client_id)
+  - Uses admin client to bypass the read-only RLS policy on pipeline_items
+  - Calls `revalidatePath('/pipeline')` on success
+- Created `src/app/(dashboard)/pipeline/page.tsx` — server component; typed `RawRow` cast needed
+  because Supabase returns untyped rows without generated DB types (`as unknown as RawRow[]`)
+- Created `src/components/portal/PipelineClient.tsx` — fully interactive client component:
+  - Phase cards: Active (37) / Scripted / Planned / Filming / Reviewing / Posted / All — click to filter
+  - Platform filter: All Platforms / IG / TT / YT
+  - Pillar filter chips: All / Sales Tips / Self Development / Service/Love / Volume/50-150 / Other
+  - Full-text search across title, ID, pillar, week, notes
+  - Sortable columns: Title, Pillar, Week, Priority, Status
+  - Priority color stripes + row tints: red=1 (urgent), amber=2-3, blue=4-5, green=6 (posted)
+  - Inline status dropdown — optimistic UI update + server action; reverts on error
+  - Script expand: "View" button on SCRIPTED items expands inline row with full script text
+  - Status badge colors: SCRIPTED=gold, PLANNED=blue, FILMING=amber, REVIEWING=red, POSTED=green
+- Unlocked pipeline link in `PortalNav.tsx`
+- Default filter: ACTIVE (non-posted items) — most useful starting view with 37 active items
+- TypeScript: zero source errors; sort comparator uses `priority` as numeric, others as string
+
+## Key decisions / gotchas
+
+- **Next.js 16 proxy**: `middleware.ts` is deprecated. Use `src/proxy.ts` with `export function proxy()`.
+- **cookies() is async**: Always `const cookieStore = await cookies()` in server components.
+- **Env var names**: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY), `SUPABASE_SECRET_KEY` (not SERVICE_ROLE_KEY).
+- **Role check in proxy AND page/layout**: Proxy handles redirect; layout re-checks to be safe.
+- **Login redirect**: After sign-in, role fetched client-side → admin goes `/admin`, client goes `/`.
+- **No `app/page.tsx`**: Deleted — `app/(dashboard)/page.tsx` owns the `/` route via route group.
+- **Admin on dashboard**: Layout redirects admin role to `/admin`, so `/` is client-only.
+- **Dashboard queries**: Use `metric_window = 'eom'` for aggregate totals. Pipeline active = not POSTED/CANCELLED.
+- **Analytics data join**: `posts.select('..., post_analytics(...)')` returns analytics as nested array keyed by `metric_window`.
+- **ER formula**: `(likes + comments + shares + saves) / views × 100` — matches the original portal.
+- **State naming**: Use `win` not `window` for WindowKey state variables (avoids browser global shadowing).
+- **Supabase untyped rows**: Without generated DB types, `.select()` returns generic type. Cast with `as unknown as RawRow[]`.
+- **Pipeline RLS**: Clients have SELECT only on pipeline_items. Status updates use a server action with the admin client. Server action verifies ownership before updating.
+- **admin.ts**: ONLY import in server actions / server components. Never in `'use client'` files.
+- **Port**: Dev server falls back; check `.next/dev/logs/next-development.log` for actual port.
+- **Tailwind 4 theme**: Colors in `globals.css` `@theme {}` block, not `tailwind.config.js`.
+- **Nick client ID**: `913f1794-1506-4449-b56c-b683809cefc3` (slug: "nick", email: nick@spartasolar.com)
+- **Test client**: `test@client.com` (role=client) linked to Nick's client_id — use for portal testing
+- **Re-run migration**: `node scripts/migrate-nick.mjs --force` to wipe + re-insert
+
+## Current file structure (src/)
+
+```
+src/
+  app/
+    (auth)/login/page.tsx
+    (dashboard)/
+      layout.tsx
+      page.tsx                     ← dashboard KPIs
+      analytics/page.tsx           ← Session 4
+      pipeline/
+        page.tsx                   ← Session 5
+        actions.ts                 ← updatePipelineStatus server action
+    admin/page.tsx
+    globals.css
+    layout.tsx
+  components/portal/
+    PortalNav.tsx
+    SignOutButton.tsx
+    AnalyticsClient.tsx            ← Session 4
+    PipelineClient.tsx             ← Session 5
+  lib/supabase/
+    client.ts
+    server.ts
+    admin.ts                       ← Session 5 (service role, server-only)
+  proxy.ts
+```
+
+### Session 6 — Ads tab ✅
+- Created `src/app/(dashboard)/ads/page.tsx` — server component:
+  - Fetches `ad_campaigns` + `ad_creatives` in parallel
+  - Computes `effectiveRevenue = roas > 0 ? roas * spend : 0` (migration left `revenue = 0`)
+  - Infers campaign end dates: end of campaign N = day before campaign N+1's start date
+  - Builds `campaignNameById` map to join creatives → campaign names
+  - Computes summary totals (totalSpend, totalRevenue, portfolioROAS, totalHires) server-side
+- Created `src/components/portal/AdsClient.tsx` — interactive client component:
+  - 4 KPI cards: Total Spend ($314.91), Estimated Revenue ($12.5K), Portfolio ROAS (39.7x), Total Hires (5)
+  - Active / Completed / All status toggle
+  - Sortable campaign table: Date, Spend, Revenue, ROAS, Leads, Hires, CPL, CPH, Status
+  - Winner row highlighting: gold left border + tint when ROAS > 0 (Hat Toss only)
+  - Revenue column: green when > 0, grey dash otherwise
+  - Hires column: green when > 0
+  - Meta platform badge (blue, #1778f2)
+  - Date range column: "Mar 1, 2026 – Mar 7" using inferred end dates
+  - Creatives expand: click row with creatives → inline panel shows creative names, type, status
+  - Campaign Details secondary section: impressions, reach, clicks, CTR, CPM, CPC per campaign
+  - Revenue footnote explaining ROAS × Spend estimation method
+- Unlocked Ads nav link in PortalNav.tsx
+
+## Key decisions / gotchas
+
+- **Next.js 16 proxy**: `middleware.ts` is deprecated. Use `src/proxy.ts` with `export function proxy()`.
+- **cookies() is async**: Always `const cookieStore = await cookies()` in server components.
+- **Env var names**: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY), `SUPABASE_SECRET_KEY` (not SERVICE_ROLE_KEY).
+- **Role check in proxy AND page/layout**: Proxy handles redirect; layout re-checks to be safe.
+- **Login redirect**: After sign-in, role fetched client-side → admin goes `/admin`, client goes `/`.
+- **No `app/page.tsx`**: Deleted — `app/(dashboard)/page.tsx` owns the `/` route via route group.
+- **Admin on dashboard**: Layout redirects admin role to `/admin`, so `/` is client-only.
+- **Dashboard queries**: Use `metric_window = 'eom'` for aggregate totals. Pipeline active = not POSTED/CANCELLED.
+- **Analytics data join**: `posts.select('..., post_analytics(...)')` returns analytics as nested array keyed by `metric_window`.
+- **ER formula**: `(likes + comments + shares + saves) / views × 100` — matches the original portal.
+- **State naming**: Use `win` not `window` for WindowKey state variables (avoids browser global shadowing).
+- **Supabase untyped rows**: Without generated DB types, cast with `as unknown as RawRow[]`.
+- **Pipeline RLS**: Clients have SELECT only. Status updates use `pipeline/actions.ts` server action + `admin.ts` service client after verifying ownership.
+- **admin.ts**: ONLY import in server actions / server components. Never in `'use client'` files.
+- **Ads revenue field**: The `revenue` column in `ad_campaigns` is 0 for all rows (migration limitation). Use `effectiveRevenue = roas * spend` for display. Hat Toss: 89.28 × $140 = $12,499.
+- **Ads date range**: Only `date` (start) is in the schema. End dates inferred as day before next campaign's start. Last campaign has no inferred end date.
+- **Port**: Dev server falls back; check `.next/dev/logs/next-development.log` for actual port.
+- **Tailwind 4 theme**: Colors in `globals.css` `@theme {}` block, not `tailwind.config.js`.
+- **Nick client ID**: `913f1794-1506-4449-b56c-b683809cefc3` (slug: "nick", email: nick@spartasolar.com)
+- **Test client**: `test@client.com` (role=client) linked to Nick's client_id — use for portal testing
+- **Re-run migration**: `node scripts/migrate-nick.mjs --force` to wipe + re-insert
+
+## Current file structure (src/)
+
+```
+src/
+  app/
+    (auth)/login/page.tsx
+    (dashboard)/
+      layout.tsx
+      page.tsx                     ← dashboard KPIs
+      analytics/page.tsx           ← Session 4
+      pipeline/
+        page.tsx                   ← Session 5
+        actions.ts                 ← updatePipelineStatus server action
+      ads/page.tsx                 ← Session 6
+    admin/page.tsx
+    globals.css
+    layout.tsx
+  components/portal/
+    PortalNav.tsx
+    SignOutButton.tsx
+    AnalyticsClient.tsx            ← Session 4
+    PipelineClient.tsx             ← Session 5
+    AdsClient.tsx                  ← Session 6
+  lib/supabase/
+    client.ts
+    server.ts
+    admin.ts                       ← Session 5 (service role, server-only)
+  proxy.ts
+```
+
+### Session 6.7 — Goals tab ✅
+- Seeded 9 default goals into Supabase `goals` table (5 monthly + 4 weekly), calibrated to best month
+  (March: 22 posts, 313K views, 2332 followers) — `node scripts/...` equivalent run inline via Node
+- Created `src/app/(dashboard)/goals/page.tsx` — pure server component:
+  - Reads goals table + all posts+analytics in parallel
+  - Computes monthly actuals from eom analytics window (posts, views, followers, avg ER%)
+  - Falls back to most recent data month if current month has no data
+  - `paceStatus()`: projects pace to end of month → Ahead/On Track/Behind badges
+  - `GoalCard` component: actual value (in status colour), target, progress bar, % complete, status badge
+  - 4 monthly goal cards: Posts, Total Views, Followers Gained, Avg ER%
+  - Weekly targets strip: 4 boxes showing weekly targets
+  - "What Needs to Happen This Week" callout: 3 data-driven action sentences
+    - Posts item: calculates posts/week needed to hit monthly target
+    - ER item: compares current ER to target, recommends Hard Statement/Volume hooks if behind
+    - Views item: calculates gap, names Volume/50-150 pillar as the fastest path (37.5K avg views/post)
+  - Monthly History table: Feb–May vs target — green (≥target), gold (≥80%), red (<80%)
+  - Footnote explaining data source (eom window) and ER formula
+- Added `/goals` to `PortalNav.tsx` — 7 tabs now live
+- Note: goals table has no UPDATE RLS policy for clients; admin updates via Supabase dashboard for now
+
+### Session 6.6 — Angles tab ✅
+- Created `src/app/(dashboard)/angles/page.tsx` — pure server component (no client component needed):
+  - Fetches posts + `post_analytics` (eom window) in one Supabase join
+  - Computes `PostMetrics[]` with ER = (likes+comments+shares+saves)/views × 100
+  - `computeBreakdown()` groups by pillar/hook/format → avgER, count, totalViews, sorted desc
+  - 3 KPI cards: Best Pillar (Volume/50-150, 7.12% ER), Best Hook (Volume, 8.59%), Best Format (Podcast Clip, 5.40%)
+  - Gold recommendation callout: dynamically generated from best pillar + best hook combo with
+    usage percentage and overlap count. If the combination exists, shows avg ER of those posts.
+  - `BreakdownBar` component: colour-coded bar scaled within category (max=100%), ER%, tier badge, post count, views
+  - Pillar, Hook, Format breakdown sections — all sorted best→worst
+  - Top 5 table (green heading) and Bottom 5 table (red heading), both using shared `PostTable`
+    with tier badges, pillar tag, hook, format, ER%, views, decision columns
+  - Tier legend at bottom (Elite ≥12%, Strong 7–12%, Avg 4–7%, Kill <4%)
+- Added `/angles` to `PortalNav.tsx` between Analytics and Pipeline — all 6 tabs now live
+
+### Session 6.5 — Calendar tab ✅
+- Created `src/app/(dashboard)/calendar/page.tsx` — server component:
+  - Fetches calendar_events + all pipeline_items in parallel
+  - Parses notes JSON (stored as text in DB) for each event → postId, captionStatus, postTime, contentType, cta
+  - Joins to pipeline via `notes.post_id` → `pipeline_items.post_id` (pipeline_item_id is null for all
+    events; server-side join via post_id map is the workaround)
+  - Passes enriched CalendarEvent[] + date bounds to client
+- Created `src/components/portal/CalendarClient.tsx` — fully interactive:
+  - **Calendar view**: 42-cell grid (6 rows × 7 cols, always); leading/trailing cells from prev/next month
+    shown at 30% opacity; `buildGrid()` computes by firstDayOfWeek + daysInMonth
+  - **Event pills**: platform-colored left border + tinted background; click pill → selects that date
+  - **Selected date detail panel**: shows title, platform badge, post_id, content type, post time,
+    caption status, CTA, pipeline status with color — numbered tab switcher when multiple events on same day
+  - **Month navigation**: Prev / Next / Today buttons; month stat strip (post count + IG/YT breakdown)
+  - **Agenda/list view toggle**: all 48 events grouped by month with colored left border + platform badge,
+    title, content type, post ID, pipeline status columns
+  - **Pipeline status colors**: POSTED=green, SCRIPTED=gold, FILMING=amber, REVIEWING=red, etc.
+  - **IG**: gold, **YT**: blue, **TT**: purple (no TT events in data currently)
+  - Default view: Calendar; default month: most recent event month (May 2026)
+  - Today dot: gold dot next to date number
+- Cleaned up `PortalNav.tsx` — removed all `soon` logic since every tab is now live; simplified to plain link list
+- All 5 portal tabs now active: Dashboard / Analytics / Pipeline / Ads / Calendar
+
+## Key decisions / gotchas
+
+- **Next.js 16 proxy**: `middleware.ts` is deprecated. Use `src/proxy.ts` with `export function proxy()`.
+- **cookies() is async**: Always `const cookieStore = await cookies()` in server components.
+- **Env var names**: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY), `SUPABASE_SECRET_KEY` (not SERVICE_ROLE_KEY).
+- **Role check in proxy AND page/layout**: Proxy handles redirect; layout re-checks to be safe.
+- **Login redirect**: After sign-in, role fetched client-side → admin goes `/admin`, client goes `/`.
+- **No `app/page.tsx`**: Deleted — `app/(dashboard)/page.tsx` owns the `/` route via route group.
+- **Admin on dashboard**: Layout redirects admin role to `/admin`, so `/` is client-only.
+- **Dashboard queries**: Use `metric_window = 'eom'` for aggregate totals. Pipeline active = not POSTED/CANCELLED.
+- **Analytics data join**: `posts.select('..., post_analytics(...)')` returns analytics as nested array keyed by `metric_window`.
+- **ER formula**: `(likes + comments + shares + saves) / views × 100` — matches the original portal.
+- **State naming**: Use `win` not `window` for WindowKey state variables (avoids browser global shadowing).
+- **Supabase untyped rows**: Without generated DB types, cast with `as unknown as RawRow[]`.
+- **Pipeline RLS**: Clients have SELECT only. Status updates use `pipeline/actions.ts` server action + `admin.ts` service client after verifying ownership.
+- **admin.ts**: ONLY import in server actions / server components. Never in `'use client'` files.
+- **Ads revenue field**: The `revenue` column in `ad_campaigns` is 0 for all rows. Use `effectiveRevenue = roas * spend`.
+- **Ads date range**: Only `date` (start) in schema. End dates inferred as day before next campaign's start.
+- **Goals seeding**: 9 goals seeded May 2026 (5 monthly + 4 weekly). Goals table has no client UPDATE policy — updates via Supabase dashboard or future admin UI.
+- **Goals actuals**: computed from eom analytics window per post, grouped by month. Falls back to most recent data month if current month is empty.
+- **Pace status**: `(actual / daysElapsed) * daysInMonth` projected to month end → ≥110%=Ahead, ≥80%=On Track, <80%=Behind.
+- **Calendar notes field**: `notes` is a JSON string in a text column. Parse with `try { JSON.parse(notes) } catch {}`.
+- **Calendar pipeline link**: `pipeline_item_id` is null for all events (migration gap). Join via `notes.post_id` → `pipeline_items.post_id` instead.
+- **Calendar grid**: 42-cell fixed (6 rows × 7 cols). Leading cells from prev month, trailing from next month.
+- **Port**: Dev server falls back; check `.next/dev/logs/next-development.log` for actual port.
+- **Tailwind 4 theme**: Colors in `globals.css` `@theme {}` block, not `tailwind.config.js`.
+- **Nick client ID**: `913f1794-1506-4449-b56c-b683809cefc3` (slug: "nick", email: nick@spartasolar.com)
+- **Test client**: `test@client.com` (role=client) linked to Nick's client_id — use for portal testing
+- **Re-run migration**: `node scripts/migrate-nick.mjs --force` to wipe + re-insert
+
+## Current file structure (src/)
+
+```
+src/
+  app/
+    (auth)/login/page.tsx
+    (dashboard)/
+      layout.tsx
+      page.tsx                     ← dashboard KPIs
+      analytics/page.tsx           ← Session 4
+      pipeline/
+        page.tsx                   ← Session 5
+        actions.ts
+      ads/page.tsx                 ← Session 6
+      calendar/page.tsx            ← Session 6.5
+    admin/page.tsx
+    globals.css
+    layout.tsx
+  components/portal/
+    PortalNav.tsx                  ← all 5 tabs live, soon logic removed
+    SignOutButton.tsx
+    AnalyticsClient.tsx            ← Session 4
+    PipelineClient.tsx             ← Session 5
+    AdsClient.tsx                  ← Session 6
+    CalendarClient.tsx             ← Session 6.5
+  lib/supabase/
+    client.ts
+    server.ts
+    admin.ts
+  proxy.ts
+```
+
+## Current file structure (src/)
+
+```
+src/
+  app/
+    (auth)/login/page.tsx
+    (dashboard)/
+      layout.tsx
+      page.tsx                     ← dashboard KPIs
+      analytics/page.tsx           ← Session 4
+      angles/page.tsx              ← Session 6.6
+      pipeline/
+        page.tsx                   ← Session 5
+        actions.ts
+      ads/page.tsx                 ← Session 6
+      calendar/page.tsx            ← Session 6.5
+      goals/page.tsx               ← Session 6.7
+    admin/page.tsx
+    globals.css
+    layout.tsx
+  components/portal/
+    PortalNav.tsx          ← 9 tabs: Dashboard/Analytics/Angles/Pipeline/Studio/Ads/Calendar/Goals/Report Card
+    SignOutButton.tsx
+    AnalyticsClient.tsx
+    PipelineClient.tsx
+    AdsClient.tsx
+    CalendarClient.tsx
+    ReportCardClient.tsx   ← Session 7 (week/month grade viewer)
+    StudioClient.tsx       ← Session 7 (script review + production queue)
+  lib/supabase/
+    client.ts
+    server.ts
+    admin.ts
+  proxy.ts
+```
+
+### Session 7 — Report Card + Studio tabs ✅
+- Created `src/app/(dashboard)/report-card/page.tsx` — server component:
+  - Fetches goals + posts+analytics in parallel; builds week/month grade maps
+  - `computeWeekGrade()`: 4 components (Posts 25, Views/Reach 30, Avg ER% 35, Elite Videos 10)
+  - `computeMonthGrade()`: 5 components (Posts 20, Total Views 25, Avg ER% 30, Followers 15, Elite 10)
+  - Scores project against weekly/monthly goals from goals table
+  - Generates wins[], misses[], strategy[] as data-driven sentences per period
+  - Exports types WeekGrade, MonthGrade, PostSummary, ScoreComponents for client component
+- Created `src/components/portal/ReportCardClient.tsx` — interactive client component:
+  - Monthly / Weekly toggle tab (left sidebar)
+  - Period list: grade chip (letter + score/100) + label — newest first, click to select
+  - Detail panel: large grade tile, stats strip, score breakdown bars (green/amber/red)
+  - Wins (green ✓) + Misses (red ↓) in two-column layout
+  - Top posts table: post ID, title, views, ER%, decision
+  - Monthly only: "Next Period Focus" callout with → strategy bullets
+- Created `src/app/(dashboard)/studio/page.tsx` — server component:
+  - Fetches all non-POSTED/CANCELLED pipeline items ordered by priority
+  - Passes to StudioClient with count stats in header
+- Created `src/components/portal/StudioClient.tsx` — interactive client component:
+  - Phase funnel strip: PLANNED → SCRIPTED → FILMING → REVIEWING → POSTED (counts)
+  - Tabs: Scripts to Review | In Production | Planned
+  - Script cards: expandable "Read Script" button reveals full script_content with pre-wrap
+  - Production rows: compact rows for FILMING/REVIEWING items grouped by status
+  - Cards sorted by priority ascending; URGENT badge for priority=1
+- Updated `PortalNav.tsx` — 9 tabs: added Studio (between Pipeline and Ads) + Report Card (at end)
+- **Report Card type note**: `ScoreComponents` is exported as a named array type from the page; client imports it
+- **Studio note**: no write operations; read-only view of pipeline items (no approval API needed for MVP)
 
 ## Next sessions
-- Session 3: Dashboard layout, client portal pages, pipeline view
+- Session 9: Real Nick login — create Supabase auth user for nick@spartasolar.com, link to client_id
+- Session 10: Vercel deploy + custom domain
