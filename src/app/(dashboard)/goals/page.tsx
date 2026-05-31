@@ -1,8 +1,10 @@
 import { getPortalContext } from '@/lib/supabase/portal'
+import { GoalsEditableCards } from '@/components/portal/GoalsClient'
+import type { GoalRow as ClientGoalRow } from '@/components/portal/GoalsClient'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type GoalRow    = { metric: string; target: number; period: string }
+type GoalRow    = { id: string; metric: string; target: number; period: string }
 type MonthData  = { posts: number; views: number; followers: number; er: number; eliteVideos: number }
 type GoalStatus = 'ahead' | 'on_track' | 'behind'
 
@@ -130,7 +132,7 @@ export default async function GoalsPage() {
   }
 
   const [goalsRes, postsRes] = await Promise.all([
-    supabase.from('goals').select('metric, target, period').eq('client_id', cid),
+    supabase.from('goals').select('id, metric, target, period').eq('client_id', cid),
     supabase.from('posts')
       .select('post_id, date, post_analytics(metric_window,views,likes,comments,shares,saves,followers,watch_pct)')
       .eq('client_id', cid),
@@ -290,81 +292,24 @@ export default async function GoalsPage() {
         </div>
       </div>
 
-      {/* ── Monthly goal cards ───────────────────────────────────── */}
+      {/* ── Monthly goal cards + weekly targets (editable) ──────── */}
       <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3"
          style={{ color: '#c9a96e' }}>
         <span style={{ display: 'block', width: 16, height: 1, background: '#c9a96e' }} />
         Monthly Goals — {MONTH_NAMES[dispM - 1]}
       </p>
-      <div className="grid gap-px mb-10"
-           style={{ gridTemplateColumns: 'repeat(4,1fr)', background: '#141414' }}>
-        <GoalCard
-          metric="Posts"
-          target={monthly['Posts'] ?? 20}
-          actual={currentData.posts}
-          unit=""
-          daysElapsed={isCurrentMonth ? daysElapsed : daysInMonth}
-          daysInMonth={daysInMonth}
-        />
-        <GoalCard
-          metric="Total Views"
-          target={monthly['Total Views'] ?? 200000}
-          actual={currentData.views}
-          unit="views"
-          daysElapsed={isCurrentMonth ? daysElapsed : daysInMonth}
-          daysInMonth={daysInMonth}
-        />
-        <GoalCard
-          metric="Followers Gained"
-          target={monthly['Followers Gained'] ?? 500}
-          actual={currentData.followers}
-          unit="followers"
-          daysElapsed={isCurrentMonth ? daysElapsed : daysInMonth}
-          daysInMonth={daysInMonth}
-        />
-        <GoalCard
-          metric="Avg ER%"
-          target={monthly['Avg ER%'] ?? 7.5}
-          actual={currentData.er}
-          unit="%"
-          daysElapsed={isCurrentMonth ? daysElapsed : daysInMonth}
-          daysInMonth={daysInMonth}
-          note={currentData.posts === 0 ? 'No posts this period' : undefined}
-        />
-      </div>
-
-      {/* ── Weekly goals strip ────────────────────────────────────── */}
-      {Object.keys(weekly).length > 0 && (
-        <>
-          <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3"
-             style={{ color: '#c9a96e' }}>
-            <span style={{ display: 'block', width: 16, height: 1, background: '#c9a96e' }} />
-            Weekly Targets
-          </p>
-          <div
-            className="flex gap-px mb-10"
-            style={{ background: '#141414' }}
-          >
-            {Object.entries(weekly).map(([metric, target]) => (
-              <div
-                key={metric}
-                className="flex-1 flex flex-col items-center py-4 px-3"
-                style={{ background: '#0a0a0a' }}
-              >
-                <p className="text-[7px] font-medium tracking-[.18em] uppercase mb-2 text-center"
-                   style={{ color: '#2a2a2a' }}>
-                  {metric}
-                </p>
-                <p className="font-jakarta font-light text-gold-gradient"
-                   style={{ fontSize: 22, lineHeight: 1 }}>
-                  {metric === 'Avg ER%' ? target.toFixed(1) + '%' : fmtNum(target)}
-                </p>
-                <p className="text-[8px] mt-1" style={{ color: '#252525' }}>per week</p>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      <GoalsEditableCards
+        monthlyGoals={goals.filter(g => g.period === 'monthly') as ClientGoalRow[]}
+        weeklyGoals={goals.filter(g => g.period === 'weekly') as ClientGoalRow[]}
+        currentData={{
+          posts:     currentData.posts,
+          views:     currentData.views,
+          followers: currentData.followers,
+          er:        currentData.er,
+        }}
+        daysElapsed={isCurrentMonth ? daysElapsed : daysInMonth}
+        daysInMonth={daysInMonth}
+      />
 
       {/* ── Historical comparison ─────────────────────────────────── */}
       <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3"

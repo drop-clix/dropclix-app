@@ -13,6 +13,7 @@ export type WindowData = {
 }
 
 export type PostRow = {
+  uuid: string      // posts.id — needed to target post_analytics rows
   postId: string
   title: string
   platform: string[]
@@ -39,7 +40,7 @@ export default async function AnalyticsPage() {
   const { data: rawPosts, error } = await supabase
     .from('posts')
     .select(`
-      post_id, title, platform, pillar, date, decision,
+      id, post_id, title, platform, pillar, date, decision,
       post_analytics(metric_window, views, likes, comments, shares, saves, followers, watch_pct)
     `)
     .eq('client_id', clientId ?? fallback)
@@ -64,6 +65,7 @@ export default async function AnalyticsPage() {
       }
     }
     return {
+      uuid:     p.id,
       postId:   p.post_id,
       title:    p.title,
       platform: p.platform ?? [],

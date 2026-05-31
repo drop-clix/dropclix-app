@@ -500,6 +500,29 @@ In Cloudflare DNS for `drop-clix.com`, add:
 ## Bugfixes
 
 - **PipelineClient key prop**: `rows.map()` returned a bare `<>...</>` fragment — React requires the key on the fragment itself, not the inner `<tr>`. Fixed by importing `Fragment` from react and using `<Fragment key={item.id}>`. The `key` on both inner `<tr>` elements was removed as redundant.
+- **AdsClient key prop**: Same Fragment shorthand issue — fixed with `<Fragment key={c.id}>` in campaign rows.map().
+
+### Session 11 — Inline editing across all portal tabs ✅
+
+**New files:**
+- `src/app/(dashboard)/edit-actions.ts` — Centralized server actions for all CRUD operations (pipeline, goals, analytics, ads, calendar). All actions: verify auth + ownership, use admin client to bypass RLS, revalidate path.
+
+**Modified files:**
+- `src/components/portal/PipelineClient.tsx` — Full inline editing: click any row to expand an edit panel with title, status, priority, platform checkboxes, pillar, week, script textarea. 2-second debounced auto-save per field (field stays focused). Hover shows ✎ / × buttons. Delete with confirmation.
+- `src/components/portal/AnalyticsClient.tsx` — Click any metric cell (Views, Likes, Comments, Saves, Shares, Watch%) to edit inline; saves on blur. ER% is computed (not directly editable). Optimistic local state update.
+- `src/components/portal/GoalsClient.tsx` (new) — Client component for editable goal targets. Click "target X" text → inline input → 2-second debounce auto-save. Progress bar and pace badge recalculate live from updated target.
+- `src/app/(dashboard)/goals/page.tsx` — Fetches goals with `id`, passes to `GoalsEditableCards` client component.
+- `src/components/portal/AdsClient.tsx` — Campaign rows click to expand full edit panel (name, objective, status, start date, spend, leads, hires). Creative inline editing (type, status, impressions, CTR). Hover shows ✎ / × on all rows. Fixed Fragment key bug.
+- `src/components/portal/CalendarClient.tsx` — Click ✎ on selected event in calendar view to open edit panel (title, platform, date, postId, postTime, captionStatus, contentType, CTA). Agenda view: hover shows ✎ / × per row, edit panel expands inline below.
+- `src/app/(dashboard)/analytics/page.tsx` — Added `uuid` (posts.id) to PostRow type and select query, used as the key to target post_analytics rows for updates.
+
+**Patterns:**
+- 2-second debounce: `useRef` timer per field, cleared on each keystroke. Field stays focused after save — no blur() called. SaveDot indicator (yellow=saving, green=saved, red=error).
+- Blur-save: analytics cells only — more appropriate for tabular data entry.
+- Immediate save: dropdowns and checkboxes (no debounce needed).
+- Hover buttons: `hoveredId` state + `onMouseEnter`/`onMouseLeave`, opacity 0→1 transition.
+- React 19 `useRef`: must pass initial value — `useRef<T | undefined>(undefined)` not `useRef<T>()`.
+- Goals server component: kept server-side for data fetching; client `GoalsEditableCards` receives computed actuals + goals-with-IDs, manages target edits locally.
 
 ## Next sessions
 - Session 11: GitHub auto-deploy (connect repo via Vercel dashboard after DNS verified)

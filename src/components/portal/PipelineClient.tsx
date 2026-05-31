@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo, Fragment } from 'react'
-import { updatePipelineStatus } from '@/app/(dashboard)/pipeline/actions'
+import { useState, useMemo, useRef, Fragment } from 'react'
+import { updatePipelineItem, deletePipelineItem } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -22,14 +22,13 @@ const STATUS_CFG: Record<string, { color: string; bg: string; border: string }> 
   CANCELLED: { color: '#444',    bg: 'rgba(100,100,100,.08)', border: '#2a2a2a'                },
 }
 
-// Priority → left border + row tint
 const PRIORITY_CFG: Record<number, { stripe: string; row: string }> = {
-  1: { stripe: '#ff3b5f', row: 'rgba(255,59,95,.04)'    }, // urgent / reviewing
+  1: { stripe: '#ff3b5f', row: 'rgba(255,59,95,.04)'    },
   2: { stripe: '#fbbf24', row: 'rgba(251,191,36,.035)'  },
   3: { stripe: '#fbbf24', row: 'rgba(251,191,36,.035)'  },
   4: { stripe: '#4cc9ff', row: 'rgba(76,201,255,.03)'   },
   5: { stripe: '#4cc9ff', row: 'rgba(76,201,255,.03)'   },
-  6: { stripe: '#39ff88', row: 'rgba(57,255,136,.025)'  }, // posted / done
+  6: { stripe: '#39ff88', row: 'rgba(57,255,136,.025)'  },
 }
 
 const PLAT_CFG: Record<string, { label: string; color: string; bg: string }> = {
@@ -41,7 +40,8 @@ const PLAT_CFG: Record<string, { label: string; color: string; bg: string }> = {
 const ACTIVE_STATUSES = new Set(['SCRIPTED','PLANNED','FILMING','EDITING','REVIEWING','SCHEDULED'])
 
 type SortKey = 'priority' | 'status' | 'pillar' | 'week' | 'title'
-type FilterKey = 'ALL' | 'ACTIVE' | string  // status or 'ALL' or 'ACTIVE'
+type FilterKey = 'ALL' | 'ACTIVE' | string
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -69,6 +69,293 @@ function PlatBadge({ plat }: { plat: string }) {
   )
 }
 
+function SaveDot({ state }: { state: SaveState }) {
+  const color = state === 'saving' ? '#fbbf24' : state === 'saved' ? '#39ff88' : state === 'error' ? '#ff3b5f' : 'transparent'
+  return (
+    <span
+      style={{
+        display: 'inline-block', width: 5, height: 5, borderRadius: '50%',
+        background: color, marginLeft: 4, flexShrink: 0,
+        transition: 'background .2s',
+      }}
+      title={state === 'error' ? 'Save failed' : state === 'saved' ? 'Saved' : ''}
+    />
+  )
+}
+
+// ── Edit Panel ─────────────────────────────────────────────────────────────
+
+function ItemEditPanel({
+  item,
+  onUpdate,
+  onDelete,
+  onClose,
+}: {
+  item: PipelineItem
+  onUpdate: (id: string, patch: Partial<PipelineItem>) => void
+  onDelete: (id: string) => void
+  onClose: () => void
+}) {
+  const [title,   setTitle  ] = useState(item.title)
+  const [status,  setStatus ] = useState(item.status)
+  const [priority, setPriority] = useState(String(item.priority))
+  const [pillar,  setPillar ] = useState(item.pillar)
+  const [week,    setWeek   ] = useState(item.week)
+  const [platform, setPlatform] = useState<string[]>(item.platform)
+  const [script,  setScript ] = useState(item.scriptContent ?? '')
+  const [deleting, setDeleting] = useState(false)
+
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const [states, setStates] = useState<Record<string, SaveState>>({})
+
+  function fieldState(f: string): SaveState { return states[f] ?? 'idle' }
+
+  function schedule(dbField: string, value: unknown, uiPatch: Partial<PipelineItem>) {
+    clearTimeout(timers.current[dbField])
+    setStates(s => ({ ...s, [dbField]: 'idle' }))
+    timers.current[dbField] = setTimeout(async () => {
+      setStates(s => ({ ...s, [dbField]: 'saving' }))
+      const result = await updatePipelineItem(item.id, { [dbField]: value })
+      if (result.error) {
+        setStates(s => ({ ...s, [dbField]: 'error' }))
+      } else {
+        onUpdate(item.id, uiPatch)
+        setStates(s => ({ ...s, [dbField]: 'saved' }))
+        setTimeout(() => setStates(s => ({ ...s, [dbField]: 'idle' })), 1500)
+      }
+    }, 2000)
+  }
+
+  function scheduleImmediate(dbField: string, value: unknown, uiPatch: Partial<PipelineItem>) {
+    clearTimeout(timers.current[dbField])
+    setStates(s => ({ ...s, [dbField]: 'saving' }))
+    setTimeout(async () => {
+      const result = await updatePipelineItem(item.id, { [dbField]: value })
+      if (result.error) {
+        setStates(s => ({ ...s, [dbField]: 'error' }))
+      } else {
+        onUpdate(item.id, uiPatch)
+        setStates(s => ({ ...s, [dbField]: 'saved' }))
+        setTimeout(() => setStates(s => ({ ...s, [dbField]: 'idle' })), 1500)
+      }
+    }, 0)
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return
+    setDeleting(true)
+    const result = await deletePipelineItem(item.id)
+    if (result.error) { alert(`Error: ${result.error}`); setDeleting(false); return }
+    onDelete(item.id)
+  }
+
+  function togglePlatform(p: string) {
+    const next = platform.includes(p) ? platform.filter(x => x !== p) : [...platform, p]
+    setPlatform(next)
+    scheduleImmediate('platform', next, { platform: next })
+  }
+
+  const inputStyle = {
+    background: '#080808',
+    border: '1px solid #1e1e1e',
+    color: '#f2ede4',
+    padding: '5px 8px',
+    fontSize: 11,
+    fontFamily: 'DM Sans, sans-serif',
+    outline: 'none',
+    width: '100%',
+  }
+
+  const labelStyle = {
+    fontSize: 7,
+    fontWeight: 600,
+    letterSpacing: '.16em',
+    textTransform: 'uppercase' as const,
+    color: '#2a2a2a',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 2,
+    marginBottom: 4,
+  }
+
+  return (
+    <div
+      style={{
+        background: '#070707',
+        borderBottom: '1px solid #141414',
+        borderLeft: '3px solid #c9a96e',
+        padding: '20px 24px',
+      }}
+    >
+      <div className="flex items-center justify-between mb-5">
+        <span className="text-[9px] font-medium tracking-[.2em] uppercase" style={{ color: '#c9a96e' }}>
+          Editing · {item.postId}
+        </span>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{
+              fontSize: 9, padding: '3px 10px', cursor: 'pointer',
+              color: '#ff3b5f', background: 'rgba(255,59,95,.06)',
+              border: '1px solid rgba(255,59,95,.2)',
+              opacity: deleting ? 0.5 : 1,
+            }}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              fontSize: 9, padding: '3px 10px', cursor: 'pointer',
+              color: '#444', background: 'transparent', border: '1px solid #1e1e1e',
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+
+        {/* Title */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={labelStyle}>
+            Title <SaveDot state={fieldState('title')} />
+          </label>
+          <input
+            style={inputStyle}
+            value={title}
+            onChange={e => { setTitle(e.target.value); schedule('title', e.target.value, { title: e.target.value }) }}
+            onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+            onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
+          />
+        </div>
+
+        {/* Status */}
+        <div>
+          <label style={labelStyle}>
+            Status <SaveDot state={fieldState('status')} />
+          </label>
+          <select
+            style={{ ...inputStyle, cursor: 'pointer', appearance: 'none' }}
+            value={status}
+            onChange={e => {
+              setStatus(e.target.value)
+              scheduleImmediate('status', e.target.value, { status: e.target.value })
+            }}
+          >
+            {ALL_STATUSES.map(s => (
+              <option key={s} value={s} style={{ background: '#0a0a0a' }}>{s}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Priority */}
+        <div>
+          <label style={labelStyle}>
+            Priority (1–6) <SaveDot state={fieldState('priority')} />
+          </label>
+          <input
+            type="number"
+            min={1} max={6}
+            style={inputStyle}
+            value={priority}
+            onChange={e => {
+              setPriority(e.target.value)
+              const n = parseInt(e.target.value, 10)
+              if (n >= 1 && n <= 6) schedule('priority', n, { priority: n })
+            }}
+            onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+            onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
+          />
+        </div>
+
+        {/* Week */}
+        <div>
+          <label style={labelStyle}>
+            Week <SaveDot state={fieldState('week')} />
+          </label>
+          <input
+            style={inputStyle}
+            value={week}
+            onChange={e => { setWeek(e.target.value); schedule('week', e.target.value, { week: e.target.value }) }}
+            onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+            onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
+          />
+        </div>
+
+        {/* Pillar */}
+        <div>
+          <label style={labelStyle}>
+            Pillar <SaveDot state={fieldState('pillar')} />
+          </label>
+          <input
+            style={inputStyle}
+            value={pillar}
+            onChange={e => { setPillar(e.target.value); schedule('pillar', e.target.value, { pillar: e.target.value }) }}
+            onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+            onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
+          />
+        </div>
+
+        {/* Platform */}
+        <div>
+          <label style={labelStyle}>
+            Platform <SaveDot state={fieldState('platform')} />
+          </label>
+          <div className="flex gap-2 mt-1">
+            {(['ig', 'tt', 'yt'] as const).map(p => {
+              const cfg = PLAT_CFG[p]
+              const on  = platform.includes(p)
+              return (
+                <button
+                  key={p}
+                  onClick={() => togglePlatform(p)}
+                  style={{
+                    padding: '4px 10px', cursor: 'pointer', fontSize: 9,
+                    color:      on ? cfg.color : '#333',
+                    background: on ? cfg.bg : 'transparent',
+                    border:     `1px solid ${on ? cfg.color + '60' : '#1e1e1e'}`,
+                    fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase',
+                  }}
+                >
+                  {cfg.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Script */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={labelStyle}>
+            Script <SaveDot state={fieldState('script_content')} />
+          </label>
+          <textarea
+            style={{
+              ...inputStyle,
+              height: 140,
+              resize: 'vertical',
+              lineHeight: 1.6,
+              whiteSpace: 'pre-wrap',
+            }}
+            value={script}
+            onChange={e => {
+              setScript(e.target.value)
+              schedule('script_content', e.target.value || null, { scriptContent: e.target.value || null })
+            }}
+            onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+            onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
+            placeholder="Script content…"
+          />
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] }) {
@@ -79,8 +366,8 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
   const [search,     setSearch    ] = useState('')
   const [sortKey,    setSortKey   ] = useState<SortKey>('priority')
   const [sortDir,    setSortDir   ] = useState<'asc' | 'desc'>('asc')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [pendingId,  setPendingId ] = useState<string | null>(null)
+  const [editingId,  setEditingId ] = useState<string | null>(null)
+  const [hoveredId,  setHoveredId ] = useState<string | null>(null)
   const [saveError,  setSaveError ] = useState<string | null>(null)
 
   // Phase counts
@@ -102,78 +389,47 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
   // Filtered + sorted rows
   const rows = useMemo(() => {
     let out = items.slice()
-
-    // Status filter
     if (filter === 'ACTIVE') out = out.filter(i => ACTIVE_STATUSES.has(i.status))
     else if (filter !== 'ALL') out = out.filter(i => i.status === filter)
-
-    // Platform filter
     if (platFilter !== 'all') out = out.filter(i => i.platform.includes(platFilter))
-
-    // Pillar filter
     if (pillarFilter !== 'All') out = out.filter(i => i.pillar === pillarFilter)
-
-    // Search
     const q = search.toLowerCase().trim()
     if (q) {
       out = out.filter(i =>
-        [i.postId, i.title, i.pillar, i.week, i.notes ?? '', i.status]
-          .join(' ').toLowerCase().includes(q),
+        [i.postId, i.title, i.pillar, i.week, i.notes ?? '', i.status].join(' ').toLowerCase().includes(q),
       )
     }
-
-    // Sort
     out.sort((a, b) => {
       let cmp = 0
-      if (sortKey === 'priority') {
-        cmp = a.priority - b.priority
-      } else {
+      if (sortKey === 'priority') cmp = a.priority - b.priority
+      else {
         const av = a[sortKey as keyof PipelineItem] ?? ''
         const bv = b[sortKey as keyof PipelineItem] ?? ''
         cmp = String(av).localeCompare(String(bv))
       }
       return sortDir === 'asc' ? cmp : -cmp
     })
-
     return out
   }, [items, filter, platFilter, pillarFilter, search, sortKey, sortDir])
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
-    else { setSortKey(key); setSortDir(key === 'priority' ? 'asc' : 'asc') }
+    else { setSortKey(key); setSortDir('asc') }
   }
 
-  async function handleStatusChange(item: PipelineItem, newStatus: string) {
-    if (pendingId) return
-    const oldStatus = item.status
+  function handleUpdate(id: string, patch: Partial<PipelineItem>) {
     setSaveError(null)
-    setPendingId(item.id)
-
-    // Optimistic update
-    setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: newStatus } : i))
-
-    const result = await updatePipelineStatus(item.id, newStatus)
-
-    if (result?.error) {
-      // Revert
-      setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: oldStatus } : i))
-      setSaveError(`Failed to save: ${result.error}`)
-    }
-
-    setPendingId(null)
+    setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i))
   }
 
-  function toggleExpand(id: string) {
-    setExpandedId(prev => (prev === id ? null : id))
+  function handleDelete(id: string) {
+    setItems(prev => prev.filter(i => i.id !== id))
+    if (editingId === id) setEditingId(null)
   }
 
-  // Sort arrow
   const arrow = (key: SortKey) =>
-    sortKey === key
-      ? sortDir === 'asc' ? ' ↑' : ' ↓'
-      : ' ↕'
+    sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
-  // Phase card data
   const phaseCards: { key: FilterKey; label: string; color: string }[] = [
     { key: 'ACTIVE',    label: 'Active',    color: '#c9a96e' },
     { key: 'SCRIPTED',  label: 'Scripted',  color: STATUS_CFG.SCRIPTED.color },
@@ -190,10 +446,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
       {/* ── Phase cards ──────────────────────────────────────────── */}
       <div
         className="grid gap-px mb-6"
-        style={{
-          gridTemplateColumns: `repeat(${phaseCards.length}, 1fr)`,
-          background: '#141414',
-        }}
+        style={{ gridTemplateColumns: `repeat(${phaseCards.length}, 1fr)`, background: '#141414' }}
       >
         {phaseCards.map(pc => {
           const active = filter === pc.key
@@ -228,7 +481,6 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
 
       {/* ── Filter row ───────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        {/* Platform */}
         <div className="flex gap-1">
           {['all', 'ig', 'tt', 'yt'].map(p => (
             <button
@@ -247,7 +499,6 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
           ))}
         </div>
 
-        {/* Search */}
         <input
           type="text"
           placeholder="Search title, ID, pillar, week…"
@@ -255,17 +506,13 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
           onChange={e => setSearch(e.target.value)}
           className="flex-1 min-w-[200px] px-3 py-1.5 text-[11px] outline-none"
           style={{
-            background: '#080808',
-            border: '1px solid #1a1a1a',
-            color: '#f2ede4',
-            fontFamily: 'DM Sans, sans-serif',
-            maxWidth: 320,
+            background: '#080808', border: '1px solid #1a1a1a',
+            color: '#f2ede4', fontFamily: 'DM Sans, sans-serif', maxWidth: 320,
           }}
-          onFocus={e  => (e.target.style.borderColor = '#c9a96e')}
-          onBlur={e   => (e.target.style.borderColor = '#1a1a1a')}
+          onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+          onBlur={e  => (e.target.style.borderColor = '#1a1a1a')}
         />
 
-        {/* Row count */}
         <p className="ml-auto text-[9px] tracking-[.14em] uppercase" style={{ color: '#252525' }}>
           {rows.length} of {items.length} items
         </p>
@@ -293,7 +540,6 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
         ))}
       </div>
 
-      {/* Save error */}
       {saveError && (
         <p
           className="text-[11px] px-4 py-2 mb-4"
@@ -308,61 +554,38 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-              {/* Priority stripe column header */}
               <th style={{ width: 4, padding: 0 }} />
-              <th
-                className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none"
-                style={{ color: '#2a2a2a', whiteSpace: 'nowrap', width: 76 }}
-              >
-                ID
-              </th>
-              <th
-                onClick={() => toggleSort('title')}
-                className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                style={{ color: sortKey === 'title' ? '#c9a96e' : '#2a2a2a' }}
-              >
+              <th className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none"
+                  style={{ color: '#2a2a2a', whiteSpace: 'nowrap', width: 76 }}>ID</th>
+              <th onClick={() => toggleSort('title')}
+                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'title' ? '#c9a96e' : '#2a2a2a' }}>
                 Title{arrow('title')}
               </th>
-              <th
-                className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase"
-                style={{ color: '#2a2a2a', whiteSpace: 'nowrap', width: 90 }}
-              >
-                Platform
-              </th>
-              <th
-                onClick={() => toggleSort('pillar')}
-                className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                style={{ color: sortKey === 'pillar' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 140 }}
-              >
+              <th className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase"
+                  style={{ color: '#2a2a2a', whiteSpace: 'nowrap', width: 90 }}>Platform</th>
+              <th onClick={() => toggleSort('pillar')}
+                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'pillar' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 140 }}>
                 Pillar{arrow('pillar')}
               </th>
-              <th
-                onClick={() => toggleSort('week')}
-                className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                style={{ color: sortKey === 'week' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 110 }}
-              >
+              <th onClick={() => toggleSort('week')}
+                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'week' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 110 }}>
                 Week{arrow('week')}
               </th>
-              <th
-                onClick={() => toggleSort('priority')}
-                className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                style={{ color: sortKey === 'priority' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 60 }}
-              >
+              <th onClick={() => toggleSort('priority')}
+                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'priority' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 60 }}>
                 Pri{arrow('priority')}
               </th>
-              <th
-                onClick={() => toggleSort('status')}
-                className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                style={{ color: sortKey === 'status' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 160 }}
-              >
+              <th onClick={() => toggleSort('status')}
+                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'status' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 130 }}>
                 Status{arrow('status')}
               </th>
-              <th
-                className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase"
-                style={{ color: '#2a2a2a', whiteSpace: 'nowrap', width: 70 }}
-              >
-                Script
-              </th>
+              <th className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase"
+                  style={{ color: '#2a2a2a', width: 80 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -375,50 +598,39 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
             ) : (
               rows.map(item => {
                 const pCfg      = PRIORITY_CFG[item.priority] ?? PRIORITY_CFG[4]
-                const isPending = pendingId === item.id
-                const isExpanded = expandedId === item.id
-                const hasScript = !!item.scriptContent
+                const isEditing = editingId === item.id
+                const isHovered = hoveredId === item.id
 
                 return (
                   <Fragment key={item.id}>
                     <tr
                       style={{
-                        background:   pCfg.row,
+                        background:   isEditing ? '#0d0d0d' : pCfg.row,
                         borderBottom: '1px solid #0e0e0e',
-                        opacity: isPending ? 0.6 : 1,
-                        transition: 'opacity .2s, background .15s',
+                        outline: isEditing ? '1px solid rgba(201,169,110,.2)' : 'none',
+                        outlineOffset: -1,
+                        transition: 'background .15s',
+                        cursor: 'pointer',
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#0d0d0d')}
-                      onMouseLeave={e => (e.currentTarget.style.background = pCfg.row)}
+                      onClick={() => setEditingId(isEditing ? null : item.id)}
+                      onMouseEnter={() => setHoveredId(item.id)}
+                      onMouseLeave={() => setHoveredId(null)}
                     >
                       {/* Priority stripe */}
-                      <td
-                        style={{
-                          width: 4, padding: 0,
-                          background: pCfg.stripe,
-                        }}
-                      />
+                      <td style={{ width: 4, padding: 0, background: pCfg.stripe }} />
 
                       {/* ID */}
                       <td className="px-3 py-3">
-                        <span
-                          className="text-[10px] font-medium"
-                          style={{ fontFamily: 'monospace', color: '#c9a96e' }}
-                        >
+                        <span className="text-[10px] font-medium" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
                           {item.postId}
                         </span>
                       </td>
 
                       {/* Title */}
-                      <td className="px-3 py-3" style={{ maxWidth: 260 }}>
+                      <td className="px-3 py-3" style={{ maxWidth: 240 }}>
                         <span
                           className="text-[12px] font-light block overflow-hidden"
-                          style={{
-                            color: '#f2ede4',
-                            whiteSpace: 'nowrap',
-                            textOverflow: 'ellipsis',
-                            maxWidth: 260,
-                          }}
+                          style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 240 }}
                           title={item.title}
                         >
                           {item.title}
@@ -447,93 +659,67 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                         {item.week}
                       </td>
 
-                      {/* Priority number */}
+                      {/* Priority */}
                       <td className="px-3 py-3 text-center">
-                        <span
-                          className="text-[11px] font-medium"
-                          style={{ color: pCfg.stripe }}
-                        >
+                        <span className="text-[11px] font-medium" style={{ color: pCfg.stripe }}>
                           {item.priority}
                         </span>
                       </td>
 
-                      {/* Status dropdown */}
+                      {/* Status */}
                       <td className="px-3 py-3">
-                        <select
-                          value={item.status}
-                          disabled={isPending}
-                          onChange={e => handleStatusChange(item, e.target.value)}
-                          className="text-[9px] font-medium tracking-[.1em] uppercase outline-none"
-                          style={{
-                            background: '#080808',
-                            border: `1px solid ${STATUS_CFG[item.status]?.border ?? '#1a1a1a'}`,
-                            color: STATUS_CFG[item.status]?.color ?? '#555',
-                            padding: '4px 8px',
-                            cursor: isPending ? 'not-allowed' : 'pointer',
-                            fontFamily: 'DM Sans, sans-serif',
-                            appearance: 'none',
-                            width: '100%',
-                          }}
-                        >
-                          {ALL_STATUSES.map(s => (
-                            <option key={s} value={s} style={{ background: '#0a0a0a', color: '#f2ede4' }}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
+                        <StatusBadge status={item.status} />
                       </td>
 
-                      {/* Script */}
-                      <td className="px-3 py-3 text-center">
-                        {hasScript ? (
+                      {/* Actions */}
+                      <td className="px-3 py-3">
+                        <div
+                          className="flex gap-1.5"
+                          style={{ opacity: (isHovered || isEditing) ? 1 : 0, transition: 'opacity .15s' }}
+                          onClick={e => e.stopPropagation()}
+                        >
                           <button
-                            onClick={() => toggleExpand(item.id)}
-                            className="text-[8px] font-medium tracking-[.12em] uppercase px-2 py-1 transition-colors"
+                            onClick={e => { e.stopPropagation(); setEditingId(isEditing ? null : item.id) }}
                             style={{
-                              color:      isExpanded ? '#c9a96e' : '#444',
-                              background: isExpanded ? 'rgba(201,169,110,.08)' : 'transparent',
-                              border:     `1px solid ${isExpanded ? 'rgba(201,169,110,.4)' : '#1a1a1a'}`,
-                              cursor: 'pointer',
+                              fontSize: 10, padding: '2px 7px', cursor: 'pointer',
+                              color: isEditing ? '#c9a96e' : '#555',
+                              background: isEditing ? 'rgba(201,169,110,.08)' : 'transparent',
+                              border: `1px solid ${isEditing ? 'rgba(201,169,110,.35)' : '#1e1e1e'}`,
                             }}
+                            title="Edit"
                           >
-                            {isExpanded ? 'Hide' : 'View'}
+                            ✎
                           </button>
-                        ) : (
-                          <span style={{ color: '#1e1e1e', fontSize: 11 }}>—</span>
-                        )}
+                          <button
+                            onClick={async e => {
+                              e.stopPropagation()
+                              if (!confirm(`Delete "${item.title}"?`)) return
+                              const r = await deletePipelineItem(item.id)
+                              if (!r.error) handleDelete(item.id)
+                            }}
+                            style={{
+                              fontSize: 10, padding: '2px 7px', cursor: 'pointer',
+                              color: '#ff3b5f', background: 'transparent',
+                              border: '1px solid rgba(255,59,95,.2)',
+                            }}
+                            title="Delete"
+                          >
+                            ×
+                          </button>
+                        </div>
                       </td>
                     </tr>
 
-                    {/* Script expand row */}
-                    {isExpanded && hasScript && (
+                    {/* Edit panel */}
+                    {isEditing && (
                       <tr>
                         <td colSpan={9} style={{ padding: 0 }}>
-                          <div
-                            style={{
-                              background: '#070707',
-                              borderBottom: '1px solid #141414',
-                              padding: '20px 24px 20px 28px',
-                              borderLeft: `3px solid ${STATUS_CFG.SCRIPTED.color}`,
-                            }}
-                          >
-                            <div className="flex items-center gap-3 mb-3">
-                              <StatusBadge status="SCRIPTED" />
-                              <span className="text-[10px] font-light" style={{ color: '#444' }}>
-                                {item.postId} · {item.title}
-                              </span>
-                            </div>
-                            <pre
-                              className="text-[12px] font-light leading-relaxed"
-                              style={{
-                                color: '#888',
-                                whiteSpace: 'pre-wrap',
-                                fontFamily: 'DM Sans, sans-serif',
-                                maxWidth: 720,
-                              }}
-                            >
-                              {item.scriptContent}
-                            </pre>
-                          </div>
+                          <ItemEditPanel
+                            item={item}
+                            onUpdate={handleUpdate}
+                            onDelete={handleDelete}
+                            onClose={() => setEditingId(null)}
+                          />
                         </td>
                       </tr>
                     )}
@@ -560,6 +746,9 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
             </span>
           </div>
         ))}
+        <span className="text-[8px] tracking-[.12em] uppercase ml-2" style={{ color: '#1e1e1e' }}>
+          Click any row to edit
+        </span>
       </div>
 
     </div>
