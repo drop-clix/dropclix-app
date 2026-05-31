@@ -457,6 +457,18 @@ src/
 - **devIndicators**: Set to `false` in `next.config.ts`. Removes the N triangle overlay in dev mode.
 - **No cookie clearing on /admin load**: Cookie is only cleared via "Exit Portal" action. Admin page shows normally regardless of cookie state (cookie only matters in dashboard layout).
 
+### Session 9b — Nick real auth user ✅
+- Wrote `scripts/create-nick-user.mjs` — idempotent; dry-run by default, `--run` to create
+- Created Supabase auth user for nick@spartasolar.com (auth ID: `893475d0-f0ba-4570-a1f6-5110cd2c9e18`)
+- Inserted `public.users` row: id=auth ID, email=nick@spartasolar.com, role=client, client_id=Nick's
+- email_confirm: true — no confirmation email needed; Nick can log in immediately
+- Temp password: `DropClix2026!` — Nick should change after first login
+
+## Nick login credentials
+- **Email**: nick@spartasolar.com
+- **Password**: DropClix2026! *(temporary — change after first login)*
+- **Auth user ID**: `893475d0-f0ba-4570-a1f6-5110cd2c9e18`
+- **Client ID**: `913f1794-1506-4449-b56c-b683809cefc3`
+
 ## Next sessions
-- Session 10: Real Nick login — create Supabase auth user for nick@spartasolar.com, link to client_id
-- Session 11: Vercel deploy + custom domain
+- Session 10: Vercel deploy + custom domain
