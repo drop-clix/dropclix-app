@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { updatePipelineStatus } from '@/app/(dashboard)/pipeline/actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 
@@ -380,9 +380,8 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                 const hasScript = !!item.scriptContent
 
                 return (
-                  <>
+                  <Fragment key={item.id}>
                     <tr
-                      key={item.id}
                       style={{
                         background:   pCfg.row,
                         borderBottom: '1px solid #0e0e0e',
@@ -507,7 +506,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
 
                     {/* Script expand row */}
                     {isExpanded && hasScript && (
-                      <tr key={`${item.id}-script`}>
+                      <tr>
                         <td colSpan={9} style={{ padding: 0 }}>
                           <div
                             style={{
@@ -538,7 +537,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })
             )}

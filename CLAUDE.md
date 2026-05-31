@@ -497,5 +497,9 @@ In Cloudflare DNS for `drop-clix.com`, add:
 - Value: `76.76.21.21`
 - Proxy: **OFF** (DNS only — grey cloud, NOT orange) — required for Vercel SSL
 
+## Bugfixes
+
+- **PipelineClient key prop**: `rows.map()` returned a bare `<>...</>` fragment — React requires the key on the fragment itself, not the inner `<tr>`. Fixed by importing `Fragment` from react and using `<Fragment key={item.id}>`. The `key` on both inner `<tr>` elements was removed as redundant.
+
 ## Next sessions
 - Session 11: GitHub auto-deploy (connect repo via Vercel dashboard after DNS verified)
