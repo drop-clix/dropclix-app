@@ -190,7 +190,7 @@ function EventEditPanel({
   const platCfg = PLAT[platform] ?? PLAT.ig
 
   return (
-    <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderLeft: `3px solid ${platCfg.color}`, padding: '16px 18px' }}>
+    <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderLeft: `3px solid ${platCfg.color}`, padding: '22px 24px' }}>
       <div className="flex items-center justify-between mb-4">
         <span className="text-[9px] font-medium tracking-[.2em] uppercase" style={{ color: platCfg.color }}>Edit Event</span>
         <div className="flex gap-2">
@@ -358,14 +358,14 @@ export function CalendarClient({
       {/* ── Controls ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={prevMonth} className="text-[9px] font-medium tracking-[.14em] uppercase px-3 py-1.5 transition-colors"
+          <button onClick={prevMonth} className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
             style={{ color: '#444', background: '#080808', border: '1px solid #1a1a1a', cursor: 'pointer' }}>‹ Prev</button>
           <span className="font-jakarta font-light" style={{ fontSize: 18, color: '#f2ede4', minWidth: 180, textAlign: 'center' }}>
             {`${MONTHS_LONG[month]} ${year}`}
           </span>
-          <button onClick={nextMonth} className="text-[9px] font-medium tracking-[.14em] uppercase px-3 py-1.5 transition-colors"
+          <button onClick={nextMonth} className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
             style={{ color: '#444', background: '#080808', border: '1px solid #1a1a1a', cursor: 'pointer' }}>Next ›</button>
-          <button onClick={goToday} className="text-[9px] font-medium tracking-[.14em] uppercase px-3 py-1.5 transition-colors"
+          <button onClick={goToday} className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
             style={{ color: '#c9a96e', background: 'transparent', border: '1px solid rgba(201,169,110,.3)', cursor: 'pointer' }}>Today</button>
         </div>
 
@@ -384,7 +384,7 @@ export function CalendarClient({
           <div className="flex gap-1">
             {(['calendar', 'agenda'] as const).map(v => (
               <button key={v} onClick={() => setView(v)}
-                className="text-[9px] font-medium tracking-[.14em] uppercase px-3 py-1.5 transition-colors"
+                className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
                 style={{
                   color:      view === v ? '#c9a96e' : '#333',
                   background: view === v ? 'rgba(201,169,110,.07)' : 'transparent',
@@ -417,7 +417,7 @@ export function CalendarClient({
                     key={idx}
                     onClick={() => { if (!cell.current) return; setSelDate(isSelected ? null : cell.iso); setSelEvIdx(0); setEditingId(null) }}
                     style={{
-                      minHeight: 82, padding: '6px 5px 4px',
+                      minHeight: 100, padding: '8px 7px 6px',
                       borderRight:  idx % 7 !== 6 ? '1px solid #0e0e0e' : 'none',
                       borderBottom: idx < 35       ? '1px solid #0e0e0e' : 'none',
                       background: isSelected ? '#0d0d0d' : hasPosts && cell.current ? '#070707' : '#060606',
@@ -537,7 +537,7 @@ export function CalendarClient({
                   return (
                     <div key={ev.id}>
                       <div
-                        className="flex items-center gap-4 px-4 py-3"
+                        className="flex items-center gap-4 px-5 py-4"
                         onMouseEnter={() => setHoveredId(ev.id)}
                         onMouseLeave={() => setHoveredId(null)}
                         style={{
@@ -612,7 +612,7 @@ function EventDetailCard({ ev }: { ev: CalendarEvent }) {
   const statusColor = ev.pipelineStatus ? (PIPELINE_STATUS_COLOR[ev.pipelineStatus] ?? '#555') : '#333'
 
   return (
-    <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderLeft: `3px solid ${platCfg.color}`, padding: '14px 18px' }}>
+    <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderLeft: `3px solid ${platCfg.color}`, padding: '22px 24px' }}>
       <div className="flex items-start justify-between gap-3 mb-3">
         <p className="text-[13px] font-light" style={{ color: '#f2ede4', lineHeight: 1.3 }}>{ev.title}</p>
         <PlatBadge platform={ev.platform} />

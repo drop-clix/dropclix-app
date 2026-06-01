@@ -184,7 +184,7 @@ function ItemEditPanel({
         background: '#070707',
         borderBottom: '1px solid #141414',
         borderLeft: '3px solid #c9a96e',
-        padding: '20px 24px',
+        padding: '28px 32px',
       }}
     >
       <div className="flex items-center justify-between mb-5">
@@ -445,7 +445,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
 
       {/* ── Phase cards ──────────────────────────────────────────── */}
       <div
-        className="grid gap-px mb-6"
+        className="grid gap-px mb-8"
         style={{ gridTemplateColumns: `repeat(${phaseCards.length}, 1fr)`, background: '#141414' }}
       >
         {phaseCards.map(pc => {
@@ -455,7 +455,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
             <button
               key={pc.key}
               onClick={() => setFilter(pc.key)}
-              className="flex flex-col items-center py-3 px-2 transition-colors"
+              className="flex flex-col items-center py-4 px-3 transition-colors"
               style={{
                 background: active ? 'rgba(201,169,110,.06)' : '#0a0a0a',
                 borderBottom: active ? `2px solid ${pc.color}` : '2px solid transparent',
@@ -464,7 +464,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
             >
               <span
                 className="font-jakarta font-light mb-1"
-                style={{ fontSize: 22, color: active ? pc.color : '#2a2a2a', lineHeight: 1 }}
+                style={{ fontSize: 26, color: active ? pc.color : '#2a2a2a', lineHeight: 1 }}
               >
                 {count}
               </span>
@@ -480,13 +480,13 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
       </div>
 
       {/* ── Filter row ───────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex gap-1">
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex gap-2">
           {['all', 'ig', 'tt', 'yt'].map(p => (
             <button
               key={p}
               onClick={() => setPlatFilter(p)}
-              className="text-[9px] font-medium tracking-[.16em] uppercase px-3 py-1.5 transition-colors"
+              className="text-[9px] font-medium tracking-[.16em] uppercase px-4 py-2.5 transition-colors"
               style={{
                 color:      platFilter === p ? '#c9a96e' : '#333',
                 background: platFilter === p ? 'rgba(201,169,110,.07)' : 'transparent',
@@ -519,7 +519,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
       </div>
 
       {/* ── Pillar filter ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-1.5 mb-5">
+      <div className="flex flex-wrap gap-2 mb-6">
         <span className="text-[8px] tracking-[.18em] uppercase self-center mr-1" style={{ color: '#252525' }}>
           Pillar
         </span>
@@ -527,7 +527,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
           <button
             key={p}
             onClick={() => setPillarFilter(p)}
-            className="text-[8px] font-medium tracking-[.12em] uppercase px-2.5 py-1 transition-colors"
+            className="text-[8px] font-medium tracking-[.12em] uppercase px-3 py-2 transition-colors"
             style={{
               color:      pillarFilter === p ? '#c9a96e' : '#333',
               background: pillarFilter === p ? 'rgba(201,169,110,.08)' : 'transparent',
@@ -555,36 +555,36 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
           <thead>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
               <th style={{ width: 4, padding: 0 }} />
-              <th className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none"
+              <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none"
                   style={{ color: '#2a2a2a', whiteSpace: 'nowrap', width: 76 }}>ID</th>
               <th onClick={() => toggleSort('title')}
-                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
                   style={{ color: sortKey === 'title' ? '#c9a96e' : '#2a2a2a' }}>
                 Title{arrow('title')}
               </th>
-              <th className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase"
+              <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
                   style={{ color: '#2a2a2a', whiteSpace: 'nowrap', width: 90 }}>Platform</th>
               <th onClick={() => toggleSort('pillar')}
-                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
                   style={{ color: sortKey === 'pillar' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 140 }}>
                 Pillar{arrow('pillar')}
               </th>
               <th onClick={() => toggleSort('week')}
-                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
                   style={{ color: sortKey === 'week' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 110 }}>
                 Week{arrow('week')}
               </th>
               <th onClick={() => toggleSort('priority')}
-                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
                   style={{ color: sortKey === 'priority' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 60 }}>
                 Pri{arrow('priority')}
               </th>
               <th onClick={() => toggleSort('status')}
-                  className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
+                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
                   style={{ color: sortKey === 'status' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 130 }}>
                 Status{arrow('status')}
               </th>
-              <th className="text-left px-3 py-3 text-[8px] font-medium tracking-[.16em] uppercase"
+              <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
                   style={{ color: '#2a2a2a', width: 80 }}>Actions</th>
             </tr>
           </thead>
@@ -620,14 +620,14 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                       <td style={{ width: 4, padding: 0, background: pCfg.stripe }} />
 
                       {/* ID */}
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-4">
                         <span className="text-[10px] font-medium" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
                           {item.postId}
                         </span>
                       </td>
 
                       {/* Title */}
-                      <td className="px-3 py-3" style={{ maxWidth: 240 }}>
+                      <td className="px-4 py-4" style={{ maxWidth: 240 }}>
                         <span
                           className="text-[12px] font-light block overflow-hidden"
                           style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 240 }}
@@ -638,14 +638,14 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                       </td>
 
                       {/* Platform */}
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-4">
                         <div className="flex flex-wrap gap-0.5">
                           {item.platform.map(p => <PlatBadge key={p} plat={p} />)}
                         </div>
                       </td>
 
                       {/* Pillar */}
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-4">
                         <span
                           className="text-[8px] font-medium tracking-[.1em] uppercase px-2 py-1"
                           style={{ color: '#555', background: '#0d0d0d', border: '1px solid #1a1a1a', whiteSpace: 'nowrap' }}
@@ -655,24 +655,24 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                       </td>
 
                       {/* Week */}
-                      <td className="px-3 py-3 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>
+                      <td className="px-4 py-4 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>
                         {item.week}
                       </td>
 
                       {/* Priority */}
-                      <td className="px-3 py-3 text-center">
+                      <td className="px-4 py-4 text-center">
                         <span className="text-[11px] font-medium" style={{ color: pCfg.stripe }}>
                           {item.priority}
                         </span>
                       </td>
 
                       {/* Status */}
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-4">
                         <StatusBadge status={item.status} />
                       </td>
 
                       {/* Actions */}
-                      <td className="px-3 py-3">
+                      <td className="px-4 py-4">
                         <div
                           className="flex gap-1.5"
                           style={{ opacity: (isHovered || isEditing) ? 1 : 0, transition: 'opacity .15s' }}

@@ -49,11 +49,11 @@ function KpiCard({ label, value, sub, highlight = false }: { label: string; valu
   return (
     <div
       className="flex flex-col justify-between relative overflow-hidden"
-      style={{ background: '#0a0a0a', border: `1px solid ${highlight ? 'rgba(201,169,110,.25)' : '#141414'}`, padding: '22px 20px 18px' }}
+      style={{ background: '#0a0a0a', border: `1px solid ${highlight ? 'rgba(201,169,110,.25)' : '#141414'}`, padding: '28px 24px 22px' }}
     >
-      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-3" style={{ color: '#333' }}>{label}</p>
-      <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(24px,3vw,40px)', lineHeight: 1 }}>{value}</p>
-      <p className="text-[10px] font-light mt-1.5" style={{ color: '#2a2a2a' }}>{sub}</p>
+      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#333' }}>{label}</p>
+      <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(26px,3vw,42px)', lineHeight: 1 }}>{value}</p>
+      <p className="text-[10px] font-light mt-2" style={{ color: '#2a2a2a' }}>{sub}</p>
     </div>
   )
 }
@@ -142,7 +142,7 @@ function CampaignEditPanel({
   }
 
   return (
-    <div style={{ background: '#070707', borderBottom: '1px solid #141414', borderLeft: '3px solid #c9a96e', padding: '20px 24px' }}>
+    <div style={{ background: '#070707', borderBottom: '1px solid #141414', borderLeft: '3px solid #c9a96e', padding: '28px 32px' }}>
       <div className="flex items-center justify-between mb-5">
         <span className="text-[9px] font-medium tracking-[.2em] uppercase" style={{ color: '#c9a96e' }}>Editing Campaign</span>
         <div className="flex gap-2">
@@ -388,7 +388,7 @@ export function AdsClient({
   const TH = ({ label, col, right = false }: { label: string; col: SortKey; right?: boolean }) => (
     <th
       onClick={() => handleSort(col)}
-      className={`px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer ${right ? 'text-right' : 'text-left'}`}
+      className={`px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer ${right ? 'text-right' : 'text-left'}`}
       style={{ color: sortKey === col ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap' }}
     >
       {label}{arrow(col)}
@@ -432,7 +432,7 @@ export function AdsClient({
     <div>
 
       {/* ── KPI cards ──────────────────────────────────────────────── */}
-      <div className="grid gap-px mb-8" style={{ gridTemplateColumns: 'repeat(4,1fr)', background: '#141414' }}>
+      <div className="grid gap-px mb-10" style={{ gridTemplateColumns: 'repeat(4,1fr)', background: '#141414' }}>
         <KpiCard label="Total Spend"       value={fmtMoney(liveTotalSpend)}   sub={`${campaigns.length} campaigns`} />
         <KpiCard label="Estimated Revenue" value={fmtMoney(liveTotalRevenue)} sub="Based on reported ROAS" highlight={liveTotalRevenue > 0} />
         <KpiCard label="Portfolio ROAS"    value={fmtROAS(liveROAS)}          sub="Revenue ÷ total spend"   highlight={liveROAS > 1} />
@@ -450,7 +450,7 @@ export function AdsClient({
         <div className="flex gap-1">
           {([['all', `All (${counts.all})`], ['Active', `Active (${counts.active})`], ['Completed', `Completed (${counts.completed})`]] as [StatusFilter, string][]).map(([val, label]) => (
             <button key={val} onClick={() => setStatusFilter(val)}
-              className="text-[9px] font-medium tracking-[.14em] uppercase px-3 py-1.5 transition-colors"
+              className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
               style={{
                 color:      statusFilter === val ? '#c9a96e' : '#333',
                 background: statusFilter === val ? 'rgba(201,169,110,.07)' : 'transparent',
@@ -468,9 +468,9 @@ export function AdsClient({
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-              <th className="text-left px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', minWidth: 200 }}>Campaign</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', minWidth: 200 }}>Campaign</th>
               <TH label="Date"    col="date" />
-              <th className="text-left px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Platform</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Platform</th>
               <TH label="Spend"   col="spend"            right />
               <TH label="Revenue" col="effectiveRevenue"  right />
               <TH label="ROAS"    col="roas"              right />
@@ -478,8 +478,8 @@ export function AdsClient({
               <TH label="Hires"   col="hires"             right />
               <TH label="CPL"     col="cpl"               right />
               <TH label="CPH"     col="cph"               right />
-              <th className="text-left px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Status</th>
-              <th className="text-left px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', width: 70 }}>Actions</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Status</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', width: 70 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -507,35 +507,35 @@ export function AdsClient({
                       transition: 'background .15s',
                     }}
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[12px] font-light" style={{ color: isWinner ? '#f2ede4' : '#ccc' }}>{c.name}</span>
                         <span className="text-[9px]" style={{ color: '#333' }}>{c.objective}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>{dateRange(c)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>{dateRange(c)}</td>
+                    <td className="px-5 py-4">
                       <span className="text-[7px] font-medium tracking-[.12em] uppercase px-2 py-1"
                         style={{ color: '#1778f2', background: 'rgba(23,120,242,.1)', border: '1px solid rgba(23,120,242,.25)' }}>Meta</span>
                     </td>
-                    <td className="px-4 py-3 text-right"><span className="text-[12px] font-light" style={{ color: '#f2ede4' }}>{fmtMoney(c.spend)}</span></td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-5 py-4 text-right"><span className="text-[12px] font-light" style={{ color: '#f2ede4' }}>{fmtMoney(c.spend)}</span></td>
+                    <td className="px-5 py-4 text-right">
                       <span className="text-[12px] font-light" style={{ color: c.effectiveRevenue > 0 ? '#39ff88' : '#252525' }}>
                         {c.effectiveRevenue > 0 ? fmtMoney(c.effectiveRevenue) : '—'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-5 py-4 text-right">
                       <span className="font-jakarta font-light" style={{ fontSize: c.roas > 0 ? 15 : 12, color: c.roas > 0 ? '#c9a96e' : '#252525' }}>
                         {fmtROAS(c.roas)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right text-[12px] font-light" style={{ color: c.leads > 0 ? '#aaa' : '#252525' }}>{c.leads > 0 ? c.leads : '—'}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-5 py-4 text-right text-[12px] font-light" style={{ color: c.leads > 0 ? '#aaa' : '#252525' }}>{c.leads > 0 ? c.leads : '—'}</td>
+                    <td className="px-5 py-4 text-right">
                       <span className="text-[12px] font-light" style={{ color: c.hires > 0 ? '#39ff88' : '#252525' }}>{c.hires > 0 ? c.hires : '—'}</span>
                     </td>
-                    <td className="px-4 py-3 text-right text-[12px] font-light" style={{ color: c.cpl > 0 ? '#aaa' : '#252525' }}>{c.cpl > 0 ? fmtMoney(c.cpl) : '—'}</td>
-                    <td className="px-4 py-3 text-right text-[12px] font-light" style={{ color: c.cph > 0 ? '#aaa' : '#252525' }}>{c.cph > 0 ? fmtMoney(c.cph) : '—'}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4 text-right text-[12px] font-light" style={{ color: c.cpl > 0 ? '#aaa' : '#252525' }}>{c.cpl > 0 ? fmtMoney(c.cpl) : '—'}</td>
+                    <td className="px-5 py-4 text-right text-[12px] font-light" style={{ color: c.cph > 0 ? '#aaa' : '#252525' }}>{c.cph > 0 ? fmtMoney(c.cph) : '—'}</td>
+                    <td className="px-5 py-4">
                       <span className="text-[7px] font-medium tracking-[.12em] uppercase px-2 py-0.5"
                         style={c.status === 'Active'
                           ? { color: '#39ff88', background: 'rgba(57,255,136,.1)', border: '1px solid rgba(57,255,136,.25)' }
@@ -543,7 +543,7 @@ export function AdsClient({
                         {c.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <td className="px-5 py-4" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1.5" style={{ opacity: (isHovered || isEditing) ? 1 : 0, transition: 'opacity .15s' }}>
                         <button
                           onClick={e => { e.stopPropagation(); setEditingId(isEditing ? null : c.id) }}
@@ -569,7 +569,7 @@ export function AdsClient({
                         />
                         {/* Creatives section within edit panel */}
                         {cCreatives.length > 0 && (
-                          <div style={{ background: '#070707', borderBottom: '1px solid #141414', borderLeft: '3px solid rgba(201,169,110,.3)', padding: '16px 24px' }}>
+                          <div style={{ background: '#070707', borderBottom: '1px solid #141414', borderLeft: '3px solid rgba(201,169,110,.3)', padding: '24px 32px' }}>
                             <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-3" style={{ color: '#c9a96e' }}>Creatives</p>
                             {cCreatives.map(cr => (
                               <CreativeRow
@@ -599,7 +599,7 @@ export function AdsClient({
         </p>
         <div className="grid gap-px" style={{ gridTemplateColumns: 'repeat(3,1fr)', background: '#141414' }}>
           {campaigns.filter(c => statusFilter === 'all' || c.status === statusFilter).map(c => (
-            <div key={c.id} className="flex flex-col gap-3" style={{ background: '#0a0a0a', padding: '20px 20px' }}>
+            <div key={c.id} className="flex flex-col gap-3" style={{ background: '#0a0a0a', padding: '28px 24px' }}>
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[11px] font-light" style={{ color: '#f2ede4' }}>{c.name}</p>
                 <span className="text-[7px] font-medium tracking-[.1em] uppercase px-1.5 py-0.5 shrink-0"

@@ -563,7 +563,28 @@ Full report saved to `memory/project_html_portal_audit.md`. Summary of the 50 ga
 
 **Metric naming note:** HTML uses `reach` (Instagram "Reach" = unique accounts) as primary metric; migration imported it as `views` in the DB. Same data, different label.
 
+### Session 13 — Design system spacing pass ✅
+
+Applied consistent spacing rules globally across all portal tabs. No new features — pure spacing fix.
+
+**Rules applied:**
+- KPI cards: `22px 20px 18px` → `28px 24px 22px` padding; label `mb-3` → `mb-4`; value font size `clamp(24px…40px)` → `clamp(26px…42px)`
+- Table rows (th + td): 12px vertical → 16px (`py-3` → `py-4`, `px-3` → `px-4` on pipeline; `px-4` → `px-5` on analytics/ads/angles/goals)
+- Filter tabs/buttons: `px-3 py-1.5` → `px-4 py-2.5`; gap `gap-1` → `gap-2`
+- Pillar chips: `px-2.5 py-1` → `px-3 py-2`
+- Phase cards (Pipeline): `py-3` → `py-4`; number size 22 → 26px
+- Nav items: `py-2.5` → `py-3`; `gap-1` → `gap-0.5` (items closer but taller)
+- Client badge in sidebar: `py-5` → `py-6`; nav section `py-4` → `py-6`
+- Section gaps: KPI grid `mb-6` → `mb-8`; filter row `mb-4/5` → `mb-6/8`; KPI-to-table `mb-6` → `mb-8`
+- Edit panels (pipeline, ads): `20px 24px` → `28px 32px`
+- Report Card sidebar period items: `10px 14px` → `14px 16px`; ScoreBar `mb-12` → `mb-16`; PostsTable rows `6px` → `10px` padding
+- Calendar cells: `minHeight: 82` → `minHeight: 100`; event detail card `16px 18px` → `22px 24px`
+- Studio phase funnel: `14px 18px` → `20px 24px`; tab buttons `7px 14px` → `10px 18px`
+- Campaign Details cards (Ads): `20px 20px` → `28px 24px`
+
+**Files changed:** PortalNav.tsx, layout.tsx, AnalyticsClient.tsx, PipelineClient.tsx, AdsClient.tsx, CalendarClient.tsx, GoalsClient.tsx, goals/page.tsx, angles/page.tsx, ReportCardClient.tsx, StudioClient.tsx
+
 ## Next sessions
-- Session 13: Charts (Chart.js or recharts) — Dashboard + Analytics as priority
-- Session 14: Update Modal + Studio video-logging form
-- Session 15: Ads sub-views (Audience tab, Monthly Summary, charts, suggestions, Add buttons)
+- Session 14: Charts (Chart.js or recharts) — Dashboard + Analytics as priority
+- Session 15: Update Modal + Studio video-logging form
+- Session 16: Ads sub-views (Audience tab, Monthly Summary, charts, suggestions, Add buttons)

@@ -70,20 +70,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
 
         {/* Client badge */}
-        <div className="px-6 py-5" style={{ borderBottom: '1px solid #141414' }}>
+        <div className="px-6 py-6" style={{ borderBottom: '1px solid #141414' }}>
           <p
-            className="text-[8px] font-medium tracking-[.2em] uppercase mb-1"
+            className="text-[8px] font-medium tracking-[.2em] uppercase mb-2"
             style={{ color: '#2a2a2a' }}
           >
             Client
           </p>
-          <p className="text-[12px] font-light" style={{ color: '#f2ede4' }}>
+          <p className="text-[13px] font-light" style={{ color: '#f2ede4' }}>
             {client?.name ?? profile?.email ?? 'Portal'}
           </p>
         </div>
 
         {/* Nav */}
-        <div className="flex-1 py-4 overflow-y-auto">
+        <div className="flex-1 py-6 overflow-y-auto">
           <PortalNav />
         </div>
 

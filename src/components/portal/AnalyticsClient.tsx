@@ -96,7 +96,7 @@ function EditableCell({
 
   if (editing) {
     return (
-      <td className="px-4 py-2">
+      <td className="px-5 py-3">
         <input
           ref={inputRef}
           type="number"
@@ -107,7 +107,7 @@ function EditableCell({
           onBlur={handleBlur}
           onKeyDown={e => { if (e.key === 'Enter') inputRef.current?.blur(); if (e.key === 'Escape') setEditing(false) }}
           style={{
-            width: 72, padding: '2px 4px', fontSize: 11, textAlign: 'right',
+            width: 80, padding: '3px 6px', fontSize: 11, textAlign: 'right',
             background: '#0d0d0d', border: '1px solid #c9a96e',
             color: '#f2ede4', fontFamily: 'DM Sans, sans-serif', outline: 'none',
             opacity: saving ? 0.6 : 1,
@@ -120,7 +120,7 @@ function EditableCell({
 
   return (
     <td
-      className="px-4 py-3 text-[12px] font-light text-right"
+      className="px-5 py-4 text-[12px] font-light text-right"
       style={{ color, cursor: 'text' }}
       onClick={() => { setEditing(true); setLocal(String(isPercent ? value.toFixed(2) : Math.round(value))) }}
       title="Click to edit"
@@ -136,7 +136,7 @@ function FilterTab({ label, active, onClick }: { label: string; active: boolean;
   return (
     <button
       onClick={onClick}
-      className="text-[9px] font-medium tracking-[.16em] uppercase px-3 py-2 transition-colors"
+      className="text-[9px] font-medium tracking-[.16em] uppercase px-4 py-2.5 transition-colors"
       style={{
         color:      active ? '#c9a96e' : '#333',
         background: active ? 'rgba(201,169,110,.07)' : 'transparent',
@@ -153,11 +153,11 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub: str
   return (
     <div
       className="flex flex-col justify-between relative overflow-hidden"
-      style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '22px 20px 18px' }}
+      style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '28px 24px 22px' }}
     >
-      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-3" style={{ color: '#333' }}>{label}</p>
-      <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(24px,3vw,40px)', lineHeight: 1 }}>{value}</p>
-      <p className="text-[10px] font-light mt-1.5" style={{ color: '#2a2a2a' }}>{sub}</p>
+      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#333' }}>{label}</p>
+      <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(26px,3vw,42px)', lineHeight: 1 }}>{value}</p>
+      <p className="text-[10px] font-light mt-2" style={{ color: '#2a2a2a' }}>{sub}</p>
     </div>
   )
 }
@@ -221,7 +221,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   const TH = ({ label, col }: { label: string; col: SortKey }) => (
     <th
       onClick={() => handleSort(col)}
-      className="text-left px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase select-none"
+      className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none"
       style={{ color: sortKey === col ? '#c9a96e' : '#2a2a2a', cursor: 'pointer', whiteSpace: 'nowrap' }}
     >
       {label}<SortIcon col={col} sortKey={sortKey} dir={sortDir} />
@@ -231,14 +231,14 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   return (
     <div>
       {/* ── Filters ─────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <div className="flex gap-1">
+      <div className="flex flex-wrap items-center gap-3 mb-8">
+        <div className="flex gap-2">
           {['ig', 'tt', 'yt'].map(p => (
             <FilterTab key={p} label={PLATFORM_LABELS[p]} active={platform === p} onClick={() => setPlatform(p)} />
           ))}
         </div>
         <div style={{ width: 1, height: 24, background: '#1a1a1a' }} />
-        <div className="flex gap-1">
+        <div className="flex gap-2">
           {(Object.keys(WINDOW_LABELS) as WindowKey[]).map(w => (
             <FilterTab key={w} label={WINDOW_LABELS[w]} active={win === w} onClick={() => setWindow(w)} />
           ))}
@@ -249,7 +249,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       </div>
 
       {/* ── KPI strip ───────────────────────────────────────────── */}
-      <div className="grid gap-px mb-6" style={{ gridTemplateColumns: 'repeat(4, 1fr)', background: '#141414' }}>
+      <div className="grid gap-px mb-8" style={{ gridTemplateColumns: 'repeat(4, 1fr)', background: '#141414' }}>
         <KpiCard label="Posts in View"    value={kpis.total.toString()}                               sub={`${platform.toUpperCase()} · ${WINDOW_LABELS[win]}`} />
         <KpiCard label="Total Views"      value={kpis.totalViews > 0 ? fmt(kpis.totalViews) : '—'}   sub="Sum for selected window" />
         <KpiCard label="Avg Engagement"   value={kpis.avgER > 0 ? kpis.avgER.toFixed(1) + '%' : '—'} sub="(Likes + cmts + shares + saves) / views" />
@@ -257,13 +257,13 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       </div>
 
       {/* ── Pillar filter ────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-1.5 mb-5">
+      <div className="flex flex-wrap gap-2 mb-8">
         <span className="text-[8px] tracking-[.18em] uppercase self-center mr-1" style={{ color: '#252525' }}>Pillar</span>
         {PILLARS.map(p => (
           <button
             key={p}
             onClick={() => setPillar(p)}
-            className="text-[8px] font-medium tracking-[.12em] uppercase px-2.5 py-1.5 transition-colors"
+            className="text-[8px] font-medium tracking-[.12em] uppercase px-3 py-2 transition-colors"
             style={{
               color:      pillar === p ? '#c9a96e' : '#333',
               background: pillar === p ? 'rgba(201,169,110,.08)' : 'transparent',
@@ -281,10 +281,10 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-              <th className="text-left px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>ID</th>
-              <th className="text-left px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', minWidth: 180 }}>Title</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>ID</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', minWidth: 180 }}>Title</th>
               <TH label="Date"    col="date"      />
-              <th className="text-left px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Pillar</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Pillar</th>
               <TH label="Views"   col="views"     />
               <TH label="Likes"   col="likes"     />
               <TH label="Cmts"    col="comments"  />
@@ -292,7 +292,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
               <TH label="Shares"  col="shares"    />
               <TH label="ER %"    col="er"        />
               <TH label="Watch %" col="watch_pct" />
-              <th className="text-left px-4 py-3 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Decision</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Decision</th>
             </tr>
           </thead>
           <tbody>
@@ -323,14 +323,14 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? '#060606' : '#070707')}
                   >
                     {/* ID */}
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4">
                       <span className="text-[10px] font-medium tracking-[.08em]" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
                         {post.postId}
                       </span>
                     </td>
 
                     {/* Title */}
-                    <td className="px-4 py-3" style={{ maxWidth: 200 }}>
+                    <td className="px-5 py-4" style={{ maxWidth: 200 }}>
                       <span
                         className="text-[12px] font-light block overflow-hidden"
                         style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 200 }}
@@ -341,12 +341,12 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     </td>
 
                     {/* Date */}
-                    <td className="px-4 py-3 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>
+                    <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>
                       {post.date || '—'}
                     </td>
 
                     {/* Pillar */}
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4">
                       <span
                         className="text-[8px] font-medium tracking-[.1em] uppercase px-2 py-1"
                         style={{ color: '#555', background: '#0d0d0d', border: '1px solid #1a1a1a', whiteSpace: 'nowrap' }}
@@ -383,7 +383,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     />
 
                     {/* ER % + tier (computed, not directly editable) */}
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4">
                       <div className="flex items-center gap-2 justify-end">
                         <span className="text-[12px] font-light" style={{ color: hasData ? ts.color : '#252525' }}>
                           {hasData ? er.toFixed(1) + '%' : '—'}
@@ -406,7 +406,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     />
 
                     {/* Decision */}
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4">
                       <span className="text-[9px] font-medium tracking-[.1em] uppercase" style={{ color: ds.color }}>
                         {post.decision || '—'}
                       </span>

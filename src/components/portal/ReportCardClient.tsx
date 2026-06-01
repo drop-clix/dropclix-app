@@ -16,8 +16,8 @@ function ScoreBar({ label, score, max }: { label: string; score: number; max: nu
   const pct = max > 0 ? (score / max) * 100 : 0
   const barColor = pct >= 80 ? '#4ade80' : pct >= 55 ? '#f59e0b' : '#ef4444'
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
         <span style={{ fontSize: 10, color: '#555', letterSpacing: '.12em', textTransform: 'uppercase' }}>{label}</span>
         <span style={{ fontSize: 10, color: '#f2ede4' }}>
           {score}<span style={{ color: '#444' }}>/{max}</span>
@@ -57,7 +57,7 @@ function PostsTable({ posts }: { posts: PostSummary[] }) {
         return (
           <div key={p.postId} style={{
             display: 'flex', gap: 8, alignItems: 'center',
-            padding: '6px 0', borderBottom: '1px solid #0d0d0d', fontSize: 10,
+            padding: '10px 0', borderBottom: '1px solid #0d0d0d', fontSize: 10,
           }}>
             <span style={{ color: '#c9a96e', fontFamily: 'monospace', minWidth: 44, fontSize: 9 }}>{p.postId}</span>
             <span style={{ flex: 1, color: '#f2ede4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
@@ -101,9 +101,9 @@ export function ReportCardClient({
     <div style={{ display: 'flex', height: 'calc(100vh - 200px)', overflow: 'hidden' }}>
 
       {/* ── Left: Period List ──────────────────────────────────── */}
-      <div style={{ width: 230, borderRight: '1px solid #141414', overflowY: 'auto', flexShrink: 0 }}>
+      <div style={{ width: 250, borderRight: '1px solid #141414', overflowY: 'auto', flexShrink: 0 }}>
         {/* View Toggle */}
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid #141414', display: 'flex', gap: 6 }}>
+        <div style={{ padding: '16px 16px', borderBottom: '1px solid #141414', display: 'flex', gap: 8 }}>
           {(['monthly', 'weekly'] as const).map(v => (
             <button
               key={v}
@@ -136,7 +136,7 @@ export function ReportCardClient({
               key={key}
               onClick={() => setSel(realIdx)}
               style={{
-                width: '100%', padding: '10px 14px',
+                width: '100%', padding: '14px 16px',
                 display: 'flex', alignItems: 'center', gap: 10,
                 background: active ? 'rgba(201,169,110,.05)' : 'transparent',
                 borderLeft: `2px solid ${active ? '#c9a96e' : 'transparent'}`,
@@ -218,7 +218,7 @@ export function ReportCardClient({
             <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#333', marginBottom: 12 }}>
               Score Breakdown
             </p>
-            <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '18px 22px' }}>
+            <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '24px 28px' }}>
               {current.components.map(c => (
                 <ScoreBar key={c.label} label={c.label} score={c.score} max={c.max} />
               ))}
@@ -227,7 +227,7 @@ export function ReportCardClient({
 
           {/* Wins & Misses */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 24 }}>
-            <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '16px 20px' }}>
+            <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '22px 24px' }}>
               <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#4ade80', marginBottom: 12 }}>Wins</p>
               {current.wins.length === 0
                 ? <p style={{ fontSize: 10, color: '#333' }}>No wins logged this period.</p>
@@ -239,7 +239,7 @@ export function ReportCardClient({
                 ))
               }
             </div>
-            <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '16px 20px' }}>
+            <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '22px 24px' }}>
               <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#ef4444', marginBottom: 12 }}>Misses</p>
               {current.misses.length === 0
                 ? <p style={{ fontSize: 10, color: '#333' }}>Clean sheet — no misses this period.</p>
@@ -254,7 +254,7 @@ export function ReportCardClient({
           </div>
 
           {/* Top Posts */}
-          <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '16px 22px', marginBottom: 24 }}>
+          <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '22px 28px', marginBottom: 24 }}>
             <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#333', marginBottom: 12 }}>Top Posts</p>
             <PostsTable posts={current.topPosts} />
           </div>
@@ -264,7 +264,7 @@ export function ReportCardClient({
             <div style={{
               background: 'rgba(201,169,110,.04)',
               border: '1px solid rgba(201,169,110,.14)',
-              borderRadius: 6, padding: '16px 22px',
+              borderRadius: 6, padding: '22px 28px',
             }}>
               <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#c9a96e', marginBottom: 12 }}>
                 Next Period Focus

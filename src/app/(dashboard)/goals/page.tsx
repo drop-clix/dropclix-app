@@ -75,7 +75,7 @@ function GoalCard({
   const barColor = STATUS_CFG[status].color
 
   return (
-    <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '22px 20px 18px', position: 'relative', overflow: 'hidden' }}>
+    <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '28px 24px 22px', position: 'relative', overflow: 'hidden' }}>
       <div className="flex items-start justify-between mb-4">
         <p className="text-[8px] font-medium tracking-[.2em] uppercase" style={{ color: '#333' }}>
           {metric}
@@ -321,7 +321,7 @@ export default async function GoalsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-              <th className="text-left px-5 py-3 text-[8px] font-medium tracking-[.16em] uppercase"
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
                   style={{ color: '#2a2a2a' }}>Month</th>
               {[
                 { key: 'Posts',            tgt: monthly['Posts'],            label: 'Posts'      },
@@ -330,7 +330,7 @@ export default async function GoalsPage() {
                 { key: 'Avg ER%',          tgt: monthly['Avg ER%'],          label: 'Avg ER%'    },
               ].map(col => (
                 <th key={col.key}
-                    className="text-right px-5 py-3 text-[8px] font-medium tracking-[.16em] uppercase"
+                    className="text-right px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
                     style={{ color: '#2a2a2a' }}>
                   {col.label}
                   <span style={{ display: 'block', color: '#1e1e1e', fontSize: 7, letterSpacing: '.1em', fontWeight: 400, marginTop: 1 }}>
@@ -359,7 +359,7 @@ export default async function GoalsPage() {
                       borderBottom: i < histMonths.length - 1 ? '1px solid #0e0e0e' : 'none',
                       background: isCur ? 'rgba(201,169,110,.03)' : i % 2 === 0 ? '#060606' : '#070707',
                     }}>
-                  <td className="px-5 py-3">
+                  <td className="px-5 py-4">
                     <span className="text-[11px] font-light" style={{ color: isCur ? '#c9a96e' : '#f2ede4' }}>
                       {MONTH_NAMES[mo - 1].slice(0, 3)} {y}
                     </span>

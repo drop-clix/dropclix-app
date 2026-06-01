@@ -59,7 +59,7 @@ function ScriptCard({ item }: { item: StudioItem }) {
       transition: 'border-color .2s',
     }}>
       {/* Card Header */}
-      <div style={{ padding: '14px 18px' }}>
+      <div style={{ padding: '20px 22px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 5 }}>
@@ -109,7 +109,7 @@ function ScriptCard({ item }: { item: StudioItem }) {
       {/* Script Content */}
       {open && hasScript && (
         <div style={{
-          padding: '0 18px 16px',
+          padding: '0 22px 20px',
           borderTop: '1px solid #141414',
           marginTop: 0,
         }}>
@@ -140,7 +140,7 @@ function ProductionRow({ item }: { item: StudioItem }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10,
-      padding: '10px 16px',
+      padding: '14px 20px',
       background: '#0a0a0a',
       border: '1px solid #141414',
       borderLeft: `3px solid ${statusColor}`,
@@ -194,9 +194,9 @@ export function StudioClient({ items }: { items: StudioItem[] }) {
     <div>
       {/* Phase Funnel */}
       <div style={{
-        display: 'flex', gap: 2, marginBottom: 28,
+        display: 'flex', gap: 2, marginBottom: 32,
         background: '#0a0a0a', border: '1px solid #141414',
-        borderRadius: 6, padding: '14px 18px',
+        borderRadius: 6, padding: '20px 24px',
         alignItems: 'center', flexWrap: 'wrap',
       }}>
         {Object.entries(statusCounts).map(([status, count], i, arr) => (
@@ -217,13 +217,13 @@ export function StudioClient({ items }: { items: StudioItem[] }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             style={{
-              padding: '7px 14px', fontSize: 9,
+              padding: '10px 18px', fontSize: 9,
               fontWeight: 500, letterSpacing: '.14em', textTransform: 'uppercase',
               background: tab === t.key ? 'rgba(201,169,110,.08)' : 'transparent',
               color: tab === t.key ? '#c9a96e' : '#3a3a3a',

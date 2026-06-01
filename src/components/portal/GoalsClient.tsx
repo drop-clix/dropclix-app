@@ -144,7 +144,7 @@ function GoalCard({
   const barColor = STATUS_CFG[status].color
 
   return (
-    <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '22px 20px 18px', position: 'relative', overflow: 'hidden' }}>
+    <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '28px 24px 22px', position: 'relative', overflow: 'hidden' }}>
       <div className="flex items-start justify-between mb-4">
         <p className="text-[8px] font-medium tracking-[.2em] uppercase" style={{ color: '#333' }}>
           {goal.metric}
@@ -192,7 +192,7 @@ function WeeklyGoalCard({
   const isPercent = goal.metric === 'Avg ER%'
 
   return (
-    <div className="flex-1 flex flex-col items-center py-4 px-3" style={{ background: '#0a0a0a' }}>
+    <div className="flex-1 flex flex-col items-center py-6 px-4" style={{ background: '#0a0a0a' }}>
       <p className="text-[7px] font-medium tracking-[.18em] uppercase mb-2 text-center" style={{ color: '#2a2a2a' }}>
         {goal.metric}
       </p>

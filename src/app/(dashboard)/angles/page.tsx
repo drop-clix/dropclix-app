@@ -79,16 +79,16 @@ function KpiCard({ label, value, sub, sub2 }: { label: string; value: string; su
   return (
     <div
       className="flex flex-col justify-between overflow-hidden"
-      style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '22px 20px 18px' }}
+      style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '28px 24px 22px' }}
     >
-      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-3" style={{ color: '#333' }}>
+      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#333' }}>
         {label}
       </p>
       <p className="font-jakarta font-light text-gold-gradient"
-         style={{ fontSize: 'clamp(20px,2.5vw,34px)', lineHeight: 1 }}>
+         style={{ fontSize: 'clamp(22px,2.5vw,36px)', lineHeight: 1 }}>
         {value}
       </p>
-      <p className="text-[10px] font-light mt-1.5" style={{ color: '#c9a96e' }}>{sub}</p>
+      <p className="text-[10px] font-light mt-2" style={{ color: '#c9a96e' }}>{sub}</p>
       {sub2 && <p className="text-[9px] font-light mt-0.5" style={{ color: '#2a2a2a' }}>{sub2}</p>}
     </div>
   )
@@ -100,7 +100,7 @@ function BreakdownBar({ row, max, rank }: { row: BreakdownRow; max: number; rank
   const ts = TIER_STYLE[t]
   return (
     <div
-      className="flex items-center gap-4 py-3"
+      className="flex items-center gap-4 py-4"
       style={{ borderBottom: '1px solid #0e0e0e' }}
     >
       {/* Rank */}
@@ -173,7 +173,7 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
               {['ID', 'Title', 'Pillar', 'Hook', 'Format', 'ER %', 'Views', 'Decision'].map(h => (
                 <th key={h}
-                    className="text-left px-4 py-3 text-[8px] font-medium tracking-[.14em] uppercase"
+                    className="text-left px-5 py-4 text-[8px] font-medium tracking-[.14em] uppercase"
                     style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>
                   {h}
                 </th>
@@ -192,31 +192,31 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
                     background: i % 2 === 0 ? '#060606' : '#070707',
                   }}
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-5 py-4">
                     <span className="text-[10px] font-medium" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
                       {p.postId}
                     </span>
                   </td>
-                  <td className="px-4 py-3" style={{ maxWidth: 200 }}>
+                  <td className="px-5 py-4" style={{ maxWidth: 200 }}>
                     <span className="text-[12px] font-light block overflow-hidden"
                           style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 200 }}
                           title={p.title}>
                       {p.title}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-5 py-4">
                     <span className="text-[8px] font-medium tracking-[.1em] uppercase px-2 py-1"
                           style={{ color: '#555', background: '#0d0d0d', border: '1px solid #1a1a1a', whiteSpace: 'nowrap' }}>
                       {p.pillar}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[11px] font-light" style={{ color: '#555', whiteSpace: 'nowrap' }}>
+                  <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#555', whiteSpace: 'nowrap' }}>
                     {p.hook}
                   </td>
-                  <td className="px-4 py-3 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>
+                  <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>
                     {p.format}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-5 py-4">
                     <div className="flex items-center gap-2">
                       <span className="text-[12px] font-light" style={{ color: ts.color }}>
                         {p.er.toFixed(1)}%
@@ -227,10 +227,10 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-[12px] font-light" style={{ color: '#444' }}>
+                  <td className="px-5 py-4 text-[12px] font-light" style={{ color: '#444' }}>
                     {fmtViews(p.views)}
                   </td>
-                  <td className="px-4 py-3 text-[9px] font-medium tracking-[.08em] uppercase"
+                  <td className="px-5 py-4 text-[9px] font-medium tracking-[.08em] uppercase"
                       style={{ color: DECISION_COLOR[p.decision] ?? '#444' }}>
                     {p.decision || '—'}
                   </td>
