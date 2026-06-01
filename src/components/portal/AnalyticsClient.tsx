@@ -1,6 +1,11 @@
 'use client'
 
 import { useState, useMemo, useRef } from 'react'
+import {
+  BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Cell,
+} from 'recharts'
 import type { PostRow, WindowData } from '@/app/(dashboard)/analytics/page'
 import { updateAnalyticsMetric } from '@/app/(dashboard)/edit-actions'
 
@@ -167,6 +172,158 @@ function SortIcon({ col, sortKey, dir }: { col: SortKey; sortKey: SortKey; dir: 
   return <span style={{ color: '#c9a96e', marginLeft: 4, fontSize: 9 }}>{dir === 'desc' ? '↓' : '↑'}</span>
 }
 
+// ── Analytics chart helpers ────────────────────────────────────────────────
+
+const CHART_GRID  = 'rgba(255,255,255,.04)'
+const CHART_TICK  = '#333'
+
+function tierColor(er: number): string {
+  return er >= 12 ? '#39ff88' : er >= 7 ? '#4cc9ff' : er >= 4 ? '#fbbf24' : '#ff3b5f'
+}
+
+function fmtViews(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000)     return (n / 1_000).toFixed(0) + 'K'
+  return String(n)
+}
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: readonly any[]; label?: string | number }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', padding: '8px 12px', fontSize: 10, fontFamily: 'DM Sans, sans-serif' }}>
+      {label != null && <p style={{ color: '#444', marginBottom: 4 }}>{String(label)}</p>}
+      {payload.map((p: any, i: number) => (
+        <p key={i} style={{ color: p.color ?? '#c9a96e' }}>{p.name}: {p.value?.toLocaleString?.() ?? p.value}</p>
+      ))}
+    </div>
+  )
+}
+
+type ReachViewMode = 'top10' | 'last10' | 'all'
+
+function ReachByPostChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
+  const [mode, setMode] = useState<ReachViewMode>('top10')
+
+  const chartData = useMemo(() => {
+    let sorted = rows.slice().sort((a, b) => b[win].views - a[win].views)
+    if (mode === 'top10')  sorted = sorted.slice(0, 10)
+    if (mode === 'last10') sorted = sorted.slice().sort((a, b) => a[win].views - b[win].views).slice(0, 10)
+    return sorted.map(r => ({
+      name:  r.postId,
+      views: r[win].views,
+      er:    calcER(r[win]),
+    }))
+  }, [rows, win, mode])
+
+  return (
+    <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '20px 20px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#333' }}>
+          Reach by Post
+        </p>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['top10', 'last10', 'all'] as const).map(m => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              style={{
+                fontSize: 8, letterSpacing: '.1em', textTransform: 'uppercase',
+                padding: '3px 8px', cursor: 'pointer',
+                color:      mode === m ? '#c9a96e' : '#333',
+                background: mode === m ? 'rgba(201,169,110,.08)' : 'transparent',
+                border:     `1px solid ${mode === m ? 'rgba(201,169,110,.35)' : '#1e1e1e'}`,
+              }}
+            >
+              {m === 'top10' ? 'Top 10' : m === 'last10' ? 'Last 10' : 'All'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ height: 190 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 24, left: -12 }}>
+            <CartesianGrid vertical={false} stroke={CHART_GRID} />
+            <XAxis
+              dataKey="name"
+              tick={{ fill: CHART_TICK, fontSize: 8 }}
+              tickLine={false}
+              axisLine={false}
+              angle={-45}
+              textAnchor="end"
+              interval={0}
+              height={40}
+            />
+            <YAxis tick={{ fill: CHART_TICK, fontSize: 9 }} tickLine={false} axisLine={false} tickFormatter={fmtViews} />
+            <Tooltip content={<ChartTooltip />} />
+            <Bar dataKey="views" name="Views" radius={[2, 2, 0, 0]}>
+              {chartData.map((d, i) => (
+                <Cell key={i} fill={tierColor(d.er)} fillOpacity={0.7} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+function EROverTimeChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
+  const chartData = useMemo(() =>
+    rows
+      .filter(r => r.date)
+      .slice()
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(r => ({
+        name: r.date.slice(5),   // "MM-DD"
+        er:   +calcER(r[win]).toFixed(1),
+        color: tierColor(calcER(r[win])),
+      })),
+    [rows, win]
+  )
+
+  return (
+    <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '20px 20px 16px' }}>
+      <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#333', marginBottom: 14 }}>
+        ER% Over Time
+      </p>
+      <div style={{ height: 190 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
+            <CartesianGrid vertical={false} stroke={CHART_GRID} />
+            <XAxis
+              dataKey="name"
+              tick={{ fill: CHART_TICK, fontSize: 8 }}
+              tickLine={false}
+              axisLine={false}
+              interval={Math.max(0, Math.floor(chartData.length / 8) - 1)}
+            />
+            <YAxis
+              tick={{ fill: CHART_TICK, fontSize: 9 }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={v => v + '%'}
+              domain={[0, 'dataMax + 2']}
+            />
+            <Tooltip content={(props: any) => <ChartTooltip active={props.active} payload={props.payload} label={props.label} />} />
+            <Line
+              type="monotone"
+              dataKey="er"
+              name="ER%"
+              stroke="#c9a96e"
+              strokeWidth={1.5}
+              dot={(props: any) => {
+                const { cx, cy, payload } = props
+                return <circle key={payload.name} cx={cx} cy={cy} r={3} fill={payload.color} stroke="none" />
+              }}
+              activeDot={{ r: 5, fill: '#c9a96e' }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
@@ -255,6 +412,14 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
         <KpiCard label="Avg Engagement"   value={kpis.avgER > 0 ? kpis.avgER.toFixed(1) + '%' : '—'} sub="(Likes + cmts + shares + saves) / views" />
         <KpiCard label="Avg Watch %"      value={kpis.avgWatch > 0 ? kpis.avgWatch.toFixed(1) + '%' : '—'} sub={`${kpis.eliteCount} elite posts (ER ≥12%)`} />
       </div>
+
+      {/* ── Charts ──────────────────────────────────────────────── */}
+      {rows.length > 0 && (
+        <div className="grid gap-px mb-8" style={{ gridTemplateColumns: '1fr 1fr', background: '#141414' }}>
+          <ReachByPostChart rows={rows} win={win} />
+          <EROverTimeChart rows={rows} win={win} />
+        </div>
+      )}
 
       {/* ── Pillar filter ────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-2 mb-8">

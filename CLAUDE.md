@@ -584,7 +584,47 @@ Applied consistent spacing rules globally across all portal tabs. No new feature
 
 **Files changed:** PortalNav.tsx, layout.tsx, AnalyticsClient.tsx, PipelineClient.tsx, AdsClient.tsx, CalendarClient.tsx, GoalsClient.tsx, goals/page.tsx, angles/page.tsx, ReportCardClient.tsx, StudioClient.tsx
 
+### Session 14 — Recharts charts + collapsible sidebar ✅
+
+**Charts installed:** `recharts@3.8.1` (React 19 compatible)
+
+**Dashboard charts** (`DashboardCharts.tsx` — new client component):
+- Follower growth by month (BarChart, gold bars, followers gained from post_analytics.followers per month)
+- Monthly views by month (LineChart, gold line)
+- Posts volume + Followers gained (ComposedChart, dual axis: posts bars gold + followers line green)
+- Avg ER% by content pillar (BarChart layout="vertical", bars colored by tier: green/blue/amber/red)
+- Data computed server-side in `dashboard/page.tsx` from a new `chartPostsRes` query (posts + eom analytics, grouped by month and by pillar)
+
+**Analytics charts** (added inline in `AnalyticsClient.tsx`):
+- Reach by Post (BarChart, bars colored by ER tier, Top 10 / Last 10 / All toggle)
+- ER% Over Time (LineChart, each dot colored by tier, filtered to current platform + window)
+- Charts appear between KPI strip and pillar filter chips
+
+**Recharts v3 type notes:**
+- `content` prop in `<Tooltip>`: use `(props: any) => ...` wrapper to avoid label type conflicts
+- `LabelList formatter`: cast as `any` — v3 expects `(value: RenderableText) => RenderableText`
+- `payload` in tooltip content is `readonly any[]` not `any[]`
+
+**Collapsible sidebar** (`SidebarShell.tsx` — new client component):
+- Collapsed: 56px wide, icon-only nav items, hamburger at top, client initials badge
+- Expanded: 220px wide with full labels, client name, email
+- Expands on hover OR on hamburger click (pinned state)
+- Smooth 200ms ease transition on `width` and `min-width`
+- Label opacity fades 0→1 with 50ms delay during expansion
+- `layout.tsx` simplified to just fetch data + render `<SidebarShell>` with props
+- `SignOutButton` updated to accept `iconOnly` prop (icon-only in collapsed state)
+- SVG icons defined inline for all 9 nav items (no icon library required)
+- Uses `usePathname()` for active state (moved from `PortalNav.tsx` into `SidebarShell.tsx`)
+- `PortalNav.tsx` now unused — all nav rendering is in `SidebarShell.tsx`
+
+**Design tokens for charts:**
+- Grid: `rgba(255,255,255,.04)` (nearly invisible)
+- Tick: `#333` (muted)
+- Background: `#0a0a0a` (card bg)
+- Gold: `#c9a96e`
+- Tier colors: Elite `#39ff88`, Strong `#4cc9ff`, Avg `#fbbf24`, Kill `#ff3b5f`
+- Tooltip: dark `#0d0d0d` bg, `#1e1e1e` border
+
 ## Next sessions
-- Session 14: Charts (Chart.js or recharts) — Dashboard + Analytics as priority
 - Session 15: Update Modal + Studio video-logging form
 - Session 16: Ads sub-views (Audience tab, Monthly Summary, charts, suggestions, Add buttons)

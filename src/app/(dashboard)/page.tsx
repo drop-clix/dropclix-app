@@ -1,4 +1,6 @@
 import { getPortalContext } from '@/lib/supabase/portal'
+import { DashboardCharts } from '@/components/portal/DashboardCharts'
+import type { MonthlyPoint, PillarPoint } from '@/components/portal/DashboardCharts'
 
 /* ── Types ──────────────────────────────────────── */
 type Post = {
@@ -81,35 +83,115 @@ function EmptyTableRow() {
 export default async function DashboardPage() {
   const { supabase, clientId, userEmail } = await getPortalContext()
 
+  const cid = clientId ?? '00000000-0000-0000-0000-000000000000'
+
   /* ── Queries run in parallel ──────────────────── */
-  const [postsRes, analyticsRes, pipelineRes, recentRes] = await Promise.all([
+  const [postsRes, analyticsRes, pipelineRes, recentRes, chartPostsRes] = await Promise.all([
     // Total post count
     supabase
       .from('posts')
       .select('*', { count: 'exact', head: true })
-      .eq('client_id', clientId ?? '00000000-0000-0000-0000-000000000000'),
+      .eq('client_id', cid),
 
     // Analytics for eom window (aggregate totals)
     supabase
       .from('post_analytics')
       .select('views, likes, comments, saves')
-      .eq('client_id', clientId ?? '00000000-0000-0000-0000-000000000000')
+      .eq('client_id', cid)
       .eq('metric_window', 'eom'),
 
     // Pipeline status breakdown
     supabase
       .from('pipeline_items')
       .select('status')
-      .eq('client_id', clientId ?? '00000000-0000-0000-0000-000000000000'),
+      .eq('client_id', cid),
 
     // Recent 8 posts
     supabase
       .from('posts')
       .select('post_id, title, platform, date')
-      .eq('client_id', clientId ?? '00000000-0000-0000-0000-000000000000')
+      .eq('client_id', cid)
       .order('date', { ascending: false })
       .limit(8),
+
+    // All posts + eom analytics for charts
+    supabase
+      .from('posts')
+      .select('date, pillar, post_analytics(metric_window, views, followers, likes, comments, shares, saves)')
+      .eq('client_id', cid)
+      .order('date', { ascending: true }),
   ])
+
+  /* ── Chart data: monthly + pillar aggregates ─── */
+  type RawChartPost = {
+    date: string | null
+    pillar: string | null
+    post_analytics: Array<{
+      metric_window: string
+      views: number; followers: number
+      likes: number; comments: number
+      shares: number; saves: number
+    }>
+  }
+
+  const MONTH_LABELS: Record<string, string> = {
+    '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
+    '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
+    '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
+  }
+
+  const rawChartPosts = (chartPostsRes.data ?? []) as unknown as RawChartPost[]
+
+  // Monthly aggregation
+  const monthMap = new Map<string, { posts: number; views: number; followers: number; totalER: number; erCount: number }>()
+  for (const p of rawChartPosts) {
+    if (!p.date) continue
+    const mk = p.date.slice(0, 7) // "2026-02"
+    if (!monthMap.has(mk)) monthMap.set(mk, { posts: 0, views: 0, followers: 0, totalER: 0, erCount: 0 })
+    const m = monthMap.get(mk)!
+    const eom = p.post_analytics.find(a => a.metric_window === 'eom')
+    m.posts++
+    if (eom) {
+      m.views     += eom.views     ?? 0
+      m.followers += eom.followers ?? 0
+      const er = (eom.views ?? 0) > 0
+        ? ((eom.likes + eom.comments + eom.shares + eom.saves) / eom.views) * 100
+        : 0
+      m.totalER += er; m.erCount++
+    }
+  }
+  const monthly: MonthlyPoint[] = [...monthMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([mk, m]) => {
+      const [, mo] = mk.split('-')
+      return {
+        month:     MONTH_LABELS[mo] ?? mo,
+        posts:     m.posts,
+        views:     m.views,
+        followers: m.followers,
+        avgER:     m.erCount > 0 ? +(m.totalER / m.erCount).toFixed(1) : 0,
+      }
+    })
+
+  // Pillar aggregation
+  const pillarMap = new Map<string, { totalER: number; count: number }>()
+  for (const p of rawChartPosts) {
+    const pillar = p.pillar ?? '—'
+    if (!pillarMap.has(pillar)) pillarMap.set(pillar, { totalER: 0, count: 0 })
+    const pm = pillarMap.get(pillar)!
+    const eom = p.post_analytics.find(a => a.metric_window === 'eom')
+    if (eom && (eom.views ?? 0) > 0) {
+      const er = ((eom.likes + eom.comments + eom.shares + eom.saves) / eom.views) * 100
+      pm.totalER += er; pm.count++
+    }
+  }
+  const pillars: PillarPoint[] = [...pillarMap.entries()]
+    .filter(([, v]) => v.count > 0)
+    .map(([pillar, v]) => ({
+      pillar,
+      avgER: +(v.totalER / v.count).toFixed(1),
+      count: v.count,
+    }))
 
   /* ── Derived KPIs ─────────────────────────────── */
   const totalPosts = postsRes.count ?? 0
@@ -128,7 +210,6 @@ export default async function DashboardPage() {
     p => !['POSTED', 'CANCELLED'].includes(p.status)
   ).length
 
-  // Status counts for mini bars
   const statusCounts = pipeline.reduce<Record<string, number>>((acc, item) => {
     acc[item.status] = (acc[item.status] ?? 0) + 1
     return acc
@@ -225,6 +306,20 @@ export default async function DashboardPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* ── Charts ───────────────────────────────── */}
+      {monthly.length > 0 && (
+        <div className="mt-10 mb-px">
+          <p
+            className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3"
+            style={{ color: '#c9a96e' }}
+          >
+            <span style={{ display: 'block', width: 16, height: 1, background: '#c9a96e' }} />
+            Performance Trends
+          </p>
+          <DashboardCharts monthly={monthly} pillars={pillars} />
         </div>
       )}
 
