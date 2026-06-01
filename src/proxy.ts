@@ -35,9 +35,13 @@ export async function proxy(request: NextRequest) {
   // Already authenticated → skip login page
   if (pathname.startsWith('/login')) {
     if (user) {
-      // Login page handles role-based redirect; proxy just bounces to root
       return NextResponse.redirect(new URL('/', request.url))
     }
+    return supabaseResponse
+  }
+
+  // Auth utility pages (reset-password) — always let through; token is in the hash (client-only)
+  if (pathname.startsWith('/auth/')) {
     return supabaseResponse
   }
 
