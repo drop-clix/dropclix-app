@@ -524,5 +524,46 @@ In Cloudflare DNS for `drop-clix.com`, add:
 - React 19 `useRef`: must pass initial value — `useRef<T | undefined>(undefined)` not `useRef<T>()`.
 - Goals server component: kept server-side for data fetching; client `GoalsEditableCards` receives computed actuals + goals-with-IDs, manages target edits locally.
 
+### Session 12 — HTML portal audit ✅
+
+Full gap analysis between `/Users/chaseevans/Downloads/portal-nick-updated.html` and the Next.js app.
+Full report saved to `memory/project_html_portal_audit.md`. Summary of the 50 gaps found:
+
+**Critical missing features (not present in Next.js at all):**
+- **Charts** — HTML has 15 Chart.js charts total (Dashboard: 4, Analytics: 5, Ads: 6). Next.js has zero.
+- **Update Modal** — HTML's primary interaction: click any video row in Analytics/Angles/Report Card → modal with cross-window summary (24hr/3-Day/7-Day all visible) + all metric inputs + Decision + Delete. Replaces per-cell inline edit for the video update flow.
+- **AI Suggestions** — Dashboard section with 6 data-driven action bullets (best video to replicate, pillar analysis, kill-tier pattern, posting cadence).
+- **30-Day Projection** — Dashboard section: 3 KPI cards (projected followers, reach, ER%) based on last 10 videos, expandable detail panel.
+- **Ads Audience tab** — Audience tracking with name, location, targeting, budget, spend, leads, CPL, hires, CPhire. 4 seeded audiences in DB never shown. Charts, best-audience card, + Add Audience modal.
+- **Ads Monthly Summary tab** — MoM trend cards + historical table.
+- **Ads charts** — Spend vs Leads (bar+line), CPL trend, Creative Hook Rate, Hold Rate, Audience CPL/Leads.
+- **Ads Auto Suggestion banner** — CPL comparison, creative testing status, active ad count, zero-leads alert.
+- **+ Add Campaign / Creative / Audience buttons** — HTML has modal forms to log new records. Next.js edit only; no create.
+- **Studio video logging form** — Full form to log a new posted video: ID, Title, Platform, Date, Pillar, Hook Type, Format, CTA, 24hr metrics (reach/likes/comments/shares/saves/followers/watch), auto-calc ER%, Notes, Decision. Completely missing.
+- **Monthly totals entry** — Form to set month's Posts, Total Views, Start/End Followers. Missing from Next.js.
+- **Angles pillar expand** — Each pillar in Angles is an accordion that expands to a grid of all videos in it (ER-sorted, each clickable to open Update Modal). Next.js shows breakdown bars only.
+- **Pillar bars on Dashboard** — Clickable horizontal bars that expand to show all videos in that pillar (same grid pattern).
+- **Overused/Opportunity tags** — Auto-badges on pillars/hooks/formats based on usage count vs avg ER.
+
+**Analytics differences:**
+- HTML has "All" platform tab (shows all platforms combined). Next.js starts on IG only.
+- HTML table has Followers column; Next.js doesn't.
+- HTML table has tier filter chips (All/Elite/Strong/Average/Kill) above the table.
+- HTML has er-bar (50px mini bar next to ER% value).
+- HTML table has sub-tabs: Top 10 / This Week / This Month / All Posts.
+
+**Goals differences:**
+- HTML has 6 metrics (Posts, Followers, Reach, ER%, Elite Videos, Watch% Avg); Next.js has 4.
+- HTML computes weekly actuals from last 7 days; Next.js doesn't.
+
+**Visual:**
+- HTML uses border-radius 4-8px on cards; Next.js uses square corners.
+- HTML has global save-pill in navbar; Next.js has per-field save dots only.
+- HTML has inline ER bar visualization in table rows.
+
+**Metric naming note:** HTML uses `reach` (Instagram "Reach" = unique accounts) as primary metric; migration imported it as `views` in the DB. Same data, different label.
+
 ## Next sessions
-- Session 11: GitHub auto-deploy (connect repo via Vercel dashboard after DNS verified)
+- Session 13: Charts (Chart.js or recharts) — Dashboard + Analytics as priority
+- Session 14: Update Modal + Studio video-logging form
+- Session 15: Ads sub-views (Audience tab, Monthly Summary, charts, suggestions, Add buttons)
