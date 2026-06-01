@@ -164,6 +164,20 @@ src/
   proxy.ts
 ```
 
+### Session 14f ✅ — Insert missing post #ig0044
+Inserted `#ig0044` "Everyone can sell" (2026-02-26, ig, Self Development, Kill) — the post silently dropped by the original migration's dupe-ID upsert. All 4 analytics windows inserted: w24 views=1,722 · w3 views=2,349 · w7 views=4,378 · eom=w7. Supabase now has 44 IG posts matching the HTML source exactly.
+
+### Session 14e ✅ — HTML vs Supabase post audit
+Full comparison of `SEED_VIDS` in `portal-nick-updated.html` against `posts` + `post_analytics` tables. 44 HTML IG posts vs 43 Supabase posts (before 14f). **Result: 0 metric differences; 1 post missing.**
+
+**Missing post:** `#0052` (date 2026-02-26) "Everyone can sell" — duplicate ID in HTML caused the original `migrate-nick.mjs` `upsert` to overwrite it with the later `#0052` (2026-03-23, now `#ig0030`). Inserted as `#ig0044` in Session 14f.
+
+### Session 14d ✅ — Post ID rename (#0xxx → #igNNNN)
+Renamed all 43 post IDs to sequential `#ig0001`–`#ig0043` format, ordered by `date ASC` (ties broken by old ID ASC). Updated: `posts.post_id` (43 rows), `pipeline_items.post_id` (43 rows; 50 pipeline-only `#0xxx` IDs and 5 `SL00x` IDs left untouched), `calendar_events.notes` JSON `post_id` key (44 of 48 rows; 4 pipeline-only IDs skipped). `post_analytics.post_id` is a UUID FK to `posts.id` — not touched. Script: `scripts/rename-post-ids.mjs` (dry-run without `--run`). Full mapping in `memory/project_post_id_mapping.md`.
+
+### Session 14c ✅ — eom backfill audit + script
+Verified all 41 pre-May 2026 posts already have complete eom rows with views > 0 (all 4 windows present: w24, w3, w7, eom). The original `migrate-nick.mjs` already applied the w7→w3 fallback at seed time. Script `scripts/backfill-eom.mjs` was written and confirmed 0 rows needed updating. Re-runnable anytime: `node scripts/backfill-eom.mjs --run` (dry-run without `--run`). Logic: for posts `date < 2026-05-01` where eom is missing or has views=0, copies from best window: w7→w3→w24.
+
 ### Session 14b ✅ — Forgot password + reset-password page
 Login page toggles between `'login'` and `'reset'` modes. Reset mode: email field + "Send Reset Link" button; calls `supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/auth/reset-password' })`. Success state shows "Check your email for a reset link."
 
@@ -174,3 +188,11 @@ Login page toggles between `'login'` and `'reset'` modes. Reset mode: email fiel
 ## Next sessions
 - Session 15: Update Modal + Studio video-logging form
 - Session 16: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add buttons)
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/migrate-nick.mjs` | Initial data seed for Nick/Sparta Solar. `--run` to insert, `--force` to wipe+re-insert. |
+| `scripts/backfill-eom.mjs` | Fill missing/zero-views eom rows for pre-May posts from best window (w7→w3→w24). `--run` to apply. |
+| `scripts/rename-post-ids.mjs` | Rename post_id labels to `#igNNNN` sequential format (dry-run default, `--run` to apply). Idempotent — safe to re-run on new posts. |
