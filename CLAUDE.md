@@ -185,6 +185,28 @@ Login page toggles between `'login'` and `'reset'` modes. Reset mode: email fiel
 
 `src/proxy.ts` updated: `/auth/` prefix is always let through unauthenticated (recovery token is in the hash — server can't see it, so the proxy must not redirect).
 
+### Session 15a ✅ — May 2026 posts + EOM analytics
+Inserted 8 new May posts (#ig0045–#ig0052) into `posts`. Ran EOM analytics for all 11 May posts via `scripts/ingest-eom-csv.mjs`. Added `skip_rate numeric` column to `post_analytics` (migration: `supabase/migrations/add_skip_rate.sql`).
+
+**May 2026 post roster (11 posts):**
+| ID | Title | Date | Notes |
+|----|-------|------|-------|
+| #ig0035 | Nick Hype Post | 2026-05-04 | date corrected from Apr 5 |
+| #ig0042 | Saudi Cup | 2026-05-06 | date corrected from May 5; skip_rate=58.2% |
+| #ig0043 | Law of averages | 2026-05-08 | |
+| #ig0045 | Weak leader need their reps | 2026-05-10 | |
+| #ig0046 | Door 2 Door sucks... | 2026-05-13 | |
+| #ig0047 | Pipeline paradox 80% | 2026-05-16 | |
+| #ig0048 | The reason your scripts are failing you | 2026-05-18 | |
+| #ig0049 | The fire trap | 2026-05-21 | |
+| #ig0050 | How to get more time | 2026-05-23 | |
+| #ig0051 | Increase the effort & Decrease the expectation | 2026-05-26 | |
+| #ig0052 | You're in control of your success | 2026-06-01 | June post; no EOM data yet |
+
+**Analytics written:** 11 rows — eom for all 10 posts with data; w7 for #ig0035 and #ig0043 (views_7d provided). #ig0052 skipped (blank).
+
+**Schema change:** `post_analytics.skip_rate numeric` — run `supabase/migrations/add_skip_rate.sql` once in SQL Editor for any new environment.
+
 ## Next sessions
 - Session 15: Update Modal + Studio video-logging form
 - Session 16: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add buttons)
@@ -196,3 +218,6 @@ Login page toggles between `'login'` and `'reset'` modes. Reset mode: email fiel
 | `scripts/migrate-nick.mjs` | Initial data seed for Nick/Sparta Solar. `--run` to insert, `--force` to wipe+re-insert. |
 | `scripts/backfill-eom.mjs` | Fill missing/zero-views eom rows for pre-May posts from best window (w7→w3→w24). `--run` to apply. |
 | `scripts/rename-post-ids.mjs` | Rename post_id labels to `#igNNNN` sequential format (dry-run default, `--run` to apply). Idempotent — safe to re-run on new posts. |
+| `scripts/insert-may-posts.mjs` | One-time insert of May 2026 posts #ig0045–#ig0052. `--run` to apply. |
+| `scripts/ingest-eom-csv.mjs` | **Generic reusable EOM ingest.** `node scripts/ingest-eom-csv.mjs <path-to-csv> [--run]`. Dry-run by default. Upserts eom + w7 analytics from a filled CSV; inserts missing post stubs automatically. Use this for all future monthly EOM imports. |
+| `scripts/ingest-may-analytics.mjs` | Month-specific May ingest (superseded by ingest-eom-csv.mjs — kept for reference). |
