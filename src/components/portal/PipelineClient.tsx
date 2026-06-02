@@ -45,6 +45,27 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// Convert ISO/UTC string → datetime-local input value (local time)
+function isoToLocal(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function nowLocal(): string {
+  const d = new Date()
+  d.setSeconds(0, 0)
+  return isoToLocal(d.toISOString())
+}
+
+function formatDateShort(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+    ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CFG[status] ?? STATUS_CFG.CANCELLED
   return (
@@ -75,8 +96,7 @@ function SaveDot({ state }: { state: SaveState }) {
     <span
       style={{
         display: 'inline-block', width: 5, height: 5, borderRadius: '50%',
-        background: color, marginLeft: 4, flexShrink: 0,
-        transition: 'background .2s',
+        background: color, marginLeft: 4, flexShrink: 0, transition: 'background .2s',
       }}
       title={state === 'error' ? 'Save failed' : state === 'saved' ? 'Saved' : ''}
     />
@@ -96,13 +116,14 @@ function ItemEditPanel({
   onDelete: (id: string) => void
   onClose: () => void
 }) {
-  const [title,   setTitle  ] = useState(item.title)
-  const [status,  setStatus ] = useState(item.status)
-  const [priority, setPriority] = useState(String(item.priority))
-  const [pillar,  setPillar ] = useState(item.pillar)
-  const [week,    setWeek   ] = useState(item.week)
-  const [platform, setPlatform] = useState<string[]>(item.platform)
-  const [script,  setScript ] = useState(item.scriptContent ?? '')
+  const [title,       setTitle      ] = useState(item.title)
+  const [status,      setStatus     ] = useState(item.status)
+  const [priority,    setPriority   ] = useState(String(item.priority))
+  const [pillar,      setPillar     ] = useState(item.pillar)
+  const [week,        setWeek       ] = useState(item.week)
+  const [platform,    setPlatform   ] = useState<string[]>(item.platform)
+  const [script,      setScript     ] = useState(item.scriptContent ?? '')
+  const [postedAtLocal, setPostedAtLocal] = useState<string>(() => isoToLocal(item.postedAt) || nowLocal())
   const [deleting, setDeleting] = useState(false)
 
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -154,6 +175,38 @@ function ItemEditPanel({
     setPlatform(next)
     scheduleImmediate('platform', next, { platform: next })
   }
+
+  // When the user picks a posted datetime, auto-adjust status and sync calendar
+  function applyPostedAt(localVal: string) {
+    setPostedAtLocal(localVal)
+    if (!localVal) return
+    const iso = new Date(localVal).toISOString()
+    const isFuture = new Date(localVal) > new Date()
+
+    // Auto-flip status: future → SCHEDULED, past → POSTED
+    const targetStatus = isFuture ? 'SCHEDULED' : 'POSTED'
+    if (targetStatus !== status) {
+      setStatus(targetStatus)
+      // Save both status + posted_at in one batch to keep UI snappy
+      clearTimeout(timers.current['posted_at'])
+      setStates(s => ({ ...s, posted_at: 'saving', status: 'saving' }))
+      setTimeout(async () => {
+        const r1 = await updatePipelineItem(item.id, { status: targetStatus, posted_at: iso })
+        if (r1.error) {
+          setStates(s => ({ ...s, posted_at: 'error', status: 'error' }))
+        } else {
+          onUpdate(item.id, { status: targetStatus, postedAt: iso })
+          setStates(s => ({ ...s, posted_at: 'saved', status: 'saved' }))
+          setTimeout(() => setStates(s => ({ ...s, posted_at: 'idle', status: 'idle' })), 1500)
+        }
+      }, 0)
+    } else {
+      scheduleImmediate('posted_at', iso, { postedAt: iso })
+    }
+  }
+
+  const showDatePicker = status === 'POSTED' || status === 'SCHEDULED'
+  const dateIsFuture = postedAtLocal ? new Date(postedAtLocal) > new Date() : false
 
   const inputStyle = {
     background: '#080808',
@@ -327,6 +380,43 @@ function ItemEditPanel({
           </div>
         </div>
 
+        {/* ── Posted / Scheduled datetime picker ── */}
+        {showDatePicker && (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <div
+              style={{
+                background: '#050505',
+                border: `1px solid ${dateIsFuture ? 'rgba(76,201,255,.25)' : 'rgba(57,255,136,.2)'}`,
+                borderLeft: `3px solid ${dateIsFuture ? '#4cc9ff' : '#39ff88'}`,
+                padding: '14px 16px',
+              }}
+            >
+              <label style={{ ...labelStyle, color: dateIsFuture ? '#4cc9ff' : '#39ff88' }}>
+                {dateIsFuture ? 'Scheduled For' : 'Posted On'}
+                <SaveDot state={fieldState('posted_at')} />
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="datetime-local"
+                  style={{ ...inputStyle, width: 'auto', flex: 1, maxWidth: 240 }}
+                  value={postedAtLocal}
+                  onChange={e => applyPostedAt(e.target.value)}
+                  onFocus={e => (e.target.style.borderColor = dateIsFuture ? '#4cc9ff' : '#39ff88')}
+                  onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
+                />
+                <span style={{ fontSize: 9, color: '#333', whiteSpace: 'nowrap' }}>
+                  {dateIsFuture
+                    ? '↑ status auto-set to SCHEDULED'
+                    : '↑ status auto-set to POSTED'}
+                </span>
+              </div>
+              <p style={{ fontSize: 9, color: '#252525', marginTop: 6, lineHeight: 1.5 }}>
+                Future date → SCHEDULED · Past date → POSTED · Synced to calendar automatically
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Script */}
         <div style={{ gridColumn: '1 / -1' }}>
           <label style={labelStyle}>
@@ -359,16 +449,16 @@ function ItemEditPanel({
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] }) {
-  const [items,      setItems     ] = useState<PipelineItem[]>(initialItems)
-  const [filter,     setFilter    ] = useState<FilterKey>('ACTIVE')
-  const [platFilter, setPlatFilter] = useState<string>('all')
+  const [items,        setItems       ] = useState<PipelineItem[]>(initialItems)
+  const [filter,       setFilter      ] = useState<FilterKey>('ACTIVE')
+  const [platFilter,   setPlatFilter  ] = useState<string>('all')
   const [pillarFilter, setPillarFilter] = useState<string>('All')
-  const [search,     setSearch    ] = useState('')
-  const [sortKey,    setSortKey   ] = useState<SortKey>('priority')
-  const [sortDir,    setSortDir   ] = useState<'asc' | 'desc'>('asc')
-  const [editingId,  setEditingId ] = useState<string | null>(null)
-  const [hoveredId,  setHoveredId ] = useState<string | null>(null)
-  const [saveError,  setSaveError ] = useState<string | null>(null)
+  const [search,       setSearch      ] = useState('')
+  const [sortKey,      setSortKey     ] = useState<SortKey>('priority')
+  const [sortDir,      setSortDir     ] = useState<'asc' | 'desc'>('asc')
+  const [editingId,    setEditingId   ] = useState<string | null>(null)
+  const [hoveredId,    setHoveredId   ] = useState<string | null>(null)
+  const [saveError,    setSaveError   ] = useState<string | null>(null)
 
   // Phase counts
   const counts = useMemo(() => {
@@ -581,7 +671,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
               </th>
               <th onClick={() => toggleSort('status')}
                   className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'status' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 130 }}>
+                  style={{ color: sortKey === 'status' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 160 }}>
                 Status{arrow('status')}
               </th>
               <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
@@ -666,9 +756,17 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                         </span>
                       </td>
 
-                      {/* Status */}
+                      {/* Status + optional posted/scheduled date */}
                       <td className="px-4 py-4">
                         <StatusBadge status={item.status} />
+                        {item.postedAt && (item.status === 'POSTED' || item.status === 'SCHEDULED') && (
+                          <div
+                            className="text-[8px] font-light mt-1"
+                            style={{ color: item.status === 'SCHEDULED' ? '#4cc9ff' : '#39ff88', opacity: 0.8 }}
+                          >
+                            {formatDateShort(item.postedAt)}
+                          </div>
+                        )}
                       </td>
 
                       {/* Actions */}

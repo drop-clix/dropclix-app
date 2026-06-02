@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import type { CalendarEvent } from '@/app/(dashboard)/calendar/page'
 import { updateCalendarEvent, deleteCalendarEvent } from '@/app/(dashboard)/edit-actions'
 
@@ -80,17 +80,36 @@ function PlatBadge({ platform, small = false }: { platform: string; small?: bool
 
 // ── EventPill ─────────────────────────────────────────────────────────────
 
-function EventPill({ ev, onClick }: { ev: CalendarEvent; onClick: () => void }) {
+function EventPill({
+  ev,
+  isDragging,
+  onClick,
+  onDragStart,
+  onTouchStart,
+}: {
+  ev: CalendarEvent
+  isDragging: boolean
+  onClick: () => void
+  onDragStart: (e: React.DragEvent) => void
+  onTouchStart: (e: React.TouchEvent) => void
+}) {
   const cfg = PLAT[ev.platform] ?? PLAT.ig
   return (
     <button
+      draggable
+      onDragStart={onDragStart}
+      onTouchStart={onTouchStart}
       onClick={e => { e.stopPropagation(); onClick() }}
       title={ev.title}
       style={{
         display: 'block', width: '100%', textAlign: 'left', padding: '2px 5px', marginBottom: 2,
         background: cfg.bg, color: cfg.color, fontSize: 9, overflow: 'hidden',
-        textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer',
+        textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'grab',
         fontFamily: 'DM Sans, sans-serif', borderLeft: `2px solid ${cfg.color}`,
+        opacity: isDragging ? 0.35 : 1,
+        transition: 'opacity .15s',
+        userSelect: 'none',
+        touchAction: 'none',
       }}
     >
       {ev.title}
@@ -285,13 +304,26 @@ export function CalendarClient({
   const lastEvent = events[events.length - 1]
   const initParts = (lastEvent?.eventDate ?? today).split('-').map(Number)
 
-  const [year,     setYear    ] = useState(initParts[0])
-  const [month,    setMonth   ] = useState(initParts[1] - 1)
-  const [view,     setView    ] = useState<'calendar' | 'agenda'>('calendar')
-  const [selDate,  setSelDate ] = useState<string | null>(null)
-  const [selEvIdx, setSelEvIdx] = useState<number>(0)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [year,       setYear      ] = useState(initParts[0])
+  const [month,      setMonth     ] = useState(initParts[1] - 1)
+  const [view,       setView      ] = useState<'calendar' | 'agenda'>('calendar')
+  const [selDate,    setSelDate   ] = useState<string | null>(null)
+  const [selEvIdx,   setSelEvIdx  ] = useState<number>(0)
+  const [editingId,  setEditingId ] = useState<string | null>(null)
+  const [hoveredId,  setHoveredId ] = useState<string | null>(null)
+
+  // ── Drag state ────────────────────────────────────────────────────────────
+  const [dragEventId, setDragEventId] = useState<string | null>(null)
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null)
+  const [droppedDate, setDroppedDate] = useState<string | null>(null)
+
+  // Touch drag state (managed via refs to avoid re-renders during move)
+  type TouchInfo = { eventId: string; fromDate: string; title: string; color: string; active: boolean; startX: number; startY: number }
+  const touchRef = useRef<TouchInfo | null>(null)
+  const [touchGhost, setTouchGhost] = useState<{ x: number; y: number; title: string; color: string } | null>(null)
+
+  // Keep a stable reference to handleEventMove for use in document-level listeners
+  const handleEventMoveRef = useRef<(id: string, fromDate: string, toDate: string) => void>(() => {})
 
   function prevMonth() {
     if (month === 0) { setYear(y => y - 1); setMonth(11) } else setMonth(m => m - 1)
@@ -349,11 +381,144 @@ export function CalendarClient({
     }
   }
 
+  // ── Event move (drag result) ───────────────────────────────────────────────
+  const handleEventMove = useCallback(async (eventId: string, fromDate: string, toDate: string) => {
+    if (toDate === fromDate) return
+    // Optimistic update
+    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, eventDate: toDate } : e))
+    setDroppedDate(toDate)
+    setTimeout(() => setDroppedDate(null), 700)
+
+    const result = await updateCalendarEvent(eventId, { event_date: toDate })
+    if (result.error) {
+      // Revert on failure
+      setEvents(prev => prev.map(e => e.id === eventId ? { ...e, eventDate: fromDate } : e))
+    }
+  }, [])
+
+  // Keep ref in sync
+  handleEventMoveRef.current = handleEventMove
+
+  // ── Document-level touch handlers (added once on mount) ───────────────────
+  useEffect(() => {
+    const onTouchMove = (e: TouchEvent) => {
+      const drag = touchRef.current
+      if (!drag) return
+      const touch = e.touches[0]
+      const dx = touch.clientX - drag.startX
+      const dy = touch.clientY - drag.startY
+      if (!drag.active) {
+        // Activate after 8px movement
+        if (Math.hypot(dx, dy) > 8) {
+          drag.active = true
+          setTouchGhost({ x: touch.clientX, y: touch.clientY, title: drag.title, color: drag.color })
+        }
+        return
+      }
+      e.preventDefault()
+      setTouchGhost(g => g ? { ...g, x: touch.clientX, y: touch.clientY } : null)
+    }
+
+    const onTouchEnd = (e: TouchEvent) => {
+      const drag = touchRef.current
+      touchRef.current = null
+      setTouchGhost(null)
+      if (!drag?.active) return
+      const touch = e.changedTouches[0]
+      // Hit-test to find the target cell using data-caldate attribute
+      const el = document.elementFromPoint(touch.clientX, touch.clientY)
+      const cellEl = el?.closest('[data-caldate]')
+      const newDate = cellEl?.getAttribute('data-caldate')
+      if (newDate) {
+        handleEventMoveRef.current(drag.eventId, drag.fromDate, newDate)
+      }
+    }
+
+    document.addEventListener('touchmove', onTouchMove, { passive: false })
+    document.addEventListener('touchend', onTouchEnd)
+    return () => {
+      document.removeEventListener('touchmove', onTouchMove)
+      document.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [])
+
+  // ── Drag handlers ─────────────────────────────────────────────────────────
+  function onPillDragStart(e: React.DragEvent, ev: CalendarEvent) {
+    setDragEventId(ev.id)
+    e.dataTransfer.setData('eventId', ev.id)
+    e.dataTransfer.setData('fromDate', ev.eventDate)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function onPillTouchStart(e: React.TouchEvent, ev: CalendarEvent) {
+    const touch = e.touches[0]
+    const cfg = PLAT[ev.platform] ?? PLAT.ig
+    touchRef.current = {
+      eventId: ev.id,
+      fromDate: ev.eventDate,
+      title: ev.title,
+      color: cfg.color,
+      active: false,
+      startX: touch.clientX,
+      startY: touch.clientY,
+    }
+  }
+
+  function onCellDragOver(e: React.DragEvent, isoDate: string) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverDate(isoDate)
+  }
+
+  function onCellDragLeave() {
+    setDragOverDate(null)
+  }
+
+  function onCellDrop(e: React.DragEvent, isoDate: string) {
+    e.preventDefault()
+    const eventId  = e.dataTransfer.getData('eventId')
+    const fromDate = e.dataTransfer.getData('fromDate')
+    setDragEventId(null)
+    setDragOverDate(null)
+    if (eventId) handleEventMove(eventId, fromDate, isoDate)
+  }
+
+  function onDragEnd() {
+    setDragEventId(null)
+    setDragOverDate(null)
+  }
+
   const selEv = selEvents[selEvIdx]
   const isEditingSelected = selEv && editingId === selEv.id
 
   return (
     <div>
+
+      {/* ── Touch drag ghost ─────────────────────────────────────── */}
+      {touchGhost && (
+        <div
+          style={{
+            position: 'fixed',
+            left: touchGhost.x - 60,
+            top: touchGhost.y - 14,
+            width: 130,
+            padding: '3px 7px',
+            background: '#0d0d0d',
+            color: touchGhost.color,
+            borderLeft: `2px solid ${touchGhost.color}`,
+            fontSize: 9,
+            pointerEvents: 'none',
+            zIndex: 9999,
+            opacity: 0.9,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            boxShadow: `0 4px 20px rgba(0,0,0,.6)`,
+          }}
+        >
+          {touchGhost.title}
+        </div>
+      )}
 
       {/* ── Controls ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
@@ -412,19 +577,39 @@ export function CalendarClient({
                 const isToday    = cell.iso === today
                 const isSelected = cell.iso === selDate
                 const hasPosts   = cell.evs.length > 0
+                const isDragOver = dragOverDate === cell.iso
+                const wasDropped = droppedDate === cell.iso
+
                 return (
                   <div
                     key={idx}
-                    onClick={() => { if (!cell.current) return; setSelDate(isSelected ? null : cell.iso); setSelEvIdx(0); setEditingId(null) }}
+                    data-caldate={cell.current ? cell.iso : undefined}
+                    onDragOver={cell.current ? e => onCellDragOver(e, cell.iso) : undefined}
+                    onDragLeave={cell.current ? onCellDragLeave : undefined}
+                    onDrop={cell.current ? e => onCellDrop(e, cell.iso) : undefined}
+                    onClick={() => {
+                      if (!cell.current) return
+                      setSelDate(isSelected ? null : cell.iso)
+                      setSelEvIdx(0)
+                      setEditingId(null)
+                    }}
                     style={{
                       minHeight: 100, padding: '8px 7px 6px',
                       borderRight:  idx % 7 !== 6 ? '1px solid #0e0e0e' : 'none',
                       borderBottom: idx < 35       ? '1px solid #0e0e0e' : 'none',
-                      background: isSelected ? '#0d0d0d' : hasPosts && cell.current ? '#070707' : '#060606',
+                      background: isDragOver
+                        ? 'rgba(201,169,110,.09)'
+                        : wasDropped
+                        ? 'rgba(57,255,136,.08)'
+                        : isSelected ? '#0d0d0d' : hasPosts && cell.current ? '#070707' : '#060606',
                       opacity: cell.current ? 1 : 0.3,
                       cursor: cell.current ? (hasPosts ? 'pointer' : 'default') : 'default',
-                      outline: isSelected ? '1px solid rgba(201,169,110,.3)' : 'none',
-                      outlineOffset: -1, transition: 'background .1s', boxSizing: 'border-box',
+                      outline: isDragOver
+                        ? '1px solid rgba(201,169,110,.5)'
+                        : isSelected ? '1px solid rgba(201,169,110,.3)' : 'none',
+                      outlineOffset: -1,
+                      transition: 'background .12s, outline .12s',
+                      boxSizing: 'border-box',
                     }}
                   >
                     <div className="text-[10px] font-light mb-1.5 flex items-center gap-1"
@@ -433,7 +618,14 @@ export function CalendarClient({
                       {isToday && <span style={{ display: 'inline-block', width: 4, height: 4, borderRadius: '50%', background: '#c9a96e' }} />}
                     </div>
                     {cell.evs.slice(0, 3).map((ev, i) => (
-                      <EventPill key={ev.id} ev={ev} onClick={() => { setSelDate(cell.iso); setSelEvIdx(i); setEditingId(null) }} />
+                      <EventPill
+                        key={ev.id}
+                        ev={ev}
+                        isDragging={dragEventId === ev.id}
+                        onClick={() => { setSelDate(cell.iso); setSelEvIdx(i); setEditingId(null) }}
+                        onDragStart={e => onPillDragStart(e, ev)}
+                        onTouchStart={e => onPillTouchStart(e, ev)}
+                      />
                     ))}
                     {cell.evs.length > 3 && <span className="text-[8px]" style={{ color: '#333' }}>+{cell.evs.length - 3} more</span>}
                   </div>
@@ -497,7 +689,7 @@ export function CalendarClient({
             </div>
           )}
 
-          {selDate && selEvents.length === 0 && (
+          {selDate && selEvents.length === 0 && !dragEventId && (
             <div className="mt-4 px-5 py-4 text-[11px] font-light" style={{ color: '#2a2a2a', border: '1px solid #0e0e0e' }}>
               No events on {isoToDisplay(selDate)}.
             </div>
@@ -513,6 +705,9 @@ export function CalendarClient({
             <div className="flex items-center gap-1.5">
               <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#c9a96e', display: 'block' }} />
               <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#2a2a2a' }}>Today</span>
+            </div>
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#1e1e1e' }}>Drag events to reschedule</span>
             </div>
           </div>
         </>

@@ -11,6 +11,7 @@ export type PipelineItem = {
   priority: number
   week: string
   scheduledDate: string | null
+  postedAt: string | null
   ytType: string | null
   scriptContent: string | null
   notes: string | null
@@ -23,15 +24,15 @@ export default async function PipelinePage() {
   type RawRow = {
     id: string; post_id: string; title: string; platform: string[];
     pillar: string | null; status: string; priority: number | null;
-    week: string | null; scheduled_date: string | null; yt_type: string | null;
-    script_content: string | null; notes: string | null;
+    week: string | null; scheduled_date: string | null; posted_at: string | null;
+    yt_type: string | null; script_content: string | null; notes: string | null;
   }
 
   const { data, error } = await supabase
     .from('pipeline_items')
     .select(
       'id, post_id, title, platform, pillar, status, priority, week, ' +
-      'scheduled_date, yt_type, script_content, notes',
+      'scheduled_date, posted_at, yt_type, script_content, notes',
     )
     .eq('client_id', clientId ?? fallback)
     .order('priority', { ascending: true })
@@ -49,6 +50,7 @@ export default async function PipelinePage() {
     priority:      r.priority ?? 4,
     week:          r.week     ?? '—',
     scheduledDate: r.scheduled_date ?? null,
+    postedAt:      r.posted_at      ?? null,
     ytType:        r.yt_type        ?? null,
     scriptContent: r.script_content ?? null,
     notes:         r.notes         ?? null,

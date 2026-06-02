@@ -20,12 +20,69 @@ async function getCtx() {
   return { admin, role: p.role as string, cid }
 }
 
+// ── Bidirectional sync helpers ────────────────────────────────────────────
+
+type AdminClient = ReturnType<typeof createAdminClient>
+
+// Pipeline change → update matching calendar_event (matched via notes.post_id)
+async function syncToCalendar(
+  postId: string,
+  cid: string,
+  admin: AdminClient,
+  fields: Record<string, unknown>,
+) {
+  const update: Record<string, unknown> = {}
+  if (fields.title !== undefined) update.title = fields.title
+  if (fields.platform !== undefined)
+    update.platform = Array.isArray(fields.platform)
+      ? (fields.platform as string[])[0] ?? 'ig'
+      : fields.platform
+  // posted_at takes priority; fall back to scheduled_date
+  if (fields.posted_at !== undefined && fields.posted_at !== null)
+    update.event_date = (fields.posted_at as string).slice(0, 10)
+  else if (fields.scheduled_date !== undefined && fields.scheduled_date !== null)
+    update.event_date = fields.scheduled_date as string
+
+  if (Object.keys(update).length === 0) return
+  await admin
+    .from('calendar_events')
+    .update(update)
+    .eq('client_id', cid)
+    .ilike('notes', `%"post_id":"${postId}"%`)
+}
+
+// Calendar change → update matching pipeline_item (matched via post_id column)
+async function syncToPipeline(
+  postId: string,
+  cid: string,
+  admin: AdminClient,
+  fields: Record<string, unknown>,
+) {
+  if (!postId) return
+  const update: Record<string, unknown> = {}
+  if (fields.title !== undefined) update.title = fields.title
+  if (fields.event_date !== undefined) update.scheduled_date = fields.event_date
+  if (fields.platform !== undefined) update.platform = [fields.platform]
+
+  if (Object.keys(update).length === 0) return
+  await admin
+    .from('pipeline_items')
+    .update(update)
+    .eq('client_id', cid)
+    .eq('post_id', postId)
+}
+
 // ── Pipeline ─────────────────────────────────────────────────────────────
 
 const VALID_STATUSES = new Set([
   'SCRIPTED','PLANNED','FILMING','EDITING','REVIEWING','SCHEDULED','POSTED','CANCELLED',
 ])
-const VALID_PIPE = new Set(['status','priority','platform','pillar','week','script_content','title','notes'])
+const VALID_PIPE = new Set([
+  'status','priority','platform','pillar','week','script_content','title','notes',
+  'posted_at','scheduled_date',
+])
+// Fields that need to be mirrored in the matching calendar event
+const PIPE_SYNC_FIELDS = new Set(['title', 'platform', 'posted_at', 'scheduled_date'])
 
 export async function updatePipelineItem(
   itemId: string,
@@ -46,7 +103,19 @@ export async function updatePipelineItem(
 
   const { error } = await c.admin.from('pipeline_items').update(update).match(filter)
   if (error) return { error: error.message }
+
+  // Sync sync-relevant fields to matching calendar event
+  const hasSyncField = Object.keys(fields).some(k => PIPE_SYNC_FIELDS.has(k))
+  if (hasSyncField && c.cid) {
+    const { data: item } = await c.admin
+      .from('pipeline_items').select('post_id').eq('id', itemId).single()
+    if (item?.post_id) {
+      await syncToCalendar(item.post_id, c.cid, c.admin, fields)
+    }
+  }
+
   revalidatePath('/pipeline')
+  revalidatePath('/calendar')
   return {}
 }
 
@@ -195,22 +264,40 @@ export async function updateCalendarEvent(
   if (event_date !== undefined) direct.event_date = event_date
 
   const hasNoteFields = Object.values(noteFields).some(v => v !== undefined)
-  if (hasNoteFields) {
+  const hasSyncFields = title !== undefined || platform !== undefined || event_date !== undefined
+
+  // Read current notes when we need to update them OR capture post_id for sync
+  let currentPostId: string | null = null
+  if (hasNoteFields || hasSyncFields) {
     const { data: row } = await c.admin.from('calendar_events').select('notes').match(filter).single()
     let notes: Record<string, string> = {}
     try { notes = JSON.parse(row?.notes ?? '{}') } catch { /* */ }
-    if (noteFields.post_id !== undefined)       notes.post_id       = noteFields.post_id
-    if (noteFields.post_time !== undefined)      notes.post_time     = noteFields.post_time
-    if (noteFields.caption_status !== undefined) notes.caption_status = noteFields.caption_status
-    if (noteFields.cta !== undefined)            notes.cta           = noteFields.cta
-    if (noteFields.content_type !== undefined)   notes.content_type  = noteFields.content_type
-    direct.notes = JSON.stringify(notes)
+    currentPostId = notes.post_id ?? null
+    if (hasNoteFields) {
+      if (noteFields.post_id !== undefined)       notes.post_id        = noteFields.post_id
+      if (noteFields.post_time !== undefined)      notes.post_time      = noteFields.post_time
+      if (noteFields.caption_status !== undefined) notes.caption_status = noteFields.caption_status
+      if (noteFields.cta !== undefined)            notes.cta            = noteFields.cta
+      if (noteFields.content_type !== undefined)   notes.content_type   = noteFields.content_type
+      direct.notes = JSON.stringify(notes)
+    }
   }
 
   if (Object.keys(direct).length === 0) return {}
   const { error } = await c.admin.from('calendar_events').update(direct).match(filter)
   if (error) return { error: error.message }
+
+  // Mirror sync-relevant changes to the matching pipeline item
+  if (currentPostId && c.cid && hasSyncFields) {
+    const syncFields: Record<string, unknown> = {}
+    if (title !== undefined) syncFields.title = title
+    if (event_date !== undefined) syncFields.event_date = event_date
+    if (platform !== undefined) syncFields.platform = platform
+    await syncToPipeline(currentPostId, c.cid, c.admin, syncFields)
+  }
+
   revalidatePath('/calendar')
+  revalidatePath('/pipeline')
   return {}
 }
 

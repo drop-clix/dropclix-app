@@ -6,6 +6,8 @@
  *   - Skips rows where eom_views is blank.
  *   - Upserts eom window row in post_analytics (delete + insert).
  *   - Also upserts w7 row if views_7d is provided.
+ *   - Syncs pipeline_items (create POSTED entry or update status to POSTED).
+ *   - Syncs calendar_events (create entry if none exists for this post_id).
  *
  * Usage:
  *   node scripts/ingest-eom-csv.mjs <path-to-csv>          # dry-run
@@ -85,7 +87,7 @@ console.log(`Rows with EOM data: ${csvRows.length} (skipping blank rows)\n`)
 const allPostIds = csvRows.map(r => r.post_id)
 
 const { data: existingPosts, error: fetchErr } = await sb
-  .from('posts').select('id, post_id, title, date').in('post_id', allPostIds)
+  .from('posts').select('id, post_id, title, date, pillar, platform').in('post_id', allPostIds)
 if (fetchErr) { console.error(fetchErr.message); process.exit(1) }
 
 const postMap = Object.fromEntries(existingPosts.map(p => [p.post_id, p]))
@@ -176,8 +178,100 @@ for (const row of csvRows) {
   else         report.insertedEom.push(row.post_id)
 }
 
+// ── Pipeline + Calendar sync helpers ─────────────────────────────────────
+
+// "May WK1", "Jun WK3", etc. — matches the format in existing pipeline data
+function deriveWeek(dateStr) {
+  if (!dateStr) return null
+  const d = new Date(dateStr + 'T00:00:00Z')
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${months[d.getUTCMonth()]} WK${Math.ceil(d.getUTCDate() / 7)}`
+}
+
+async function buildSyncPlan() {
+  // Build a unified detail map: post_id → { title, date, pillar } for all CSV rows
+  const detailMap = {}
+  for (const row of csvRows) {
+    const existing = postMap[row.post_id]
+    detailMap[row.post_id] = {
+      title:  existing?.title  || row.title,
+      date:   existing?.date   || null,
+      pillar: existing?.pillar || null,
+    }
+  }
+
+  // Fetch existing pipeline items for these post_ids
+  const { data: existingPipe, error: pipeErr } = await sb
+    .from('pipeline_items')
+    .select('id, post_id, status')
+    .eq('client_id', CLIENT_ID)
+    .in('post_id', allPostIds)
+  if (pipeErr) { console.error('Pipeline fetch:', pipeErr.message); process.exit(1) }
+
+  const pipeByPostId = Object.fromEntries((existingPipe || []).map(p => [p.post_id, p]))
+
+  // Fetch all calendar events for client to check notes JSON for post_id coverage
+  const { data: allCal, error: calErr } = await sb
+    .from('calendar_events')
+    .select('id, notes')
+    .eq('client_id', CLIENT_ID)
+  if (calErr) { console.error('Calendar fetch:', calErr.message); process.exit(1) }
+
+  const calCoveredPostIds = new Set()
+  for (const ev of (allCal || [])) {
+    try {
+      const n = JSON.parse(ev.notes || '{}')
+      if (n.post_id) calCoveredPostIds.add(n.post_id)
+    } catch {}
+  }
+
+  const pipeToInsert = []
+  const pipeToUpdate = []  // { id: uuid, post_id }
+  const calToInsert  = []
+  const calSkipped   = []  // post_ids skipped due to no date
+
+  for (const row of csvRows) {
+    const postId = row.post_id
+    const detail = detailMap[postId]
+
+    // Pipeline
+    const existingP = pipeByPostId[postId]
+    if (!existingP) {
+      pipeToInsert.push({
+        client_id:      CLIENT_ID,
+        post_id:        postId,
+        title:          detail.title,
+        platform:       ['ig'],
+        pillar:         detail.pillar,
+        status:         'POSTED',
+        week:           deriveWeek(detail.date),
+        scheduled_date: detail.date || null,
+      })
+    } else if (existingP.status !== 'POSTED') {
+      pipeToUpdate.push({ id: existingP.id, post_id: postId, oldStatus: existingP.status })
+    }
+
+    // Calendar
+    if (!calCoveredPostIds.has(postId)) {
+      if (!detail.date) {
+        calSkipped.push(postId)
+      } else {
+        calToInsert.push({
+          client_id:  CLIENT_ID,
+          title:      detail.title,
+          platform:   'ig',
+          event_date: detail.date,
+          notes:      JSON.stringify({ post_id: postId }),
+        })
+      }
+    }
+  }
+
+  return { pipeToInsert, pipeToUpdate, calToInsert, calSkipped }
+}
+
 // ── Preview ───────────────────────────────────────────────────────────────
-console.log('\n── What will happen ──────────────────────────────────────────')
+console.log('\n── Analytics ─────────────────────────────────────────────────')
 for (const row of csvRows) {
   const existed = !!postMap[row.post_id]
   const hasW7   = row.views_7d !== null
@@ -192,13 +286,42 @@ for (const row of csvRows) {
   )
 }
 
+console.log('\n── Pipeline + Calendar sync ──────────────────────────────────')
+const syncPlan = await buildSyncPlan()
+const { pipeToInsert, pipeToUpdate, calToInsert, calSkipped } = syncPlan
+
+if (pipeToInsert.length) {
+  console.log(`  Pipeline — CREATE (${pipeToInsert.length}):`)
+  pipeToInsert.forEach(p =>
+    console.log(`    ${p.post_id.padEnd(8)} "${p.title}"  pillar=${p.pillar || '—'}  week=${p.week || '—'}`)
+  )
+} else {
+  console.log(`  Pipeline — no new entries needed`)
+}
+
+if (pipeToUpdate.length) {
+  console.log(`  Pipeline — UPDATE status→POSTED (${pipeToUpdate.length}):`)
+  pipeToUpdate.forEach(p => console.log(`    ${p.post_id}  (was ${p.oldStatus})`))
+}
+
+if (calToInsert.length) {
+  console.log(`  Calendar — CREATE (${calToInsert.length}):`)
+  calToInsert.forEach(c => console.log(`    ${c.notes}  date=${c.event_date}  "${c.title}"`))
+} else {
+  console.log(`  Calendar — no new entries needed`)
+}
+
+if (calSkipped.length) {
+  console.log(`  Calendar — SKIPPED (no date): ${calSkipped.join(', ')}`)
+}
+
 if (DRY_RUN) {
   console.log('\nDRY RUN — pass --run to apply.\n')
   process.exit(0)
 }
 
 // ── Apply ─────────────────────────────────────────────────────────────────
-console.log('\n── Applying ──────────────────────────────────────────────────')
+console.log('\n── Applying analytics ────────────────────────────────────────')
 
 // 1. Insert missing post stubs
 if (stubsToInsert.length) {
@@ -223,6 +346,42 @@ const { error: insErr } = await sb.from('post_analytics').insert(analyticsToInse
 if (insErr) { console.error('Analytics insert failed:', insErr.message); process.exit(1) }
 console.log(`✓ Inserted ${analyticsToInsert.length} analytics rows`)
 
+// ── Apply pipeline + calendar sync ───────────────────────────────────────
+console.log('\n── Applying pipeline + calendar sync ─────────────────────────')
+
+let pipeInserted = 0, pipeUpdated = 0, calInserted = 0
+
+// 4. Insert new pipeline items
+if (pipeToInsert.length) {
+  const { error } = await sb.from('pipeline_items').insert(pipeToInsert)
+  if (error) { console.error('Pipeline insert failed:', error.message); process.exit(1) }
+  pipeInserted = pipeToInsert.length
+  console.log(`✓ Created ${pipeInserted} pipeline item(s) with status=POSTED`)
+}
+
+// 5. Update pipeline items to POSTED
+for (const { id, post_id } of pipeToUpdate) {
+  const { error } = await sb
+    .from('pipeline_items')
+    .update({ status: 'POSTED' })
+    .eq('id', id)
+  if (error) { console.error(`Pipeline update failed for ${post_id}:`, error.message) }
+  else pipeUpdated++
+}
+if (pipeUpdated > 0) console.log(`✓ Updated ${pipeUpdated} pipeline item(s) → POSTED`)
+
+// 6. Insert new calendar events
+if (calToInsert.length) {
+  const { error } = await sb.from('calendar_events').insert(calToInsert)
+  if (error) { console.error('Calendar insert failed:', error.message); process.exit(1) }
+  calInserted = calToInsert.length
+  console.log(`✓ Created ${calInserted} calendar event(s)`)
+}
+
+if (pipeInserted === 0 && pipeUpdated === 0 && calInserted === 0) {
+  console.log('  (nothing to sync — pipeline + calendar already up to date)')
+}
+
 // ── Final report ──────────────────────────────────────────────────────────
 console.log('\n── Result ────────────────────────────────────────────────────')
 if (report.newPosts.length)
@@ -230,4 +389,7 @@ if (report.newPosts.length)
 console.log(`EOM rows upserted:     ${report.updatedEom.join(', ')}`)
 if (report.insertedW7.length)
   console.log(`W7 rows upserted:      ${report.insertedW7.join(', ')}`)
-console.log(`\nTotal analytics rows written: ${analyticsToInsert.length}`)
+console.log(`Total analytics rows:  ${analyticsToInsert.length}`)
+if (pipeInserted > 0) console.log(`Pipeline items created: ${pipeToInsert.map(p => p.post_id).join(', ')}`)
+if (pipeUpdated > 0)  console.log(`Pipeline items updated: ${pipeToUpdate.map(p => p.post_id).join(', ')}`)
+if (calInserted > 0)  console.log(`Calendar events created: ${calToInsert.map(c => JSON.parse(c.notes).post_id).join(', ')}`)

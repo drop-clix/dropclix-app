@@ -185,6 +185,18 @@ Login page toggles between `'login'` and `'reset'` modes. Reset mode: email fiel
 
 `src/proxy.ts` updated: `/auth/` prefix is always let through unauthenticated (recovery token is in the hash — server can't see it, so the proxy must not redirect).
 
+### Session 15b ✅ — Pipeline + calendar auto-sync on ingest
+`ingest-eom-csv.mjs` now runs a pipeline+calendar sync step after every analytics import. `sync-pipeline-calendar.mjs` added as a standalone backfill tool. Both share the same logic: for each post — if no `pipeline_item` exists for that `post_id`, create one (`status=POSTED`, platform=`['ig']`, pillar + week derived from post); if pipeline_item exists but status ≠ POSTED, update it; if no `calendar_event` notes JSON contains the `post_id`, create one.
+
+**Week derivation:** `${MonthAbbr} WK${ceil(day/7)}` — e.g., May 10 → "May WK2". Matches existing pipeline data format.
+
+**Backfill run against 10 May posts:**
+- Pipeline created: #ig0045–#ig0051 (7 new items, status=POSTED)
+- Pipeline updated: #ig0035, #ig0042, #ig0043 (3 items, REVIEWING → POSTED)
+- Calendar created: #ig0045–#ig0051 (7 new events)
+- Calendar already existed: #ig0035, #ig0042, #ig0043 (no action)
+- Sync is idempotent — safe to re-run.
+
 ### Session 15a ✅ — May 2026 posts + EOM analytics
 Inserted 8 new May posts (#ig0045–#ig0052) into `posts`. Ran EOM analytics for all 11 May posts via `scripts/ingest-eom-csv.mjs`. Added `skip_rate numeric` column to `post_analytics` (migration: `supabase/migrations/add_skip_rate.sql`).
 
@@ -207,9 +219,25 @@ Inserted 8 new May posts (#ig0045–#ig0052) into `posts`. Ran EOM analytics for
 
 **Schema change:** `post_analytics.skip_rate numeric` — run `supabase/migrations/add_skip_rate.sql` once in SQL Editor for any new environment.
 
+### Session 16 ✅ — Pipeline + Calendar bidirectional sync, posted datetime picker, draggable calendar
+
+**1. Posted datetime picker (Pipeline)**
+When status changes to POSTED or SCHEDULED, the edit panel shows a "Posted On / Scheduled For" inline picker (`datetime-local` input, gold/green styled). Picking a datetime auto-flips status: future date → SCHEDULED, past date → POSTED. Syncs the date to the matching `calendar_event.event_date` immediately via the bidirectional sync. The posted date shows under the status badge in the table row.
+
+**2. Bidirectional auto-sync**
+`edit-actions.ts` — two helpers: `syncToCalendar(postId, ...)` and `syncToPipeline(postId, ...)`. Both use admin client directly (bypasses RLS, scoped by `client_id`).
+- Pipeline → Calendar: `title`, `platform`, `posted_at` (date portion), `scheduled_date` changes mirror to matching `calendar_event` (matched via `ilike('%"post_id":"${postId}"%')` on notes JSON).
+- Calendar → Pipeline: `title`, `event_date`, `platform` changes mirror to matching `pipeline_item` (matched via `post_id` column). `revalidatePath` called on both `/pipeline` and `/calendar` after every cross-sync write.
+
+**3. Draggable calendar events**
+Mouse (HTML5 drag API): EventPill is `draggable`, carries `eventId` + `fromDate` in dataTransfer. Cells get `onDragOver`/`onDrop` handlers; gold outline + background on hover. Drop triggers optimistic React state update → `updateCalendarEvent({ event_date })` → bidirectional sync updates `pipeline_item.scheduled_date`. Revert on error.
+Touch (mobile): document-level `touchmove`/`touchend` listeners (added once on mount, `{ passive: false }`). 8px movement threshold activates drag. A fixed ghost element follows the finger. Hit-test via `document.elementFromPoint` + `data-caldate` attribute on cells. Drop calls same `handleEventMove`. Brief green flash animation on drop target cell.
+
+**Schema change:** `pipeline_items.posted_at timestamptz` — run `supabase/migrations/add_posted_at.sql` in SQL Editor before using the posted datetime picker.
+
 ## Next sessions
-- Session 15: Update Modal + Studio video-logging form
-- Session 16: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add buttons)
+- Session 17: Update Modal + Studio video-logging form
+- Session 18: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add buttons)
 
 ## Scripts
 
@@ -219,5 +247,6 @@ Inserted 8 new May posts (#ig0045–#ig0052) into `posts`. Ran EOM analytics for
 | `scripts/backfill-eom.mjs` | Fill missing/zero-views eom rows for pre-May posts from best window (w7→w3→w24). `--run` to apply. |
 | `scripts/rename-post-ids.mjs` | Rename post_id labels to `#igNNNN` sequential format (dry-run default, `--run` to apply). Idempotent — safe to re-run on new posts. |
 | `scripts/insert-may-posts.mjs` | One-time insert of May 2026 posts #ig0045–#ig0052. `--run` to apply. |
-| `scripts/ingest-eom-csv.mjs` | **Generic reusable EOM ingest.** `node scripts/ingest-eom-csv.mjs <path-to-csv> [--run]`. Dry-run by default. Upserts eom + w7 analytics from a filled CSV; inserts missing post stubs automatically. Use this for all future monthly EOM imports. |
+| `scripts/ingest-eom-csv.mjs` | **Generic reusable EOM ingest.** `node scripts/ingest-eom-csv.mjs <path-to-csv> [--run]`. Dry-run by default. Upserts eom + w7 analytics from a filled CSV; inserts missing post stubs automatically; **auto-syncs pipeline+calendar** after every import. Use this for all future monthly EOM imports. |
+| `scripts/sync-pipeline-calendar.mjs` | **Standalone pipeline+calendar backfill.** `node scripts/sync-pipeline-calendar.mjs [#igXXXX ...] [--run]`. Dry-run by default. Creates missing pipeline_items (status=POSTED) and calendar_events for all (or specified) posts. Safe to re-run — idempotent. |
 | `scripts/ingest-may-analytics.mjs` | Month-specific May ingest (superseded by ingest-eom-csv.mjs — kept for reference). |
