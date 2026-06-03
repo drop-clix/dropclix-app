@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { SidebarShell } from '@/components/portal/SidebarShell'
+import { WelcomeOverlay } from '@/components/portal/WelcomeOverlay'
 
 const IMPERSONATE_COOKIE = 'dropclix_impersonate_client_id'
 
@@ -40,12 +41,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const userEmail  = profile?.email ?? user.email ?? null
 
   return (
-    <SidebarShell
-      clientName={clientName}
-      userEmail={userEmail}
-      isImpersonating={isImpersonating}
-    >
-      {children}
-    </SidebarShell>
+    <>
+      <WelcomeOverlay clientName={clientName} />
+      <SidebarShell
+        clientName={clientName}
+        userEmail={userEmail}
+        isImpersonating={isImpersonating}
+      >
+        {children}
+      </SidebarShell>
+    </>
   )
 }

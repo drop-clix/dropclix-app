@@ -54,6 +54,23 @@ Global spacing applied. KPI cards: `28px 24px 22px`; table rows: `py-4`; filter 
 ### Session 14 ✅ — Recharts charts + collapsible sidebar
 `recharts@3.8.1`. Dashboard: 4 charts (follower growth bar, monthly views line, posts+followers composed, ER% by pillar vertical bar). Analytics: 2 charts (Reach by Post bar, ER% Over Time line). Collapsible sidebar via `SidebarShell.tsx` (56px collapsed / 220px expanded, hover + pin). `PortalNav.tsx` now unused.
 
+### Session 17 ✅ — Importer, formula audit, smart popup, welcome screen
+
+**1. Studio Importer (`/studio` tab "Import")**
+`src/app/(dashboard)/studio/actions.ts` — new server actions: `createPost()` + `importPostsBatch()`. Both insert into `posts` + `post_analytics` (all non-empty windows) + auto-create `pipeline_item` (status=POSTED) + `calendar_events` (one per platform). Calls `revalidatePath` on all 8 affected routes. `StudioClient.tsx` rebuilt with 4 tabs: Scripts / Production / Planned / Import. Import tab has two sub-modes: New Post form (all fields + 4 window metric tabs) and CSV Import (file upload → column mapping → preview → batch import). Next post ID auto-generated in `studio/page.tsx` via `fetchNextPostId()` and passed as prop.
+
+**2. Formula / data integrity audit**
+Dashboard KPI "Engagement Rate" was wrong — only used `likes + comments`. Fixed to `(likes + comments + shares + saves) / views × 100`. Added `shares` to the analytics query. All other tabs (Analytics, Angles, Goals, Report Card) already used the correct 4-component formula. Dashboard chart ER and pillar ER were already correct.
+
+**3. Full auto-sync**
+`createPost()` server action revalidates: `/studio`, `/pipeline`, `/calendar`, `/`, `/analytics`, `/goals`, `/report-card`, `/angles`. Existing bidirectional sync (pipeline ↔ calendar from Session 16) unchanged.
+
+**4. Smart pop-up (Pipeline)**
+`PipelineClient.tsx` — status dropdown onChange now intercepts POSTED and SCRIPTED when `item.scheduledDate` and `item.postedAt` are both null. Shows a modal: platform multi-select (IG/TT/YT) + datetime picker. POSTED/SCHEDULED: saves `posted_at` + `platform`, auto-flips to SCHEDULED (future) or POSTED (past). SCRIPTED: saves `scheduled_date` + `platform`, keeps SCRIPTED status. Modal dismisses on backdrop click or Cancel.
+
+**5. Welcome screen**
+`src/components/portal/WelcomeOverlay.tsx` — `position:fixed` overlay, shows once per session via `sessionStorage`. Gold "Welcome back, [client name]" heading + Drop CLIX wordmark. Slides up + fades out after 1.8s (700ms CSS transition). Added to `(dashboard)/layout.tsx` alongside `SidebarShell`.
+
 ## Key decisions / gotchas
 
 - **Next.js 16 proxy**: `middleware.ts` is deprecated. Use `src/proxy.ts` with `export function proxy()`.
@@ -82,6 +99,10 @@ Global spacing applied. KPI cards: `28px 24px 22px`; table rows: `py-4`; filter 
 - **Calendar grid**: 42-cell fixed (6 rows × 7 cols). Leading/trailing cells from adjacent months.
 - **React Fragment key**: Use `<Fragment key={id}>` (imported), not `<>`. Key goes on Fragment, not inner `<tr>`.
 - **Recharts v3 types**: `content` prop in `<Tooltip>`: `(props: any) => ...`. `LabelList formatter`: cast as `any`. Tooltip `payload` is `readonly any[]`.
+- **Dashboard ER formula fix**: Previously `(likes+comments)/views` — now `(likes+comments+shares+saves)/views`. Analytics query also updated to fetch `shares`.
+- **Studio importer**: `studio/actions.ts` is 'use server'. `createPost()` revalidates 8 paths. `post_analytics.post_id` is UUID FK — always use `posts.id` (not text `post_id`) when inserting analytics.
+- **Welcome overlay**: Uses `sessionStorage` keyed by `dropclix_welcomed_${clientName}` — one overlay per client per browser session. Rendered in dashboard layout, not inside SidebarShell.
+- **Smart popup trigger**: Intercepts status → POSTED/SCRIPTED only when both `item.scheduledDate` AND `item.postedAt` are null. Existing items with either field set skip the popup.
 - **Collapsible sidebar**: `SidebarShell.tsx` owns all nav rendering. `PortalNav.tsx` is unused.
 - **Tailwind 4 theme**: Colors in `globals.css` `@theme {}` block, not `tailwind.config.js`.
 - **Port**: Dev server falls back; check `.next/dev/logs/next-development.log` for actual port.
@@ -236,8 +257,9 @@ Touch (mobile): document-level `touchmove`/`touchend` listeners (added once on m
 **Schema change:** `pipeline_items.posted_at timestamptz` — run `supabase/migrations/add_posted_at.sql` in SQL Editor before using the posted datetime picker.
 
 ## Next sessions
-- Session 17: Update Modal + Studio video-logging form
-- Session 18: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add buttons)
+- Session 18: Update Modal (cross-window edit overlay for Analytics/Angles/Report Card rows)
+- Session 19: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
+- Session 20: Goals enhancements — Elite Videos + Watch% Avg targets; weekly actuals from last 7 days
 
 ## Scripts
 

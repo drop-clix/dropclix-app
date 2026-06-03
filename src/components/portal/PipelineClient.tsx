@@ -126,6 +126,12 @@ function ItemEditPanel({
   const [postedAtLocal, setPostedAtLocal] = useState<string>(() => isoToLocal(item.postedAt) || nowLocal())
   const [deleting, setDeleting] = useState(false)
 
+  // Smart date popup state
+  const [dateModal,     setDateModal    ] = useState(false)
+  const [pendingStatus, setPendingStatus] = useState('')
+  const [modalPlatforms,setModalPlatforms] = useState<string[]>(item.platform.length ? item.platform : ['ig'])
+  const [modalDate,     setModalDate    ] = useState(() => isoToLocal(item.postedAt) || nowLocal())
+
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const [states, setStates] = useState<Record<string, SaveState>>({})
 
@@ -294,8 +300,19 @@ function ItemEditPanel({
             style={{ ...inputStyle, cursor: 'pointer', appearance: 'none' }}
             value={status}
             onChange={e => {
-              setStatus(e.target.value)
-              scheduleImmediate('status', e.target.value, { status: e.target.value })
+              const next = e.target.value
+              const needsDatePrompt =
+                (next === 'POSTED' || next === 'SCRIPTED') &&
+                !item.scheduledDate && !item.postedAt
+              if (needsDatePrompt) {
+                setPendingStatus(next)
+                setModalPlatforms(platform.length ? [...platform] : ['ig'])
+                setModalDate(nowLocal())
+                setDateModal(true)
+              } else {
+                setStatus(next)
+                scheduleImmediate('status', next, { status: next })
+              }
             }}
           >
             {ALL_STATUSES.map(s => (
@@ -442,6 +459,145 @@ function ItemEditPanel({
         </div>
 
       </div>
+
+      {/* ── Smart date popup ─────────────────────────────────────────────── */}
+      {dateModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={e => { if (e.target === e.currentTarget) setDateModal(false) }}
+        >
+          <div style={{
+            background: '#0a0a0a',
+            border: '1px solid #1e1e1e',
+            borderTop: `3px solid ${pendingStatus === 'POSTED' ? '#39ff88' : '#c9a96e'}`,
+            padding: '28px 32px',
+            width: 380,
+            maxWidth: '90vw',
+          }}>
+            <p style={{ fontSize: 10, letterSpacing: '.2em', textTransform: 'uppercase', color: pendingStatus === 'POSTED' ? '#39ff88' : '#c9a96e', marginBottom: 4 }}>
+              {pendingStatus}
+            </p>
+            <p style={{ fontSize: 13, color: '#f2ede4', marginBottom: 24, fontWeight: 300 }}>
+              {pendingStatus === 'POSTED'
+                ? 'When was this posted?'
+                : 'When is this scheduled?'}
+            </p>
+
+            {/* Platform selection */}
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 8 }}>
+                Platform
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['ig', 'tt', 'yt'] as const).map(p => {
+                  const cfg = PLAT_CFG[p]
+                  const on  = modalPlatforms.includes(p)
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setModalPlatforms(prev =>
+                        prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                      )}
+                      style={{
+                        padding: '6px 14px', cursor: 'pointer', fontSize: 9,
+                        color:      on ? cfg.color : '#333',
+                        background: on ? cfg.bg : 'transparent',
+                        border:     `1px solid ${on ? cfg.color + '60' : '#1e1e1e'}`,
+                        fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase',
+                        borderRadius: 3,
+                      }}
+                    >
+                      {cfg.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Date/time */}
+            <div style={{ marginBottom: 24 }}>
+              <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 8 }}>
+                Date & Time
+              </p>
+              <input
+                type="datetime-local"
+                value={modalDate}
+                onChange={e => setModalDate(e.target.value)}
+                style={{
+                  background: '#080808', border: '1px solid #1e1e1e',
+                  color: '#f2ede4', padding: '7px 10px', fontSize: 12,
+                  fontFamily: "'DM Sans', sans-serif", outline: 'none', width: '100%',
+                }}
+              />
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setDateModal(false)}
+                style={{
+                  padding: '8px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+                  background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setDateModal(false)
+                  if (!modalDate) return
+                  const iso = new Date(modalDate).toISOString()
+                  const finalStatus = pendingStatus === 'SCRIPTED'
+                    ? 'SCRIPTED'
+                    : new Date(modalDate) > new Date() ? 'SCHEDULED' : 'POSTED'
+                  const update: Record<string, unknown> = {
+                    status: finalStatus,
+                    platform: modalPlatforms,
+                  }
+                  if (pendingStatus === 'SCRIPTED') {
+                    update.scheduled_date = modalDate.slice(0, 10)
+                  } else {
+                    update.posted_at = iso
+                  }
+                  setStatus(finalStatus)
+                  setPlatform(modalPlatforms)
+                  if (pendingStatus !== 'SCRIPTED') setPostedAtLocal(modalDate)
+                  setStates(s => ({ ...s, status: 'saving' }))
+                  const result = await updatePipelineItem(item.id, update)
+                  if (result.error) {
+                    setStates(s => ({ ...s, status: 'error' }))
+                  } else {
+                    onUpdate(item.id, {
+                      status: finalStatus,
+                      platform: modalPlatforms,
+                      ...(pendingStatus !== 'SCRIPTED' ? { postedAt: iso } : { scheduledDate: modalDate.slice(0, 10) }),
+                    })
+                    setStates(s => ({ ...s, status: 'saved' }))
+                    setTimeout(() => setStates(s => ({ ...s, status: 'idle' })), 1500)
+                  }
+                }}
+                style={{
+                  padding: '8px 20px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+                  background: pendingStatus === 'POSTED' ? 'rgba(57,255,136,.1)' : 'rgba(201,169,110,.1)',
+                  border: `1px solid ${pendingStatus === 'POSTED' ? 'rgba(57,255,136,.4)' : 'rgba(201,169,110,.4)'}`,
+                  color: pendingStatus === 'POSTED' ? '#39ff88' : '#c9a96e',
+                  cursor: 'pointer',
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -96,7 +96,7 @@ export default async function DashboardPage() {
     // Analytics for eom window (aggregate totals)
     supabase
       .from('post_analytics')
-      .select('views, likes, comments, saves')
+      .select('views, likes, comments, shares, saves')
       .eq('client_id', cid)
       .eq('metric_window', 'eom'),
 
@@ -196,13 +196,15 @@ export default async function DashboardPage() {
   /* ── Derived KPIs ─────────────────────────────── */
   const totalPosts = postsRes.count ?? 0
 
-  const analytics = analyticsRes.data ?? []
+  const analytics = (analyticsRes.data ?? []) as unknown as { views: number; likes: number; comments: number; shares: number; saves: number }[]
   const totalViews    = analytics.reduce((s, a) => s + (a.views    ?? 0), 0)
   const totalLikes    = analytics.reduce((s, a) => s + (a.likes    ?? 0), 0)
   const totalComments = analytics.reduce((s, a) => s + (a.comments ?? 0), 0)
+  const totalShares   = analytics.reduce((s, a) => s + (a.shares   ?? 0), 0)
+  const totalSaves    = analytics.reduce((s, a) => s + (a.saves    ?? 0), 0)
   const engRate =
     totalViews > 0
-      ? (((totalLikes + totalComments) / totalViews) * 100).toFixed(1)
+      ? (((totalLikes + totalComments + totalShares + totalSaves) / totalViews) * 100).toFixed(1)
       : '—'
 
   const pipeline = pipelineRes.data ?? []
@@ -261,7 +263,7 @@ export default async function DashboardPage() {
           index={2}
           label="Engagement Rate"
           value={engRate === '—' ? '—' : `${engRate}%`}
-          sub="Likes + comments / views"
+          sub="Likes + comments + shares + saves / views"
         />
         <KpiCard
           index={3}
