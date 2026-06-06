@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import type { CalendarEvent } from '@/app/(dashboard)/calendar/page'
 import { updateCalendarEvent, deleteCalendarEvent } from '@/app/(dashboard)/edit-actions'
 
@@ -299,6 +300,8 @@ export function CalendarClient({
   earliestISO: string | null
   latestISO: string | null
 }) {
+  const searchParams = useSearchParams()
+  const linkedPost = searchParams.get('post')
   const [events, setEvents] = useState<CalendarEvent[]>(initialEvents)
   const today = todayISO()
   const lastEvent = events[events.length - 1]
@@ -396,8 +399,9 @@ export function CalendarClient({
     }
   }, [])
 
-  // Keep ref in sync
-  handleEventMoveRef.current = handleEventMove
+  useEffect(() => {
+    handleEventMoveRef.current = handleEventMove
+  }, [handleEventMove])
 
   // ── Document-level touch handlers (added once on mount) ───────────────────
   useEffect(() => {
@@ -490,6 +494,22 @@ export function CalendarClient({
 
   const selEv = selEvents[selEvIdx]
   const isEditingSelected = selEv && editingId === selEv.id
+
+  useEffect(() => {
+    if (!linkedPost) return
+    const match = events.find(ev => ev.postId === linkedPost)
+    if (!match) return
+    const [y, m] = match.eventDate.split('-').map(Number)
+    const idx = events.filter(ev => ev.eventDate === match.eventDate).findIndex(ev => ev.id === match.id)
+    queueMicrotask(() => {
+      setYear(y)
+      setMonth(m - 1)
+      setView('calendar')
+      setSelDate(match.eventDate)
+      setSelEvIdx(Math.max(0, idx))
+      setEditingId(match.id)
+    })
+  }, [linkedPost, events])
 
   return (
     <div>

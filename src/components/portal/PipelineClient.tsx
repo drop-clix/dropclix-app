@@ -612,6 +612,7 @@ const PAGE_SIZE = 10
 
 export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] }) {
   const searchParams = useSearchParams()
+  const linkedItemId = searchParams.get('item')
   const [items,        setItems       ] = useState<PipelineItem[]>(initialItems)
   const [filter,  setFilter ] = useState<FilterKey>(() => (searchParams.get('phase') as FilterKey) ?? 'ACTIVE')
   const [search,  setSearch ] = useState('')
@@ -676,6 +677,16 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
   }, [items, filter, platform, scope, from, to, search, sortKey, sortDir])
 
   const pagedRows = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [rows, page])
+
+  useEffect(() => {
+    if (!linkedItemId) return
+    const index = rows.findIndex(item => item.id === linkedItemId)
+    if (index < 0) return
+    queueMicrotask(() => {
+      setEditingId(linkedItemId)
+      setPage(Math.floor(index / PAGE_SIZE) + 1)
+    })
+  }, [linkedItemId, rows])
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))

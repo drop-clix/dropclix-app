@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react'
 import {
-  BarChart, Bar, LineChart, Line,
+  BarChart, Bar, LineChart, Line, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from 'recharts'
@@ -23,9 +23,10 @@ function pct(n: number): string {
   return n > 0 ? n.toFixed(1) + '%' : '—'
 }
 
-function calcER(w: WindowData): number {
+function calcER(w: WindowData, platform?: string[]): number {
   if (!w.views) return 0
-  return ((w.likes + w.comments + w.shares + w.saves) / w.views) * 100
+  const fourthMetric = platform?.includes('yt') ? w.followers : w.saves
+  return ((w.likes + w.comments + w.shares + fourthMetric) / w.views) * 100
 }
 
 type Tier = 'elite' | 'strong' | 'avg' | 'kill' | 'none'
@@ -220,7 +221,7 @@ function ReachByPostChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
     return sorted.map(r => ({
       name:  r.postId,
       views: r[win].views,
-      er:    calcER(r[win]),
+      er:    calcER(r[win], r.platform),
     }))
   }, [rows, win, mode])
 
@@ -284,8 +285,8 @@ function EROverTimeChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
       .sort((a, b) => a.date.localeCompare(b.date))
       .map(r => ({
         name: r.date.slice(5),   // "MM-DD"
-        er:   +calcER(r[win]).toFixed(1),
-        color: tierColor(calcER(r[win])),
+        er:   +calcER(r[win], r.platform).toFixed(1),
+        color: tierColor(calcER(r[win], r.platform)),
       })),
     [rows, win]
   )
@@ -333,6 +334,249 @@ function EROverTimeChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
   )
 }
 
+function chartGlow(platform: string): string {
+  if (platform === 'yt' || platform === 'lf') return '#4cc9ff'
+  if (platform === 'tt') return '#2dd4bf'
+  return '#c9a96e'
+}
+
+function ChartCard({
+  title,
+  children,
+  platform,
+}: {
+  title: string
+  children: React.ReactNode
+  platform: string
+}) {
+  const glow = chartGlow(platform)
+  const [full, setFull] = useState(false)
+  return (
+    <div
+      style={{
+        position: full ? 'fixed' : 'relative',
+        inset: full ? 32 : 'auto',
+        zIndex: full ? 800 : 1,
+        background: '#0a0a0a',
+        border: '1px solid #171717',
+        borderRadius: 6,
+        padding: 20,
+        boxShadow: `0 0 56px ${glow}1f, 0 18px 50px rgba(0,0,0,.35)`,
+        transition: 'transform .15s ease, border-color .15s ease',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = '#242424' }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#171717' }}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <p className="text-[8px] font-medium tracking-[.18em] uppercase" style={{ color: '#c9a96e' }}>{title}</p>
+          <span title="Hover for exact values. Click post points to open the snapshot." style={{ width: 16, height: 16, border: '1px solid #252525', color: '#555', borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>i</span>
+        </div>
+        <button
+          type="button"
+          aria-label="Expand chart"
+          onClick={() => setFull(v => !v)}
+          style={{ width: 28, height: 28, border: '1px solid #1f1f1f', borderRadius: 4, background: '#0d0d0d', color: '#c9a96e', cursor: 'pointer', transition: 'all .15s ease' }}
+        >
+          {full ? 'x' : '[]'}
+        </button>
+      </div>
+      <div style={{ height: full ? 'calc(100vh - 150px)' : 260 }}>{children}</div>
+    </div>
+  )
+}
+
+function PostSnapshot({
+  post,
+  win,
+  onClose,
+}: {
+  post: PostRow
+  win: WindowKey
+  onClose: () => void
+}) {
+  const metric = post[win]
+  const er = calcER(metric, post.platform)
+  const g = er >= 12 ? 'A' : er >= 7 ? 'B' : er >= 4 ? 'C' : er >= 2 ? 'D' : 'F'
+  const color = er >= 12 ? '#39ff88' : er >= 7 ? '#4cc9ff' : er >= 4 ? '#fbbf24' : '#ff3b5f'
+  const stats = [
+    metric.watch_pct >= 35 ? 'High watch rate' : '',
+    metric.shares >= 20 ? 'Above avg shares' : '',
+    er >= 12 ? 'Elite ER' : '',
+    metric.followers > 0 ? 'Follower gain' : '',
+  ].filter(Boolean).slice(0, 3)
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(0,0,0,.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={e => { if (e.currentTarget === e.target) onClose() }}>
+      <div style={{ width: 420, maxWidth: '100%', background: '#0a0a0a', border: '1px solid #242424', borderRadius: 8, boxShadow: '0 24px 80px rgba(0,0,0,.7)' }}>
+        <div style={{ padding: 22, borderBottom: '1px solid #171717' }}>
+          <p className="text-[10px] tracking-[.18em] uppercase mb-2" style={{ color: '#c9a96e' }}>{post.postId}</p>
+          <h3 className="font-jakarta font-light text-[22px]" style={{ color: '#f2ede4', lineHeight: 1.2 }}>{post.title}</h3>
+        </div>
+        <div style={{ padding: 22 }}>
+          <div className="flex items-center gap-3 mb-5">
+            <span className="font-jakarta text-[34px]" style={{ color }}>{g}</span>
+            <div>
+              <p className="text-[12px]" style={{ color: '#f2ede4' }}>{er.toFixed(1)}% ER</p>
+              <p className="text-[10px]" style={{ color: '#555' }}>{fmt(metric.views)} reach - {post.decision || 'No decision'}</p>
+            </div>
+          </div>
+          <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+            {[
+              ['Views', fmt(metric.views)],
+              ['Watch', pct(metric.watch_pct)],
+              ['Followers', fmt(metric.followers)],
+            ].map(([label, value]) => (
+              <div key={label} style={{ border: '1px solid #171717', borderRadius: 5, padding: 12 }}>
+                <p className="text-[8px] tracking-[.16em] uppercase mb-2" style={{ color: '#555' }}>{label}</p>
+                <p className="text-[16px]" style={{ color: '#f2ede4' }}>{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(stats.length ? stats : ['Needs stronger hook']).map(stat => (
+              <span key={stat} className="text-[9px] px-2 py-1" style={{ color: '#c9a96e', background: 'rgba(201,169,110,.08)', border: '1px solid rgba(201,169,110,.25)', borderRadius: 4 }}>{stat}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type ChartPostPoint = {
+  name: string
+  post: PostRow
+  views: number
+  er: number
+  date: string
+  color: string
+}
+
+function AdvancedAnalyticsCharts({
+  rows,
+  win,
+  platform,
+  onOpen,
+}: {
+  rows: PostRow[]
+  win: WindowKey
+  platform: string
+  onOpen: (post: PostRow) => void
+}) {
+  const [reachMode, setReachMode] = useState<'top' | 'last' | 'all'>('top')
+  const postPoints = useMemo<ChartPostPoint[]>(() => {
+    let source = rows.slice()
+    if (reachMode === 'top') source = source.sort((a, b) => b[win].views - a[win].views).slice(0, 10)
+    if (reachMode === 'last') source = source.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).reverse()
+    return source.map(post => {
+      const er = calcER(post[win], post.platform)
+      return { name: post.postId, post, views: post[win].views, er: +er.toFixed(1), date: post.date.slice(5), color: tierColor(er) }
+    })
+  }, [rows, win, reachMode])
+
+  const erPoints = useMemo(() => rows.slice().sort((a, b) => a.date.localeCompare(b.date)).map(post => {
+    const er = calcER(post[win], post.platform)
+    return { name: post.date.slice(5), post, er: +er.toFixed(1), color: tierColor(er) }
+  }), [rows, win])
+
+  const monthly = useMemo(() => {
+    const map = new Map<string, { month: string; posts: number; reach: number; followers: number }>()
+    for (const post of rows) {
+      const key = post.date.slice(0, 7)
+      const cur = map.get(key) ?? { month: key.slice(5), posts: 0, reach: 0, followers: 0 }
+      cur.posts += 1
+      cur.reach += post[win].views
+      cur.followers += post[win].followers
+      map.set(key, cur)
+    }
+    return [...map.values()].sort((a, b) => a.month.localeCompare(b.month)).map(m => ({
+      ...m,
+      growth: m.reach > 0 ? +((m.followers / m.reach) * 100).toFixed(2) : 0,
+    }))
+  }, [rows, win])
+
+  const pillars = useMemo(() => {
+    const map = new Map<string, { pillar: string; er: number; count: number }>()
+    for (const post of rows) {
+      const key = post.pillar || 'Other'
+      const cur = map.get(key) ?? { pillar: key, er: 0, count: 0 }
+      cur.er += calcER(post[win], post.platform)
+      cur.count += 1
+      map.set(key, cur)
+    }
+    return [...map.values()].map(p => ({ ...p, avgER: +(p.er / p.count).toFixed(1) })).sort((a, b) => b.avgER - a.avgER)
+  }, [rows, win])
+
+  return (
+    <div className="mt-8 flex flex-col gap-6">
+      <div className="grid gap-6 analytics-chart-row" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+        <ChartCard title="Monthly Views / Reach by Post" platform={platform}>
+          <div className="flex gap-1 mb-3">
+            {(['top', 'last', 'all'] as const).map(mode => (
+              <button key={mode} type="button" onClick={() => setReachMode(mode)} style={{ fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase', padding: '4px 9px', border: `1px solid ${reachMode === mode ? 'rgba(201,169,110,.45)' : '#1f1f1f'}`, color: reachMode === mode ? '#c9a96e' : '#444', background: reachMode === mode ? 'rgba(201,169,110,.08)' : '#0d0d0d', cursor: 'pointer' }}>
+                {mode === 'top' ? 'Top' : mode === 'last' ? 'Last 10' : 'All'}
+              </button>
+            ))}
+          </div>
+          <ResponsiveContainer width="100%" height="90%">
+            <BarChart data={postPoints} margin={{ top: 8, right: 8, bottom: 30, left: -12 }}>
+              <CartesianGrid vertical={false} stroke={CHART_GRID} />
+              <XAxis dataKey="name" tick={{ fill: CHART_TICK, fontSize: 8 }} tickLine={false} axisLine={false} angle={-45} textAnchor="end" interval={0} height={42} />
+              <YAxis tick={{ fill: CHART_TICK, fontSize: 9 }} tickLine={false} axisLine={false} tickFormatter={fmtViews} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="views" name="Reach" radius={[3, 3, 0, 0]} onClick={(data: any) => data?.post && onOpen(data.post)} cursor="pointer">
+                {postPoints.map((d, i) => <Cell key={i} fill={d.color} fillOpacity={0.78} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="ER% Over Time" platform={platform}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={erPoints} margin={{ top: 8, right: 8, bottom: 10, left: -12 }} onClick={(state: any) => state?.activePayload?.[0]?.payload?.post && onOpen(state.activePayload[0].payload.post)}>
+              <CartesianGrid vertical={false} stroke={CHART_GRID} />
+              <XAxis dataKey="name" tick={{ fill: CHART_TICK, fontSize: 8 }} tickLine={false} axisLine={false} interval={Math.max(0, Math.floor(erPoints.length / 8) - 1)} />
+              <YAxis tick={{ fill: CHART_TICK, fontSize: 9 }} tickLine={false} axisLine={false} tickFormatter={v => v + '%'} domain={[0, 'dataMax + 2']} />
+              <Tooltip content={<ChartTooltip />} />
+              <Line type="monotone" dataKey="er" name="ER%" stroke="#c9a96e" strokeWidth={1.6} dot={(props: any) => <circle key={props.payload.name} cx={props.cx} cy={props.cy} r={3} fill={props.payload.color} stroke="none" style={{ cursor: 'pointer' }} />} activeDot={{ r: 5, fill: '#c9a96e' }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      <div className="grid gap-6 analytics-chart-row" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+        <ChartCard title="Posts Volume vs Growth %" platform={platform}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={monthly} margin={{ top: 8, right: 8, bottom: 10, left: -12 }}>
+              <CartesianGrid vertical={false} stroke={CHART_GRID} />
+              <XAxis dataKey="month" tick={{ fill: CHART_TICK, fontSize: 9 }} tickLine={false} axisLine={false} />
+              <YAxis yAxisId="posts" tick={{ fill: CHART_TICK, fontSize: 9 }} tickLine={false} axisLine={false} />
+              <YAxis yAxisId="growth" orientation="right" tick={{ fill: CHART_TICK, fontSize: 9 }} tickLine={false} axisLine={false} tickFormatter={v => v + '%'} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar yAxisId="posts" dataKey="posts" name="Posts" fill="#c9a96e" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
+              <Line yAxisId="growth" type="monotone" dataKey="growth" name="Growth %" stroke="#39ff88" strokeWidth={1.7} dot={{ r: 3, fill: '#39ff88', strokeWidth: 0 }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Avg ER% by Content Pillar" platform={platform}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart layout="vertical" data={pillars} margin={{ top: 8, right: 28, bottom: 10, left: 20 }}>
+              <CartesianGrid horizontal={false} stroke={CHART_GRID} />
+              <XAxis type="number" tick={{ fill: CHART_TICK, fontSize: 9 }} tickLine={false} axisLine={false} tickFormatter={v => v + '%'} />
+              <YAxis type="category" dataKey="pillar" width={118} tick={{ fill: '#555', fontSize: 9 }} tickLine={false} axisLine={false} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="avgER" name="Avg ER" radius={[0, 3, 3, 0]}>
+                {pillars.map((p, i) => <Cell key={i} fill={tierColor(p.avgER)} fillOpacity={0.78} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 10
@@ -343,6 +587,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   const [sortKey, setSortKey] = useState<SortKey>('views')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page,    setPage   ] = useState(1)
+  const [snapshotPost, setSnapshotPost] = useState<PostRow | null>(null)
 
   const { platform, win, scope, from, to, setFilters } = usePortalFilters()
 
@@ -368,7 +613,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       const wa = a[wk]; const wb = b[wk]
       let av = 0, bv = 0
       if (sortKey === 'date')          { av = new Date(a.date).getTime(); bv = new Date(b.date).getTime() }
-      else if (sortKey === 'er')       { av = calcER(wa); bv = calcER(wb) }
+      else if (sortKey === 'er')       { av = calcER(wa, a.platform); bv = calcER(wb, b.platform) }
       else if (sortKey === 'views')    { av = wa.views;    bv = wb.views }
       else if (sortKey === 'likes')    { av = wa.likes;    bv = wb.likes }
       else if (sortKey === 'comments') { av = wa.comments; bv = wb.comments }
@@ -385,9 +630,9 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
     const total = rows.length
     const totalViews = rows.reduce((s, r) => s + r[activeWin].views, 0)
     const withViews  = rows.filter(r => r[activeWin].views > 0)
-    const avgER      = withViews.length ? withViews.reduce((s, r) => s + calcER(r[activeWin]), 0) / withViews.length : 0
+    const avgER      = withViews.length ? withViews.reduce((s, r) => s + calcER(r[activeWin], r.platform), 0) / withViews.length : 0
     const avgWatch   = withViews.length ? withViews.reduce((s, r) => s + r[activeWin].watch_pct, 0) / withViews.length : 0
-    const eliteCount = withViews.filter(r => calcER(r[activeWin]) >= 12).length
+    const eliteCount = withViews.filter(r => calcER(r[activeWin], r.platform) >= 12).length
     return { total, totalViews, avgER, avgWatch, eliteCount }
   }, [rows, activeWin])
 
@@ -417,14 +662,6 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
         <KpiCard label="Avg Engagement"   value={kpis.avgER > 0 ? kpis.avgER.toFixed(1) + '%' : '—'} sub="(Likes + cmts + shares + saves) / views" />
         <KpiCard label="Avg Watch %"      value={kpis.avgWatch > 0 ? kpis.avgWatch.toFixed(1) + '%' : '—'} sub={`${kpis.eliteCount} elite posts (ER ≥12%)`} />
       </div>
-
-      {/* ── Charts ──────────────────────────────────────────────── */}
-      {rows.length > 0 && (
-        <div className="grid gap-px mb-8" style={{ gridTemplateColumns: '1fr 1fr', background: '#141414' }}>
-          <ReachByPostChart rows={rows} win={activeWin} />
-          <EROverTimeChart rows={rows} win={activeWin} />
-        </div>
-      )}
 
       {/* ── Pillar filter ────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-2 mb-6">
@@ -517,7 +754,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
             ) : (
               pagedRows.map((post, i) => {
                 const w       = post[activeWin]
-                const er      = calcER(w)
+                const er      = calcER(w, post.platform)
                 const t       = tier(er, w.views > 0)
                 const ts      = TIER_STYLES[t]
                 const ds      = DECISION_STYLES[post.decision] ?? { color: '#444' }
@@ -633,8 +870,12 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
 
       <Paginator page={page} total={rows.length} perPage={PAGE_SIZE} onChange={setPage} />
 
+      {rows.length > 0 && (
+        <AdvancedAnalyticsCharts rows={rows} win={activeWin} platform={platform} onOpen={setSnapshotPost} />
+      )}
+
       <p className="mt-3 text-[9px]" style={{ color: '#1e1e1e' }}>
-        Click any metric cell to edit · ER = (likes + comments + shares + saves) / views
+        Click any metric cell to edit · IG ER uses saves · YT ER uses subscribers gained
       </p>
 
       {/* Tier legend */}
@@ -651,6 +892,10 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
           )
         })}
       </div>
+
+      {snapshotPost && (
+        <PostSnapshot post={snapshotPost} win={activeWin} onClose={() => setSnapshotPost(null)} />
+      )}
     </div>
   )
 }

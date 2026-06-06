@@ -1,451 +1,693 @@
 'use client'
 
-import { useMemo } from 'react'
-import { DashboardCharts } from '@/components/portal/DashboardCharts'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { PlatformPills, ScopeDropdown } from '@/components/portal/FilterBar'
-import { usePortalFilters, filterByPlatform, filterByScope, getScopeRange } from '@/hooks/usePortalFilters'
-import type { MonthlyPoint, PillarPoint } from '@/components/portal/DashboardCharts'
+import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import type { PlatformFilter } from '@/hooks/usePortalFilters'
 
-// ── Types ──────────────────────────────────────────────────────────────────
-
 export type RawDashPost = {
+  id: string
   post_id: string
   title: string
   platform: string[]
   date: string | null
   format: string | null
   pillar: string | null
+  hook: string | null
+  decision: string | null
   post_analytics: {
     metric_window: string
-    views: number
-    likes: number
-    comments: number
-    shares: number
-    saves: number
-    followers: number
+    platform: string | null
+    views: number | null
+    likes: number | null
+    comments: number | null
+    shares: number | null
+    saves: number | null
+    followers: number | null
+    watch_pct: number | null
   }[]
 }
 
 export type RawDashPipeline = {
-  status: string
+  id: string
+  post_id: string
+  title: string
   platform: string[]
+  status: string
+  scheduled_date: string | null
+  posted_at: string | null
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+export type RawDashCalendar = {
+  id: string
+  title: string
+  platform: string | null
+  event_date: string
+  notes: string | null
+}
+
+export type RawDashGoal = {
+  metric: string
+  target: number
+  period: string
+}
+
+type WindowKey = 'w24' | 'w3' | 'w7' | 'eom'
+type MetricSet = {
+  views: number
+  likes: number
+  comments: number
+  shares: number
+  saves: number
+  followers: number
+  watch_pct: number
+}
+type PostStat = RawDashPost & {
+  date: string
+  metric: MetricSet
+  er: number
+  platformKey: string
+}
+type Suggestion = { icon: string; headline: string; body: string; trigger: string }
+
+const EMPTY: MetricSet = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, followers: 0, watch_pct: 0 }
+const TIER_COLORS = { a: '#39ff88', b: '#4cc9ff', c: '#fbbf24', d: '#ff3b5f', f: '#ff3b5f' }
+const PLATFORM_COLORS: Record<string, string> = { ig: '#c9a96e', yt: '#4cc9ff', tt: '#2dd4bf', lf: '#4cc9ff' }
+const STATUS_COLORS: Record<string, string> = {
+  SCRIPTED: '#c9a96e',
+  PLANNED: '#4cc9ff',
+  FILMING: '#fbbf24',
+  EDITING: '#a78bfa',
+  REVIEWING: '#ff3b5f',
+  SCHEDULED: '#4cc9ff',
+  POSTED: '#39ff88',
+  CANCELLED: '#555',
+}
 
 function fmt(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K'
-  return n.toString()
+  if (!Number.isFinite(n)) return '-'
+  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return Math.round(n).toLocaleString()
 }
 
-const MONTH_LABELS: Record<string, string> = {
-  '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
-  '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
-  '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
+function pct(n: number): string {
+  return Number.isFinite(n) && n > 0 ? n.toFixed(1) + '%' : '-'
 }
 
-const STATUS_ORDER = ['PLANNED','SCRIPTED','FILMING','EDITING','REVIEWING','SCHEDULED','POSTED']
-const PLATFORM_LABELS: Record<string, string> = { ig: 'IG', tt: 'TT', yt: 'YT', lf: 'LF' }
-
-const GLOW: Record<string, string> = {
-  ig: '#c9a96e',
-  tt: '#a78bfa',
-  yt: '#4cc9ff',
-  lf: '#4cc9ff',
-  all: '#c9a96e',
+function getMetric(post: RawDashPost, win: WindowKey, platform: PlatformFilter): MetricSet {
+  const preferred = post.post_analytics.find(a =>
+    a.metric_window === win &&
+    (platform === 'lf' ? a.platform === 'yt' : platform === 'all' || !a.platform || a.platform === platform),
+  ) ?? post.post_analytics.find(a => a.metric_window === win)
+  if (!preferred) return { ...EMPTY }
+  return {
+    views: preferred.views ?? 0,
+    likes: preferred.likes ?? 0,
+    comments: preferred.comments ?? 0,
+    shares: preferred.shares ?? 0,
+    saves: preferred.saves ?? 0,
+    followers: preferred.followers ?? 0,
+    watch_pct: preferred.watch_pct ?? 0,
+  }
 }
 
-const PLATFORM_NAMES: Record<string, string> = {
-  ig: 'Instagram',
-  tt: 'TikTok',
-  yt: 'YouTube',
-  lf: 'Long-form',
-  all: 'All Platforms',
+function calcER(metric: MetricSet, platformKey: string): number {
+  if (!metric.views) return 0
+  const fourth = platformKey === 'yt' || platformKey === 'lf' ? metric.followers : metric.saves
+  return ((metric.likes + metric.comments + metric.shares + fourth) / metric.views) * 100
 }
 
-// ── SVG empty-state icons ─────────────────────────────────────────────────
+function grade(er: number): 'A' | 'B' | 'C' | 'D' | 'F' {
+  if (er >= 12) return 'A'
+  if (er >= 7) return 'B'
+  if (er >= 4) return 'C'
+  if (er >= 2) return 'D'
+  return 'F'
+}
 
-function IgEmptyIcon() {
+function parsePostId(notes: string | null): string | null {
+  if (!notes) return null
+  try {
+    const parsed = JSON.parse(notes) as { post_id?: string }
+    return parsed.post_id ?? null
+  } catch {
+    const match = notes.match(/#(?:ig|yt|tt|LF)?\d{4}/i)
+    return match?.[0] ?? null
+  }
+}
+
+function startOfWeek(base: Date): Date {
+  const d = new Date(base)
+  d.setHours(0, 0, 0, 0)
+  const day = d.getDay()
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day))
+  return d
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().split('T')[0]
+}
+
+function topStats(post: PostStat, averageER: number): string[] {
+  const stats: string[] = []
+  if (post.metric.watch_pct >= 35) stats.push('High watch rate')
+  if (post.metric.shares >= 20) stats.push('Above avg shares')
+  if (post.er >= 12) stats.push('Elite ER')
+  if (post.er >= averageER) stats.push('Above avg ER')
+  if (post.metric.followers > 0) stats.push('Follower gain')
+  return stats.slice(0, 3)
+}
+
+function fallbackSuggestions(posts: PostStat[], mode: string): Suggestion[] {
+  const sorted = [...posts].sort((a, b) => b.er - a.er)
+  const top = sorted[0]
+  const bottom = sorted[sorted.length - 1]
+  const avgER = posts.length ? posts.reduce((s, p) => s + p.er, 0) / posts.length : 0
+  const pillarMap = new Map<string, { er: number; count: number }>()
+  for (const p of posts) {
+    const key = p.pillar ?? 'Other'
+    const cur = pillarMap.get(key) ?? { er: 0, count: 0 }
+    pillarMap.set(key, { er: cur.er + p.er, count: cur.count + 1 })
+  }
+  const bestPillar = [...pillarMap.entries()]
+    .map(([pillar, v]) => ({ pillar, avg: v.er / v.count, count: v.count }))
+    .sort((a, b) => b.avg - a.avg)[0]
+
+  if (!top) {
+    return [{ icon: 'spark', headline: 'Import more data', body: 'No posts match this filter, so suggestions need fresh analytics first.', trigger: '0 matching posts' }]
+  }
+
+  return [
+    {
+      icon: 'trend',
+      headline: `Repeat ${top.pillar ?? 'the top pillar'}`,
+      body: `${top.title} is leading at ${top.er.toFixed(1)}% ER with ${fmt(top.metric.views)} reach.`,
+      trigger: `${top.post_id} is ${Math.max(0, top.er - avgER).toFixed(1)} pts above avg`,
+    },
+    {
+      icon: 'hook',
+      headline: `Use more ${top.hook ?? 'proven'} hooks`,
+      body: `${top.hook ?? 'The winning hook'} is attached to the strongest post in this view.`,
+      trigger: `${top.post_id} hook type: ${top.hook ?? 'unknown'}`,
+    },
+    {
+      icon: 'pillar',
+      headline: `Push ${bestPillar?.pillar ?? 'the best pillar'}`,
+      body: `${bestPillar?.pillar ?? 'Top pillar'} averages ${(bestPillar?.avg ?? 0).toFixed(1)}% ER across ${bestPillar?.count ?? 0} posts.`,
+      trigger: `Filtered avg is ${avgER.toFixed(1)}% ER`,
+    },
+    {
+      icon: 'repair',
+      headline: `Rewrite the weakest angle`,
+      body: `${bottom?.title ?? top.title} is dragging the set at ${(bottom?.er ?? top.er).toFixed(1)}% ER.`,
+      trigger: `${bottom?.post_id ?? top.post_id} is the low performer`,
+    },
+    ...(mode === 'projection' ? [{
+      icon: 'pace',
+      headline: 'Protect cadence',
+      body: `The last 10-post average is the basis for this projection; avoid changing multiple variables at once.`,
+      trigger: `${Math.min(10, posts.length)} posts in projection sample`,
+    }] : []),
+  ].slice(0, mode === 'projection' ? 5 : 4)
+}
+
+function CardShell({
+  children,
+  onClick,
+  className = '',
+}: {
+  children: React.ReactNode
+  onClick?: () => void
+  className?: string
+}) {
   return (
-    <svg width={48} height={48} viewBox="0 0 48 48" fill="none">
-      <rect x="4" y="4" width="40" height="40" rx="12" stroke="#2a2a2a" strokeWidth="2"/>
-      <circle cx="24" cy="24" r="9" stroke="#2a2a2a" strokeWidth="2"/>
-      <circle cx="35" cy="13" r="3" fill="#2a2a2a"/>
-    </svg>
-  )
-}
-function TtEmptyIcon() {
-  return (
-    <svg width={48} height={48} viewBox="0 0 48 48" fill="none">
-      <path d="M34 4c0 10 6 14 14 14v8c-5.6 0-10.4-2-14-5.2V38c0 7.2-5.6 13-12 13S10 45.2 10 38s5.6-13 12-13c1 0 2 .1 2.8.4V33C23.2 32.8 22.2 32.6 22 32.6c-3.2 0-6 3.2-6 6s2.8 6 6 6 6-3.2 6-6V0h6v4z" fill="#2a2a2a"/>
-    </svg>
-  )
-}
-function YtEmptyIcon() {
-  return (
-    <svg width={48} height={36} viewBox="0 0 48 36" fill="none">
-      <rect x="2" y="2" width="44" height="32" rx="8" stroke="#2a2a2a" strokeWidth="2"/>
-      <path d="M19 11L32 18L19 25V11Z" fill="#2a2a2a"/>
-    </svg>
-  )
-}
-
-const EMPTY_ICONS: Record<string, React.ReactNode> = {
-  ig: <IgEmptyIcon />,
-  tt: <TtEmptyIcon />,
-  yt: <YtEmptyIcon />,
-  lf: <YtEmptyIcon />,
-  all: <IgEmptyIcon />,
-}
-
-// ── Sub-components ─────────────────────────────────────────────────────────
-
-function KpiCard({ label, value, sub, index }: { label: string; value: string; sub: string; index: number }) {
-  return (
-    <div
-      className="kpi-bar relative overflow-hidden flex flex-col justify-between"
+    <button
+      type="button"
+      onClick={onClick}
+      className={className}
       style={{
+        width: '100%',
+        textAlign: 'left',
         background: '#0a0a0a',
-        border: '1px solid #141414',
-        padding: '28px 24px 24px',
-        animationDelay: `${index * 80}ms`,
+        border: '1px solid #171717',
+        borderRadius: 6,
+        padding: 24,
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'transform .15s ease, border-color .15s ease, background .15s ease',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.transform = onClick ? 'translateY(-2px)' : 'none'
+        e.currentTarget.style.borderColor = '#242424'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.transform = 'translateY(0)'
+        e.currentTarget.style.borderColor = '#171717'
       }}
     >
-      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#333' }}>
-        {label}
-      </p>
-      <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(32px,3.5vw,52px)', lineHeight: 1 }}>
-        {value}
-      </p>
-      <p className="text-[10px] font-light mt-2" style={{ color: '#333' }}>
-        {sub}
-      </p>
-    </div>
+      {children}
+    </button>
   )
 }
 
-function PlatformBadge({ platform }: { platform: string }) {
-  const label = PLATFORM_LABELS[platform] ?? platform.toUpperCase()
+function SparkIcon({ color = '#c9a96e' }: { color?: string }) {
   return (
-    <span
-      className="inline-block text-[7px] font-medium tracking-[.14em] px-1.5 py-0.5"
-      style={{ background: 'rgba(201,169,110,0.08)', color: '#c9a96e', border: '1px solid rgba(201,169,110,0.15)' }}
-    >
-      {label}
-    </span>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M8 1.5L9.6 6.4L14.5 8L9.6 9.6L8 14.5L6.4 9.6L1.5 8L6.4 6.4L8 1.5Z" stroke={color} strokeWidth="1.2" />
+    </svg>
   )
 }
 
-// ── Main ───────────────────────────────────────────────────────────────────
+function ArrowButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      style={{
+        width: 30,
+        height: 30,
+        borderRadius: 4,
+        border: '1px solid #1f1f1f',
+        background: '#0d0d0d',
+        color: '#c9a96e',
+        cursor: 'pointer',
+        transition: 'all .15s ease',
+      }}
+    >
+      {label === 'Previous week' ? '<' : '>'}
+    </button>
+  )
+}
 
 export function DashboardClient({
   rawPosts,
   rawPipeline,
+  rawCalendar,
+  rawGoals,
   clientName,
 }: {
   rawPosts: RawDashPost[]
   rawPipeline: RawDashPipeline[]
+  rawCalendar: RawDashCalendar[]
+  rawGoals: RawDashGoal[]
   clientName: string
 }) {
-  const { platform, scope, from, to, setFilters } = usePortalFilters()
+  const router = useRouter()
+  const { platform, win, scope, from, to, setFilters } = usePortalFilters()
+  const activeWin = win as WindowKey
+  const [kpiModes, setKpiModes] = useState({ followers: 0, reach: 0, er: 0 })
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [projectionPanel, setProjectionPanel] = useState<string | null>(null)
+  const [projectionSuggestions, setProjectionSuggestions] = useState<Suggestion[]>([])
+  const [loadingAi, setLoadingAi] = useState(false)
 
-  // Normalise: RawDashPost has platform[] + nullable date — wrap for filterByScope
-  type ScopedPost = RawDashPost & { date: string }
-  const postsWithDate = useMemo(
-    () => rawPosts.filter((p): p is RawDashPost & { date: string } => !!p.date),
+  const datedPosts = useMemo(
+    () => rawPosts.filter((p): p is RawDashPost & { date: string } => Boolean(p.date)),
     [rawPosts],
   )
 
-  // Apply platform filter
-  const platFiltered = useMemo(
-    () => filterByPlatform(postsWithDate, platform, p => p.format),
-    [postsWithDate, platform],
+  const scopedPosts = useMemo(() => {
+    const platformPosts = filterByPlatform(datedPosts, platform, p => p.format)
+    return filterByScope(platformPosts, scope, from, to)
+  }, [datedPosts, platform, scope, from, to])
+
+  const allPlatformPosts = useMemo(
+    () => filterByPlatform(datedPosts, platform, p => p.format),
+    [datedPosts, platform],
   )
 
-  // Apply scope filter
-  const filteredPosts = useMemo(
-    () => filterByScope(platFiltered as ScopedPost[], scope, from, to),
-    [platFiltered, scope, from, to],
-  )
+  const posts = useMemo<PostStat[]>(() => scopedPosts.map(post => {
+    const platformKey = platform === 'lf' ? 'lf' : post.platform[0] ?? platform
+    const metric = getMetric(post, activeWin, platform)
+    return { ...post, metric, er: calcER(metric, platformKey), platformKey }
+  }), [scopedPosts, activeWin, platform])
 
-  // Filter pipeline by platform
-  const filteredPipeline = useMemo(() => {
-    if (platform === 'all') return rawPipeline
-    if (platform === 'lf') return rawPipeline.filter(p => p.platform.includes('yt'))
-    return rawPipeline.filter(p => p.platform.includes(platform))
-  }, [rawPipeline, platform])
+  const allStats = useMemo<PostStat[]>(() => allPlatformPosts.map(post => {
+    const platformKey = platform === 'lf' ? 'lf' : post.platform[0] ?? platform
+    const metric = getMetric(post, activeWin, platform)
+    return { ...post, metric, er: calcER(metric, platformKey), platformKey }
+  }), [allPlatformPosts, activeWin, platform])
 
-  // ── KPIs ────────────────────────────────────────────────────────────────
+  const avgER = posts.length ? posts.reduce((s, p) => s + p.er, 0) / posts.length : 0
+  const postById = useMemo(() => new Map(allStats.map(p => [p.post_id, p])), [allStats])
+
   const kpis = useMemo(() => {
-    const totalPosts = filteredPosts.length
-    let totalViews = 0, likes = 0, comments = 0, shares = 0, saves = 0
-    for (const p of filteredPosts) {
-      const eom = p.post_analytics.find(a => a.metric_window === 'eom')
-      if (eom) {
-        totalViews += eom.views ?? 0
-        likes     += eom.likes ?? 0
-        comments  += eom.comments ?? 0
-        shares    += eom.shares ?? 0
-        saves     += eom.saves ?? 0
-      }
+    const totalReach = posts.reduce((s, p) => s + p.metric.views, 0)
+    const gained = posts.reduce((s, p) => s + p.metric.followers, 0)
+    const currentFollowers = allStats.reduce((s, p) => s + p.metric.followers, 0)
+    const withViews = posts.filter(p => p.metric.views > 0)
+    const watch = withViews.length ? withViews.reduce((s, p) => s + p.metric.watch_pct, 0) / withViews.length : 0
+    const er = withViews.length ? withViews.reduce((s, p) => s + p.er, 0) / withViews.length : 0
+    const top = withViews.slice().sort((a, b) => b.er - a.er)[0]
+    const conversion = totalReach ? (gained / totalReach) * 100 : 0
+    return { totalReach, gained, currentFollowers, watch, er, top, conversion, posts: posts.length }
+  }, [posts, allStats])
+
+  const last10 = useMemo(() => allStats.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10), [allStats])
+  const projections = useMemo(() => {
+    const spanDays = last10.length > 1
+      ? Math.max(7, (new Date(last10[0].date).getTime() - new Date(last10[last10.length - 1].date).getTime()) / 86400000)
+      : 30
+    const postsPer30 = last10.length ? Math.max(1, (last10.length / spanDays) * 30) : 0
+    const avgFollowers = last10.length ? last10.reduce((s, p) => s + p.metric.followers, 0) / last10.length : 0
+    const avgReach = last10.length ? last10.reduce((s, p) => s + p.metric.views, 0) / last10.length : 0
+    const avgProjectionER = last10.length ? last10.reduce((s, p) => s + p.er, 0) / last10.length : 0
+    return {
+      followers: Math.round(avgFollowers * postsPer30),
+      reach: Math.round(avgReach * postsPer30),
+      er: avgProjectionER,
+      sample: last10.length,
     }
-    const engRate = totalViews > 0
-      ? (((likes + comments + shares + saves) / totalViews) * 100).toFixed(1)
-      : '—'
+  }, [last10])
 
-    const activePipeline = filteredPipeline.filter(
-      p => !['POSTED','CANCELLED'].includes(p.status)
-    ).length
-
-    return { totalPosts, totalViews, engRate, activePipeline }
-  }, [filteredPosts, filteredPipeline])
-
-  // ── Pipeline status strip ────────────────────────────────────────────────
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const p of filteredPipeline) counts[p.status] = (counts[p.status] ?? 0) + 1
-    return counts
-  }, [filteredPipeline])
-
-  // ── Charts ────────────────────────────────────────────────────────────────
-  const { monthly, pillars } = useMemo(() => {
-    const monthMap = new Map<string, { posts: number; views: number; followers: number; totalER: number; erCount: number }>()
-    const pillarMap = new Map<string, { totalER: number; count: number }>()
-
-    for (const p of filteredPosts) {
-      const mk = p.date!.slice(0, 7)
-      if (!monthMap.has(mk)) monthMap.set(mk, { posts: 0, views: 0, followers: 0, totalER: 0, erCount: 0 })
-      const m = monthMap.get(mk)!
-      const eom = p.post_analytics.find(a => a.metric_window === 'eom')
-      m.posts++
-      if (eom) {
-        m.views += eom.views ?? 0
-        m.followers += eom.followers ?? 0
-        const er = (eom.views ?? 0) > 0
-          ? ((eom.likes + eom.comments + eom.shares + eom.saves) / eom.views) * 100
-          : 0
-        m.totalER += er; m.erCount++
-      }
-
-      const pl = p.pillar ?? '—'
-      if (!pillarMap.has(pl)) pillarMap.set(pl, { totalER: 0, count: 0 })
-      const pm = pillarMap.get(pl)!
-      const eom2 = p.post_analytics.find(a => a.metric_window === 'eom')
-      if (eom2 && (eom2.views ?? 0) > 0) {
-        const er = ((eom2.likes + eom2.comments + eom2.shares + eom2.saves) / eom2.views) * 100
-        pm.totalER += er; pm.count++
-      }
-    }
-
-    const monthly: MonthlyPoint[] = [...monthMap.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([mk, m]) => {
-        const mo = mk.split('-')[1]
-        return {
-          month: MONTH_LABELS[mo] ?? mo,
-          posts: m.posts,
-          views: m.views,
-          followers: m.followers,
-          avgER: m.erCount > 0 ? +(m.totalER / m.erCount).toFixed(1) : 0,
-        }
+  const filteredPipeline = useMemo(() => {
+    let out = rawPipeline
+    if (platform === 'lf') out = out.filter(i => i.platform.includes('yt'))
+    else out = filterByPlatform(out, platform)
+    return out
+      .filter(i => {
+        const date = i.posted_at?.split('T')[0] ?? i.scheduled_date ?? ''
+        if (scope === 'all') return true
+        return filterByScope([{ ...i, date }], scope, from, to).length > 0
       })
+      .sort((a, b) => {
+        const ad = a.posted_at ?? a.scheduled_date ?? ''
+        const bd = b.posted_at ?? b.scheduled_date ?? ''
+        return bd.localeCompare(ad)
+      })
+  }, [rawPipeline, platform, scope, from, to])
 
-    const pillars: PillarPoint[] = [...pillarMap.entries()]
-      .filter(([, v]) => v.count > 0)
-      .map(([pillar, v]) => ({
-        pillar,
-        avgER: +(v.totalER / v.count).toFixed(1),
-        count: v.count,
-      }))
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart)
+    d.setDate(weekStart.getDate() + i)
+    return d
+  }), [weekStart])
 
-    return { monthly, pillars }
-  }, [filteredPosts])
+  const weekEvents = useMemo(() => {
+    const fromDay = isoDate(weekDays[0])
+    const toDay = isoDate(weekDays[6])
+    return rawCalendar
+      .filter(e => e.event_date >= fromDay && e.event_date <= toDay)
+      .filter(e => {
+        if (platform === 'all') return true
+        if (platform === 'lf') return e.platform === 'yt'
+        return e.platform === platform
+      })
+      .map(e => ({ ...e, postId: parsePostId(e.notes) }))
+  }, [rawCalendar, weekDays, platform])
 
-  // ── Recent posts ──────────────────────────────────────────────────────────
-  const recentPosts = useMemo(
-    () => [...filteredPosts]
-      .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
-      .slice(0, 8),
-    [filteredPosts],
-  )
+  const goalsSummary = useMemo(() => rawGoals.map(g => `${g.period} ${g.metric}: ${g.target}`).join(', '), [rawGoals])
 
-  const glowColor = GLOW[platform] ?? '#c9a96e'
-  const hasData = filteredPosts.length > 0
+  async function loadSuggestions(mode: 'monthly' | 'projection', projectionMetric?: string) {
+    const contextPosts = (mode === 'projection' ? last10 : posts).slice(0, 20).map(p => ({
+      id: p.post_id,
+      title: p.title,
+      platform: p.platformKey,
+      pillar: p.pillar,
+      hook: p.hook,
+      reach: p.metric.views,
+      followers: p.metric.followers,
+      watch: p.metric.watch_pct,
+      er: +p.er.toFixed(2),
+      decision: p.decision,
+    }))
+    if (mode === 'projection') setLoadingAi(true)
+    try {
+      const res = await fetch('/api/ai-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          platform,
+          scope,
+          projectionMetric,
+          goalsSummary,
+          posts: contextPosts,
+        }),
+      })
+      const json = await res.json() as { suggestions?: Suggestion[] }
+      const next = json.suggestions?.length ? json.suggestions : fallbackSuggestions(mode === 'projection' ? last10 : posts, mode)
+      if (mode === 'projection') setProjectionSuggestions(next)
+      else setSuggestions(next.slice(0, 4))
+    } catch {
+      const next = fallbackSuggestions(mode === 'projection' ? last10 : posts, mode)
+      if (mode === 'projection') setProjectionSuggestions(next)
+      else setSuggestions(next.slice(0, 4))
+    } finally {
+      setLoadingAi(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadSuggestions('monthly')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platform, scope, from, to, win, rawPosts.length])
+
+  function openProjection(metric: string) {
+    setProjectionPanel(metric)
+    setProjectionSuggestions(fallbackSuggestions(last10, 'projection'))
+    void loadSuggestions('projection', metric)
+  }
+
+  const selectedPost = selectedPostId ? postById.get(selectedPostId) ?? null : null
 
   return (
-    <div className="p-10 max-w-[1200px]">
-
-      {/* Header */}
-      <div className="mb-10" style={{ borderBottom: '1px solid #141414', paddingBottom: 28 }}>
-        <p
-          className="text-[9px] font-medium tracking-[.26em] uppercase mb-2 flex items-center gap-3"
-          style={{ color: '#c9a96e' }}
-        >
+    <div className="p-10 max-w-[1320px]">
+      <div className="mb-8" style={{ borderBottom: '1px solid #141414', paddingBottom: 28 }}>
+        <p className="text-[9px] font-medium tracking-[.26em] uppercase mb-2 flex items-center gap-3" style={{ color: '#c9a96e' }}>
           <span style={{ display: 'block', width: 20, height: 1, background: '#c9a96e' }} />
           Overview
         </p>
-        <h1
-          className="font-jakarta font-light"
-          style={{ fontSize: 'clamp(28px,3vw,44px)', color: '#f2ede4', lineHeight: 1.06 }}
-        >
+        <h1 className="font-jakarta font-light" style={{ fontSize: 'clamp(28px,3vw,44px)', color: '#f2ede4', lineHeight: 1.06 }}>
           Dashboard
         </h1>
-        <p className="text-[12px] font-light mt-1" style={{ color: '#444' }}>
-          Welcome back, {clientName}.
-        </p>
+        <p className="text-[12px] font-light mt-1" style={{ color: '#444' }}>Welcome back, {clientName}.</p>
       </div>
 
-      {/* Filter bar: 4 platform pills + scope dropdown */}
-      <div
-        style={{
-          height: 52,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          borderBottom: '1px solid #141414',
-          marginBottom: 24,
-        }}
-      >
+      <div className="mb-8 flex items-center gap-3 flex-wrap" style={{ minHeight: 52, borderBottom: '1px solid #141414', paddingBottom: 18 }}>
         <PlatformPills platform={platform} onChange={p => setFilters({ platform: p })} />
-        <div style={{ width: 1, height: 22, background: '#1a1a1a', flexShrink: 0 }} />
+        <div style={{ width: 1, height: 22, background: '#1a1a1a' }} />
         <ScopeDropdown scope={scope} onChange={s => setFilters({ scope: s })} />
       </div>
 
-      {/* Empty state */}
-      {!hasData && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '80px 40px',
-            gap: 16,
-          }}
-        >
-          <div style={{ opacity: 0.3 }}>{EMPTY_ICONS[platform]}</div>
-          <p
-            className="font-jakarta font-light"
-            style={{ fontSize: 16, color: '#2a2a2a', textAlign: 'center', lineHeight: 1.6 }}
-          >
-            No {PLATFORM_NAMES[platform] ?? 'platform'} data yet
+      <section className="grid gap-6 mb-8 dashboard-kpis" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+        <CardShell onClick={() => setKpiModes(m => ({ ...m, followers: m.followers ? 0 : 1 }))}>
+          <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#555' }}>{kpiModes.followers ? 'Conversion Rate' : 'Followers'}</p>
+          <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(30px,3vw,48px)', lineHeight: 1 }}>
+            {kpiModes.followers ? pct(kpis.conversion) : fmt(kpis.currentFollowers)}
           </p>
-          <p style={{ fontSize: 12, color: '#1e1e1e' }}>
-            Import posts via Studio to get started.
+          <p className="text-[10px] mt-3" style={{ color: kpis.gained >= 0 ? '#39ff88' : '#ff3b5f' }}>
+            {kpis.gained >= 0 ? '+' : ''}{fmt(kpis.gained)} this period
           </p>
+        </CardShell>
+        <CardShell onClick={() => setKpiModes(m => ({ ...m, reach: m.reach ? 0 : 1 }))}>
+          <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#555' }}>{kpiModes.reach ? 'Avg Watch %' : 'Total Reach'}</p>
+          <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(30px,3vw,48px)', lineHeight: 1 }}>
+            {kpiModes.reach ? pct(kpis.watch) : fmt(kpis.totalReach)}
+          </p>
+          <p className="text-[10px] mt-3" style={{ color: '#444' }}>{activeWin.toUpperCase()} window</p>
+        </CardShell>
+        <CardShell onClick={() => setKpiModes(m => ({ ...m, er: m.er ? 0 : 1 }))}>
+          <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#555' }}>{kpiModes.er ? 'Top Video' : 'Avg ER %'}</p>
+          <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: kpiModes.er ? 'clamp(18px,1.6vw,25px)' : 'clamp(30px,3vw,48px)', lineHeight: 1.1 }}>
+            {kpiModes.er ? (kpis.top?.title ?? '-') : pct(kpis.er)}
+          </p>
+          <p className="text-[10px] mt-3" style={{ color: '#444' }}>{kpiModes.er ? `${pct(kpis.top?.er ?? 0)} ER` : `${posts.length} posts in view`}</p>
+        </CardShell>
+        <CardShell>
+          <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#555' }}>Posts</p>
+          <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(30px,3vw,48px)', lineHeight: 1 }}>{fmt(kpis.posts)}</p>
+          <p className="text-[10px] mt-3" style={{ color: '#444' }}>Published this period</p>
+        </CardShell>
+      </section>
+
+      <section className="mb-8">
+        <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3" style={{ color: '#c9a96e' }}>
+          <span style={{ width: 16, height: 1, background: '#c9a96e' }} />
+          30 Day Projections
+        </p>
+        <div className="grid gap-6 dashboard-projections" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+          {[
+            ['Projected Follower Gain', `+${fmt(projections.followers)}`, 'followers'],
+            ['Projected Reach', fmt(projections.reach), 'reach'],
+            ['Projected Avg ER %', pct(projections.er), 'er'],
+          ].map(([label, value, key]) => (
+            <CardShell key={key} onClick={() => openProjection(key)}>
+              <div className="flex items-center justify-between mb-5">
+                <p className="text-[8px] font-medium tracking-[.2em] uppercase" style={{ color: '#555' }}>{label}</p>
+                <SparkIcon />
+              </div>
+              <p className="font-jakarta font-light" style={{ color: '#f2ede4', fontSize: 'clamp(26px,2.8vw,42px)', lineHeight: 1 }}>{value}</p>
+              <p className="text-[10px] mt-3" style={{ color: '#444' }}>Last {projections.sample} posts average</p>
+            </CardShell>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-6 mb-8 dashboard-snapshots" style={{ gridTemplateColumns: 'minmax(0, 1.35fr) minmax(320px, .65fr)' }}>
+        <div style={{ background: '#0a0a0a', border: '1px solid #171717', borderRadius: 6, padding: 24 }}>
+          <div className="flex items-center justify-between mb-5">
+            <p className="text-[9px] font-medium tracking-[.22em] uppercase" style={{ color: '#c9a96e' }}>7 Day Calendar</p>
+            <div className="flex gap-2">
+              <ArrowButton label="Previous week" onClick={() => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n })} />
+              <ArrowButton label="Next week" onClick={() => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n })} />
+            </div>
+          </div>
+          <div className="grid gap-3 dashboard-calendar" style={{ gridTemplateColumns: 'repeat(7, minmax(104px, 1fr))', overflowX: 'auto' }}>
+            {weekDays.map(day => {
+              const dayIso = isoDate(day)
+              const events = weekEvents.filter(e => e.event_date === dayIso)
+              return (
+                <div key={dayIso} style={{ minHeight: 154, background: '#070707', border: '1px solid #141414', borderRadius: 5, padding: 10 }}>
+                  <p className="text-[8px] tracking-[.16em] uppercase" style={{ color: '#555' }}>{day.toLocaleDateString('en-US', { weekday: 'short' })}</p>
+                  <p className="font-jakarta text-[20px] mb-3" style={{ color: '#f2ede4' }}>{day.getDate()}</p>
+                  <div className="flex flex-col gap-2">
+                    {events.slice(0, 2).map(event => {
+                      const p = event.platform ?? 'ig'
+                      return (
+                        <button
+                          key={event.id}
+                          type="button"
+                          onClick={() => setSelectedPostId(event.postId)}
+                          style={{
+                            border: `1px solid ${PLATFORM_COLORS[p] ?? '#555'}66`,
+                            borderLeft: `3px solid ${PLATFORM_COLORS[p] ?? '#555'}`,
+                            color: '#f2ede4',
+                            background: '#0d0d0d',
+                            borderRadius: 4,
+                            padding: '7px 8px',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: 10,
+                            lineHeight: 1.25,
+                            transition: 'all .15s ease',
+                          }}
+                        >
+                          <span className="block overflow-hidden" style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{event.title}</span>
+                        </button>
+                      )
+                    })}
+                    {events.length > 2 && <span className="text-[10px]" style={{ color: '#555' }}>+{events.length - 2} more</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div style={{ background: '#0a0a0a', border: '1px solid #171717', borderRadius: 6, padding: 24 }}>
+          <div className="flex items-center justify-between mb-5">
+            <p className="text-[9px] font-medium tracking-[.22em] uppercase" style={{ color: '#c9a96e' }}>Pipeline Snapshot</p>
+            <span className="text-[10px]" style={{ color: '#444' }}>{filteredPipeline.length} items</span>
+          </div>
+          <div style={{ maxHeight: 384, overflowY: 'auto', paddingRight: 4 }}>
+            {filteredPipeline.slice(0, 18).map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => router.push(`/pipeline?phase=${encodeURIComponent(item.status)}&item=${encodeURIComponent(item.id)}&platform=${platform}&scope=${scope}`)}
+                className="flex items-center gap-3"
+                style={{
+                  width: '100%',
+                  padding: '12px 0',
+                  border: 'none',
+                  borderBottom: '1px solid #121212',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <span className="text-[10px] font-medium" style={{ color: '#c9a96e', fontFamily: 'monospace', width: 70 }}>{item.post_id}</span>
+                <span className="text-[12px] flex-1 overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{item.title}</span>
+                <span className="text-[7px] font-medium tracking-[.12em] uppercase px-2 py-1" style={{ color: STATUS_COLORS[item.status] ?? '#555', border: `1px solid ${(STATUS_COLORS[item.status] ?? '#555')}55`, background: '#080808' }}>{item.status}</span>
+              </button>
+            ))}
+            {!filteredPipeline.length && <p className="text-[11px] py-10 text-center" style={{ color: '#333' }}>No pipeline items in this view.</p>}
+          </div>
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 8 }}>
+        <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3" style={{ color: '#c9a96e' }}>
+          <span style={{ width: 16, height: 1, background: '#c9a96e' }} />
+          AI Suggestions
+        </p>
+        <div className="grid gap-6 dashboard-suggestions" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+          {(suggestions.length ? suggestions : fallbackSuggestions(posts, 'monthly')).slice(0, 4).map((s, i) => (
+            <CardShell key={`${s.headline}-${i}`}>
+              <div className="flex items-center gap-2 mb-4"><SparkIcon /><p className="text-[8px] tracking-[.18em] uppercase" style={{ color: '#555' }}>{s.icon}</p></div>
+              <h3 className="font-jakarta font-light text-[18px] mb-3" style={{ color: '#f2ede4', lineHeight: 1.2 }}>{s.headline}</h3>
+              <p className="text-[12px] mb-4" style={{ color: '#777', lineHeight: 1.55 }}>{s.body}</p>
+              <p className="text-[10px]" style={{ color: '#c9a96e' }}>{s.trigger}</p>
+            </CardShell>
+          ))}
+        </div>
+      </section>
+
+      {selectedPost && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={e => { if (e.currentTarget === e.target) setSelectedPostId(null) }}>
+          <div style={{ width: 420, maxWidth: '100%', background: '#0a0a0a', border: '1px solid #242424', borderRadius: 8, boxShadow: '0 24px 80px rgba(0,0,0,.7)' }}>
+            <button type="button" onClick={() => router.push(`/calendar?post=${encodeURIComponent(selectedPost.post_id)}`)} style={{ width: '100%', padding: '20px 22px', border: 'none', borderBottom: '1px solid #171717', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+              <p className="text-[10px] tracking-[.18em] uppercase mb-2" style={{ color: '#c9a96e' }}>{selectedPost.post_id} - {selectedPost.platformKey.toUpperCase()}</p>
+              <h3 className="font-jakarta font-light text-[22px]" style={{ color: '#f2ede4', lineHeight: 1.2 }}>{selectedPost.title}</h3>
+            </button>
+            <div style={{ padding: 22 }}>
+              <div className="flex items-center gap-3 mb-5">
+                <span className="font-jakarta text-[34px]" style={{ color: TIER_COLORS[grade(selectedPost.er).toLowerCase() as keyof typeof TIER_COLORS] }}>{grade(selectedPost.er)}</span>
+                <div>
+                  <p className="text-[12px]" style={{ color: '#f2ede4' }}>{pct(selectedPost.er)} ER</p>
+                  <p className="text-[10px]" style={{ color: '#555' }}>{fmt(selectedPost.metric.views)} reach - {selectedPost.decision ?? 'No decision'}</p>
+                </div>
+              </div>
+              <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                {[
+                  ['Views', fmt(selectedPost.metric.views)],
+                  ['Watch', pct(selectedPost.metric.watch_pct)],
+                  ['Followers', fmt(selectedPost.metric.followers)],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ border: '1px solid #171717', borderRadius: 5, padding: 12 }}>
+                    <p className="text-[8px] tracking-[.16em] uppercase mb-2" style={{ color: '#555' }}>{label}</p>
+                    <p className="text-[16px]" style={{ color: '#f2ede4' }}>{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {topStats(selectedPost, avgER).map(stat => (
+                  <span key={stat} className="text-[9px] px-2 py-1" style={{ color: '#c9a96e', background: 'rgba(201,169,110,.08)', border: '1px solid rgba(201,169,110,.25)', borderRadius: 4 }}>{stat}</span>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {hasData && (
-        <>
-          {/* KPI Cards */}
-          <div className="grid gap-px mb-px" style={{ gridTemplateColumns: 'repeat(4, 1fr)', background: '#141414' }}>
-            <KpiCard index={0} label="Total Posts" value={fmt(kpis.totalPosts)} sub="Filtered posts" />
-            <KpiCard index={1} label="Total Views" value={kpis.totalViews > 0 ? fmt(kpis.totalViews) : '—'} sub="End-of-month windows" />
-            <KpiCard index={2} label="Engagement Rate" value={kpis.engRate === '—' ? '—' : `${kpis.engRate}%`} sub="Likes + comments + shares + saves / views" />
-            <KpiCard index={3} label="Pipeline Active" value={fmt(kpis.activePipeline)} sub={`${filteredPipeline.length} total items`} />
-          </div>
-
-          {/* Pipeline Status Strip */}
-          {filteredPipeline.length > 0 && (
-            <div className="flex gap-px mb-10" style={{ background: '#141414' }}>
-              {STATUS_ORDER.map(status => {
-                const count = statusCounts[status] ?? 0
-                const pct = filteredPipeline.length > 0 ? Math.round((count / filteredPipeline.length) * 100) : 0
-                return (
-                  <div key={status} className="flex flex-col items-center py-4 flex-1" style={{ background: '#080808', minWidth: 0 }}>
-                    <p className="font-jakarta font-light text-[18px] mb-1" style={{ color: count > 0 ? '#c9a96e' : '#1a1a1a' }}>
-                      {count}
-                    </p>
-                    <p className="text-[7px] tracking-[.14em] uppercase text-center" style={{ color: '#2a2a2a' }}>
-                      {status}
-                    </p>
-                    {count > 0 && <p className="text-[7px] mt-0.5" style={{ color: '#1e1e1e' }}>{pct}%</p>}
-                  </div>
-                )
-              })}
+      {projectionPanel && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'rgba(0,0,0,.55)' }} onClick={e => { if (e.currentTarget === e.target) setProjectionPanel(null) }}>
+          <aside style={{ marginLeft: 'auto', width: 420, maxWidth: '100%', height: '100%', background: '#0a0a0a', borderLeft: '1px solid #242424', padding: 28, boxShadow: '-24px 0 70px rgba(0,0,0,.55)', overflowY: 'auto' }}>
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <p className="text-[9px] tracking-[.22em] uppercase mb-2" style={{ color: '#c9a96e' }}>AI Suggestions</p>
+                <h2 className="font-jakarta font-light text-[28px]" style={{ color: '#f2ede4' }}>{projectionPanel}</h2>
+              </div>
+              <button type="button" onClick={() => setProjectionPanel(null)} style={{ width: 32, height: 32, border: '1px solid #1f1f1f', background: '#0d0d0d', color: '#c9a96e', cursor: 'pointer', borderRadius: 4 }}>x</button>
             </div>
-          )}
-
-          {/* Charts */}
-          {monthly.length > 0 && (
-            <div className="mt-10 mb-px">
-              <p
-                className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3"
-                style={{ color: '#c9a96e' }}
-              >
-                <span style={{ display: 'block', width: 16, height: 1, background: '#c9a96e' }} />
-                Performance Trends
-              </p>
-              <DashboardCharts monthly={monthly} pillars={pillars} glowColor={glowColor} />
+            {loadingAi && <p className="text-[11px] mb-4" style={{ color: '#555' }}>Refreshing Claude suggestions...</p>}
+            <div className="flex flex-col gap-4">
+              {projectionSuggestions.map((s, i) => (
+                <div key={`${s.headline}-${i}`} style={{ border: '1px solid #171717', borderRadius: 6, padding: 18, background: '#070707' }}>
+                  <div className="flex gap-2 items-center mb-3"><SparkIcon /><p className="text-[8px] tracking-[.18em] uppercase" style={{ color: '#555' }}>{s.icon}</p></div>
+                  <h3 className="font-jakarta font-light text-[18px] mb-2" style={{ color: '#f2ede4' }}>{s.headline}</h3>
+                  <p className="text-[12px] mb-3" style={{ color: '#777', lineHeight: 1.55 }}>{s.body}</p>
+                  <p className="text-[10px]" style={{ color: '#c9a96e' }}>{s.trigger}</p>
+                </div>
+              ))}
             </div>
-          )}
-
-          {/* Recent Posts */}
-          <div className="mt-10" style={{ border: '1px solid #141414' }}>
-            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #141414' }}>
-              <p className="text-[9px] font-medium tracking-[.22em] uppercase" style={{ color: '#444' }}>
-                Recent Content
-              </p>
-              <p className="text-[9px] tracking-[.12em] uppercase" style={{ color: '#2a2a2a' }}>
-                {recentPosts.length} shown
-              </p>
-            </div>
-            <table className="w-full" style={{ borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #141414' }}>
-                  {['ID', 'Title', 'Platform', 'Date'].map(h => (
-                    <th key={h} className="text-left px-6 py-3 text-[8px] font-medium tracking-[.18em] uppercase" style={{ color: '#2a2a2a' }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {recentPosts.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="text-center py-12 text-[11px]" style={{ color: '#2a2a2a' }}>
-                      No posts
-                    </td>
-                  </tr>
-                ) : (
-                  recentPosts.map((post, i) => (
-                    <tr
-                      key={post.post_id}
-                      style={{
-                        borderBottom: i < recentPosts.length - 1 ? '1px solid #0e0e0e' : 'none',
-                        background: i % 2 === 0 ? '#060606' : '#080808',
-                      }}
-                    >
-                      <td className="px-6 py-4">
-                        <span className="text-[10px] font-medium tracking-[.1em]" style={{ color: '#c9a96e' }}>
-                          {post.post_id}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-[12px] font-light" style={{ color: '#f2ede4' }}>
-                          {post.title}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex gap-1">
-                          {(post.platform ?? []).map(p => <PlatformBadge key={p} platform={p} />)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-[11px] font-light" style={{ color: '#444' }}>
-                          {post.date ?? '—'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
+          </aside>
+        </div>
       )}
     </div>
   )

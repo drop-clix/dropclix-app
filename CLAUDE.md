@@ -154,6 +154,22 @@ Angles page converted from pure server component to server-fetch + client delega
 - **Tailwind 4 theme**: Colors in `globals.css` `@theme {}` block, not `tailwind.config.js`.
 - **Port**: Dev server falls back; check `.next/dev/logs/next-development.log` for actual port.
 
+### Session 22 ✅ — Dashboard overhaul + Analytics chart migration
+
+**Dashboard:** Removed all dashboard graphs, the status-strip boxes below the KPI row, and the recent content table. `DashboardClient.tsx` now has 4 top KPI cards: Followers/Conversion toggle, Reach/Watch toggle, ER/Top Video toggle, and static Posts. All cards react to platform + scope filters.
+
+**Projections:** Added 3 projection cards based on the selected platform's last 10 posts: follower gain, reach, and avg ER. Clicking a projection opens a right-side AI Suggestions drawer.
+
+**AI suggestions:** Added `src/app/api/ai-suggestions/route.ts`, using `@anthropic-ai/sdk` with model `claude-sonnet-4-20250514` when `ANTHROPIC_API_KEY` is set. If the key is missing, the route returns deterministic data-specific fallback suggestions that still cite post IDs, pillars, hooks, and metrics.
+
+**Dashboard snapshots:** Added compact 7-day calendar and pipeline snapshot. Calendar event pills open a post snapshot with grade, stats, and top signals. Snapshot header links to `/calendar?post=<post_id>`. Pipeline snapshot links to `/pipeline?phase=<status>&item=<uuid>`; `PipelineClient` expands the linked item.
+
+**Analytics charts:** Removed dashboard charts from the dashboard surface. Analytics now renders 4 chart cards below the table: Monthly Views / Reach by Post, ER% Over Time, Posts Volume vs Growth %, and Avg ER% by Content Pillar. Chart cards use dark backgrounds, platform glow only, info/expand controls, hover tooltips, and post snapshot clicks for post-level chart points.
+
+**Data cleanup:** Added `scripts/normalize-pipeline-post-ids.mjs`. Ran it against Supabase: normalized 48 `pipeline_items.post_id` values to `#ig0001`, `#yt0001`, `#tt0001`, or `#LF0001` style. Extended the script to normalize matching `calendar_events.notes.post_id` values; fixed 9 calendar rows. Final audit: 154 pipeline rows scanned, 0 remaining changes; 111 calendar rows scanned, 0 remaining changes.
+
+**Verification:** `npm run build` passes with zero TypeScript errors. Browser verified KPI toggles, projection drawer, dashboard calendar popup, dashboard pipeline deep link, Analytics chart labels/toggle, and chart point post snapshot. `npm run lint` still fails on pre-existing repo lint rules in older files; build is clean.
+
 ## Nick client
 
 - **Email**: nick@spartasolar.com | **Password**: `DropClix2026!` *(temp — change after first login)*

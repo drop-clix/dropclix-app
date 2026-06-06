@@ -59,9 +59,19 @@ All 43 Nick/Sparta Solar post IDs renamed from `#0xxx` to `#igNNNN` sequential f
 | *(new — inserted Session 14f)* | #ig0044 | 2026-02-26 |
 
 ## Untouched IDs
-- Pipeline-only items (`#0021`, `#0022`, `#0025`, etc.) — 50 IDs with no corresponding post
 - Script Lab items: `SL001`–`SL005`
 - `post_analytics.post_id` — UUID FK to `posts.id`, unaffected by text ID changes
 
+## Session 22 pipeline/calendar cleanup
+
+Ran `scripts/normalize-pipeline-post-ids.mjs --run` on 2026-06-06.
+
+- `pipeline_items`: 154 rows scanned; 48 old or inconsistent IDs normalized to `#igNNNN`, `#ytNNNN`, `#ttNNNN`, or `#LFNNNN`.
+- `calendar_events.notes`: 111 rows scanned; 9 event note `post_id` values normalized by exact unique pipeline-title match.
+- Final audit: 0 pipeline rows needing normalization; 0 calendar notes needing normalization.
+
+Script Lab IDs (`SL001`-`SL005`) remain as script-lab identifiers by design.
+
 ## Script
 `scripts/rename-post-ids.mjs` — idempotent, dry-run by default. Re-run with `--run` when new posts are added.
+`scripts/normalize-pipeline-post-ids.mjs` — audits/fixes pipeline text IDs and matching calendar note `post_id` values.
