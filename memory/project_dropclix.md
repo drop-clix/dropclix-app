@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-Drop CLIX client portal — Next.js 16 + Supabase SSR + Tailwind 4. Sessions 1–9 complete as of 2026-05-31.
+Drop CLIX client portal — Next.js 16 + Supabase SSR + Tailwind 4. Sessions 1–19 complete as of 2026-06-06.
 
 **Why:** Building a white-label client portal for Chase's agency (Drop CLIX LLC). Nick (Sparta Solar) is first client.
 

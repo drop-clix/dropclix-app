@@ -101,7 +101,9 @@ Dashboard KPI "Engagement Rate" was wrong — only used `likes + comments`. Fixe
 - **Admin impersonation**: Cookie `dropclix_impersonate_client_id`, 8h TTL, httpOnly. Only cleared via "Exit Portal" action. Admin page shows normally regardless of cookie — cookie only matters in dashboard layout.
 - **Dashboard queries**: Use `metric_window = 'eom'` for aggregate totals. Pipeline active = not POSTED/CANCELLED.
 - **Analytics data join**: `posts.select('..., post_analytics(...)')` returns analytics as nested array keyed by `metric_window`.
-- **ER formula**: `(likes + comments + shares + saves) / views × 100`.
+- **ER formula (IG/TT)**: `(likes + comments + shares + saves) / views × 100`.
+- **ER formula (YouTube)**: `(likes + comments + shares + subscribers_gained) / views × 100`. `subscribers_gained` stored in `post_analytics.followers`; `saves` is `null` for all YT rows. Same decision thresholds. See `ingest-yt-csv.mjs` for the authoritative implementation.
+- **YT post IDs**: `#yt0001`–`#yt0039` (Shorts), `#LF0001`–`#LF0014` (Long-form). `pipeline_items.yt_type` = 'Short' or 'Long-form'. `post_analytics.yt_id` = YouTube Video ID.
 - **Decision auto-calculation**: Decision is always derived from ER% when any analytics window has `views > 0`. Thresholds: ≥12% → Double Down, 4–11.9% → Iterate, <4% → Kill. Shared utility at `src/lib/decision.ts`. Decision is updated: on `createPost()` (best window), on `updateAnalyticsMetric()` (eom→w7→w3→w24), and on every `ingest-eom-csv.mjs` run. Never hardcode 'Iterate' as a default — leave null if no data.
 - **State naming**: Use `win` not `window` for WindowKey state variables (avoids browser global shadowing).
 - **Supabase untyped rows**: Cast with `as unknown as RawRow[]` — no generated DB types.
@@ -131,6 +133,7 @@ Dashboard KPI "Engagement Rate" was wrong — only used `likes + comments`. Fixe
 - **Client ID**: `913f1794-1506-4449-b56c-b683809cefc3`
 - **Test client**: `test@client.com` (role=client) linked to Nick's client_id
 - **Re-run migration**: `node scripts/migrate-nick.mjs --force`
+- **YouTube data**: 53 videos imported (`#yt0001`–`#yt0039` Shorts, `#LF0001`–`#LF0014` Long-form). Re-import: `node scripts/ingest-yt-csv.mjs <csv> --run` (idempotent).
 
 ## Deployment
 
@@ -273,10 +276,28 @@ Touch (mobile): document-level `touchmove`/`touchend` listeners (added once on m
 
 **Schema change:** `pipeline_items.posted_at timestamptz` — run `supabase/migrations/add_posted_at.sql` in SQL Editor before using the posted datetime picker.
 
+### Session 19 ✅ — YouTube data import (53 videos)
+`scripts/ingest-yt-csv.mjs` — new script for YouTube tracker CSV format (different column structure from standard IG import). Imported all 53 Nick YouTube videos: 39 Shorts (`#yt0001`–`#yt0039`) + 14 Long-form (`#LF0001`–`#LF0014`). Jan–May 2026 date range. All stored with `platform=['yt']`, `format='Short'|'Long-form'`, `yt_id` = YouTube Video ID (stored in `post_analytics.yt_id`), `followers` = Subscribers Gained. `pipeline_items.yt_type` set to Short/Long-form. Decision auto-computed using YT ER% formula. 53 pipeline items (POSTED) + 53 calendar events created.
+
+**YouTube ER% formula:** `(likes + comments + shares + subscribers_gained) / views × 100`
+Subscribers Gained replaces saves (not available on YouTube). Same decision thresholds: ≥12% = Double Down, 4–11.9% = Iterate, <4% = Kill.
+
+## Formula Reference
+
+### Instagram ER%
+`(likes + comments + shares + saves) / views × 100`
+Decision thresholds: ≥12% = Double Down, 4–11.9% = Iterate, <4% = Kill.
+
+### YouTube ER%
+`(likes + comments + shares + subscribers_gained) / views × 100`
+`subscribers_gained` maps to `post_analytics.followers`. `saves` is `null` for all YT rows.
+Same decision thresholds: ≥12% = Double Down, 4–11.9% = Iterate, <4% = Kill.
+Use `ingest-yt-csv.mjs` for all future YouTube imports — it applies this formula automatically.
+
 ## Next sessions
-- Session 18: Update Modal (cross-window edit overlay for Analytics/Angles/Report Card rows)
-- Session 19: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
-- Session 20: Goals enhancements — Elite Videos + Watch% Avg targets; weekly actuals from last 7 days
+- Session 20: Update Modal (cross-window edit overlay for Analytics/Angles/Report Card rows)
+- Session 21: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
+- Session 22: Goals enhancements — Elite Videos + Watch% Avg targets; weekly actuals from last 7 days
 
 ## CSV Import Standard
 
@@ -318,3 +339,4 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 | `scripts/ingest-eom-csv.mjs` | **Generic reusable EOM ingest.** `node scripts/ingest-eom-csv.mjs <path-to-csv> [--run]`. Dry-run by default. Upserts eom + w7 analytics from a filled CSV; inserts missing post stubs automatically; **auto-syncs pipeline+calendar** after every import. Use this for all future monthly EOM imports. |
 | `scripts/sync-pipeline-calendar.mjs` | **Standalone pipeline+calendar backfill.** `node scripts/sync-pipeline-calendar.mjs [#igXXXX ...] [--run]`. Dry-run by default. Creates missing pipeline_items (status=POSTED) and calendar_events for all (or specified) posts. Safe to re-run — idempotent. |
 | `scripts/ingest-may-analytics.mjs` | Month-specific May ingest (superseded by ingest-eom-csv.mjs — kept for reference). |
+| `scripts/ingest-yt-csv.mjs` | **YouTube video ingest.** `node scripts/ingest-yt-csv.mjs <path-to-csv> [--run]`. Dry-run by default. Maps YT tracker CSV columns → posts + post_analytics (platform=yt, yt_id stored, followers=subscribers_gained, saves=null). Auto-computes decision from YT ER% formula. Creates pipeline_items (yt_type=Short/Long-form) + calendar_events. Use for all future YouTube imports. |
