@@ -1,6 +1,7 @@
 import { getPortalContext } from '@/lib/supabase/portal'
 import { DashboardCharts } from '@/components/portal/DashboardCharts'
 import type { MonthlyPoint, PillarPoint } from '@/components/portal/DashboardCharts'
+import { FilterBar } from '@/components/portal/FilterBar'
 
 /* ── Types ──────────────────────────────────────── */
 type Post = {
@@ -244,6 +245,8 @@ export default async function DashboardPage() {
           Welcome back, {clientName}.
         </p>
       </div>
+
+      <FilterBar />
 
       {/* ── KPI Cards ─────────────────────────────── */}
       <div className="grid gap-px mb-px" style={{ gridTemplateColumns: 'repeat(4, 1fr)', background: '#141414' }}>

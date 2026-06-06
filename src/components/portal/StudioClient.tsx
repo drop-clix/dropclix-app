@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { createPost, importPostsBatch, checkExistingPostIds } from '@/app/(dashboard)/studio/actions'
 import type { NewPostData, WindowMetrics } from '@/app/(dashboard)/studio/actions'
 import { erToDecision } from '@/lib/decision'
+import { usePortalFilters, filterByPlatform } from '@/hooks/usePortalFilters'
+import { Paginator } from '@/components/portal/Paginator'
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -1021,11 +1023,19 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
 export function StudioClient({ items, nextPostId }: { items: StudioItem[]; nextPostId: string }) {
   const [tab, setTab] = useState<StudioTab>('scripts')
   const [importMode, setImportMode] = useState<ImportMode>('new')
-  const [importKey, setImportKey] = useState(0) // reset form after success
+  const [importKey, setImportKey] = useState(0)
+  const [page, setPage] = useState(1)
 
-  const scripted   = items.filter(i => i.status === 'SCRIPTED')
-  const production = items.filter(i => i.status === 'FILMING' || i.status === 'REVIEWING')
-  const planned    = items.filter(i => i.status === 'PLANNED')
+  const { platform } = usePortalFilters()
+  useEffect(() => { setPage(1) }, [platform, tab])
+
+  const allScripted   = items.filter(i => i.status === 'SCRIPTED')
+  const allProduction = items.filter(i => i.status === 'FILMING' || i.status === 'REVIEWING')
+  const allPlanned    = items.filter(i => i.status === 'PLANNED')
+
+  const scripted   = filterByPlatform(allScripted,   platform)
+  const production = filterByPlatform(allProduction, platform)
+  const planned    = filterByPlatform(allPlanned,    platform)
 
   const statusCounts = {
     PLANNED:   items.filter(i => i.status === 'PLANNED').length,
@@ -1094,48 +1104,66 @@ export function StudioClient({ items, nextPostId }: { items: StudioItem[]; nextP
       </div>
 
       {/* Content */}
-      {tab === 'scripts' && (
-        <div>
-          {scripted.length === 0 ? (
-            <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#333' }}>No scripts awaiting review.</p>
-          ) : (
-            scripted.sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9)).map(item => <ScriptCard key={item.id} item={item} />)
-          )}
-        </div>
-      )}
+      {tab === 'scripts' && (() => {
+        const sorted = scripted.slice().sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9))
+        const paged = sorted.slice((page - 1) * 10, page * 10)
+        return (
+          <div>
+            {sorted.length === 0 ? (
+              <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#333' }}>No scripts awaiting review.</p>
+            ) : (
+              <>
+                {paged.map(item => <ScriptCard key={item.id} item={item} />)}
+                <Paginator page={page} total={sorted.length} perPage={10} onChange={setPage} />
+              </>
+            )}
+          </div>
+        )
+      })()}
 
-      {tab === 'production' && (
-        <div>
-          {production.length === 0 ? (
-            <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#333' }}>Nothing in production right now.</p>
-          ) : (
-            <>
-              {items.filter(i => i.status === 'FILMING').length > 0 && (
-                <div style={{ marginBottom: 20 }}>
-                  <p style={{ fontSize: 9, letterSpacing: '.2em', textTransform: 'uppercase', color: '#f59e0b', marginBottom: 10 }}>Filming</p>
-                  {items.filter(i => i.status === 'FILMING').sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9)).map(item => <ProductionRow key={item.id} item={item} />)}
-                </div>
-              )}
-              {items.filter(i => i.status === 'REVIEWING').length > 0 && (
-                <div>
-                  <p style={{ fontSize: 9, letterSpacing: '.2em', textTransform: 'uppercase', color: '#ef4444', marginBottom: 10 }}>Reviewing</p>
-                  {items.filter(i => i.status === 'REVIEWING').sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9)).map(item => <ProductionRow key={item.id} item={item} />)}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+      {tab === 'production' && (() => {
+        const filming   = filterByPlatform(items.filter(i => i.status === 'FILMING'),   platform).sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9))
+        const reviewing = filterByPlatform(items.filter(i => i.status === 'REVIEWING'), platform).sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9))
+        return (
+          <div>
+            {production.length === 0 ? (
+              <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#333' }}>Nothing in production right now.</p>
+            ) : (
+              <>
+                {filming.length > 0 && (
+                  <div style={{ marginBottom: 20 }}>
+                    <p style={{ fontSize: 9, letterSpacing: '.2em', textTransform: 'uppercase', color: '#f59e0b', marginBottom: 10 }}>Filming</p>
+                    {filming.map(item => <ProductionRow key={item.id} item={item} />)}
+                  </div>
+                )}
+                {reviewing.length > 0 && (
+                  <div>
+                    <p style={{ fontSize: 9, letterSpacing: '.2em', textTransform: 'uppercase', color: '#ef4444', marginBottom: 10 }}>Reviewing</p>
+                    {reviewing.map(item => <ProductionRow key={item.id} item={item} />)}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })()}
 
-      {tab === 'planned' && (
-        <div>
-          {planned.length === 0 ? (
-            <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#333' }}>No planned items.</p>
-          ) : (
-            planned.sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9)).map(item => <ProductionRow key={item.id} item={item} />)
-          )}
-        </div>
-      )}
+      {tab === 'planned' && (() => {
+        const sorted = planned.slice().sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9))
+        const paged = sorted.slice((page - 1) * 10, page * 10)
+        return (
+          <div>
+            {sorted.length === 0 ? (
+              <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#333' }}>No planned items.</p>
+            ) : (
+              <>
+                {paged.map(item => <ProductionRow key={item.id} item={item} />)}
+                <Paginator page={page} total={sorted.length} perPage={10} onChange={setPage} />
+              </>
+            )}
+          </div>
+        )
+      })()}
 
       {tab === 'import' && (
         <div>

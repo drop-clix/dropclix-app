@@ -2,6 +2,7 @@ import { getPortalContext } from '@/lib/supabase/portal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { StudioClient } from '@/components/portal/StudioClient'
 import type { StudioItem } from '@/components/portal/StudioClient'
+import { FilterBar } from '@/components/portal/FilterBar'
 
 async function fetchNextPostId(clientId: string): Promise<string> {
   const admin = createAdminClient()
@@ -78,6 +79,7 @@ export default async function StudioPage() {
         </p>
       </div>
 
+      <FilterBar />
       <StudioClient items={items} nextPostId={nextPostId} />
     </div>
   )

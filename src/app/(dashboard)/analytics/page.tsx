@@ -1,5 +1,6 @@
 import { getPortalContext } from '@/lib/supabase/portal'
 import { AnalyticsClient } from '@/components/portal/AnalyticsClient'
+import { FilterBar } from '@/components/portal/FilterBar'
 
 // ── Types shared with AnalyticsClient ──────────────────────────────────────
 export type WindowData = {
@@ -18,6 +19,8 @@ export type PostRow = {
   title: string
   platform: string[]
   pillar: string
+  hook: string
+  format: string
   date: string
   decision: string
   w24: WindowData
@@ -40,7 +43,7 @@ export default async function AnalyticsPage() {
   const { data: rawPosts, error } = await supabase
     .from('posts')
     .select(`
-      id, post_id, title, platform, pillar, date, decision,
+      id, post_id, title, platform, pillar, hook, format, date, decision,
       post_analytics(metric_window, views, likes, comments, shares, saves, followers, watch_pct)
     `)
     .eq('client_id', clientId ?? fallback)
@@ -70,6 +73,8 @@ export default async function AnalyticsPage() {
       title:    p.title,
       platform: p.platform ?? [],
       pillar:   p.pillar   ?? '—',
+      hook:     (p as any).hook   ?? '—',
+      format:   (p as any).format ?? '—',
       date:     p.date     ?? '',
       decision: p.decision ?? '',
       w24: byWindow['w24'] ?? { ...EMPTY_WIN },
@@ -101,6 +106,7 @@ export default async function AnalyticsPage() {
         </p>
       </div>
 
+      <FilterBar />
       <AnalyticsClient posts={posts} />
     </div>
   )

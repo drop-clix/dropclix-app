@@ -1,5 +1,6 @@
 import { getPortalContext } from '@/lib/supabase/portal'
 import { ReportCardClient } from '@/components/portal/ReportCardClient'
+import { FilterBar } from '@/components/portal/FilterBar'
 
 // ── Exported types (consumed by client component) ─────────────────────────
 
@@ -374,6 +375,7 @@ export default async function ReportCardPage() {
         </p>
       </div>
 
+      <FilterBar />
       <ReportCardClient weekGrades={weekGrades} monthGrades={monthGrades} />
     </div>
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8,6 +8,8 @@ import {
 } from 'recharts'
 import type { PostRow, WindowData } from '@/app/(dashboard)/analytics/page'
 import { updateAnalyticsMetric } from '@/app/(dashboard)/edit-actions'
+import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
+import { Paginator } from '@/components/portal/Paginator'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -326,29 +328,37 @@ function EROverTimeChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 10
+
 export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   const [posts, setPosts] = useState<PostRow[]>(initialPosts)
-  const [platform, setPlatform] = useState<string>('ig')
-  const [win,      setWindow  ] = useState<WindowKey>('eom')
-  const [pillar,   setPillar  ] = useState<string>('All')
-  const [sortKey,  setSortKey ] = useState<SortKey>('views')
-  const [sortDir,  setSortDir ] = useState<SortDir>('desc')
+  const [pillar,  setPillar ] = useState<string>('All')
+  const [sortKey, setSortKey] = useState<SortKey>('views')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [page,    setPage   ] = useState(1)
+
+  const { platform, win, scope, from, to } = usePortalFilters()
+
+  // Reset page when filters change
+  useEffect(() => { setPage(1) }, [platform, win, scope, from, to, pillar])
 
   function handleMetricSave(postUUID: string, field: EditableField, value: number, decision?: string) {
     setPosts(prev => prev.map(p => {
       if (p.uuid !== postUUID) return p
-      const winData = { ...p[win], [field]: value } as WindowData
-      const updated = { ...p, [win]: winData }
+      const winData = { ...p[win as WindowKey], [field]: value } as WindowData
+      const updated = { ...p, [win as WindowKey]: winData }
       if (decision !== undefined) updated.decision = decision
       return updated
     }))
   }
 
   const rows = useMemo(() => {
-    let filtered = posts.filter(p => p.platform.includes(platform))
+    let filtered = filterByPlatform(posts, platform, p => p.format)
+    filtered = filterByScope(filtered, scope, from, to)
     if (pillar !== 'All') filtered = filtered.filter(p => p.pillar === pillar)
+    const wk = win as WindowKey
     return filtered.slice().sort((a, b) => {
-      const wa = a[win]; const wb = b[win]
+      const wa = a[wk]; const wb = b[wk]
       let av = 0, bv = 0
       if (sortKey === 'date')          { av = new Date(a.date).getTime(); bv = new Date(b.date).getTime() }
       else if (sortKey === 'er')       { av = calcER(wa); bv = calcER(wb) }
@@ -360,17 +370,21 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       else if (sortKey === 'watch_pct'){ av = wa.watch_pct; bv = wb.watch_pct }
       return sortDir === 'desc' ? bv - av : av - bv
     })
-  }, [posts, platform, pillar, win, sortKey, sortDir])
+  }, [posts, platform, pillar, win, scope, from, to, sortKey, sortDir])
+
+  const activeWin = win as WindowKey
 
   const kpis = useMemo(() => {
     const total = rows.length
-    const totalViews = rows.reduce((s, r) => s + r[win].views, 0)
-    const withViews  = rows.filter(r => r[win].views > 0)
-    const avgER      = withViews.length ? withViews.reduce((s, r) => s + calcER(r[win]), 0) / withViews.length : 0
-    const avgWatch   = withViews.length ? withViews.reduce((s, r) => s + r[win].watch_pct, 0) / withViews.length : 0
-    const eliteCount = withViews.filter(r => calcER(r[win]) >= 12).length
+    const totalViews = rows.reduce((s, r) => s + r[activeWin].views, 0)
+    const withViews  = rows.filter(r => r[activeWin].views > 0)
+    const avgER      = withViews.length ? withViews.reduce((s, r) => s + calcER(r[activeWin]), 0) / withViews.length : 0
+    const avgWatch   = withViews.length ? withViews.reduce((s, r) => s + r[activeWin].watch_pct, 0) / withViews.length : 0
+    const eliteCount = withViews.filter(r => calcER(r[activeWin]) >= 12).length
     return { total, totalViews, avgER, avgWatch, eliteCount }
-  }, [rows, win])
+  }, [rows, activeWin])
+
+  const pagedRows = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [rows, page])
 
   function handleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
@@ -389,27 +403,9 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
 
   return (
     <div>
-      {/* ── Filters ─────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3 mb-8">
-        <div className="flex gap-2">
-          {['ig', 'tt', 'yt'].map(p => (
-            <FilterTab key={p} label={PLATFORM_LABELS[p]} active={platform === p} onClick={() => setPlatform(p)} />
-          ))}
-        </div>
-        <div style={{ width: 1, height: 24, background: '#1a1a1a' }} />
-        <div className="flex gap-2">
-          {(Object.keys(WINDOW_LABELS) as WindowKey[]).map(w => (
-            <FilterTab key={w} label={WINDOW_LABELS[w]} active={win === w} onClick={() => setWindow(w)} />
-          ))}
-        </div>
-        <p className="ml-auto text-[9px] tracking-[.14em] uppercase" style={{ color: '#252525' }}>
-          {rows.length} posts
-        </p>
-      </div>
-
       {/* ── KPI strip ───────────────────────────────────────────── */}
       <div className="grid gap-px mb-8" style={{ gridTemplateColumns: 'repeat(4, 1fr)', background: '#141414' }}>
-        <KpiCard label="Posts in View"    value={kpis.total.toString()}                               sub={`${platform.toUpperCase()} · ${WINDOW_LABELS[win]}`} />
+        <KpiCard label="Posts in View"    value={kpis.total.toString()}                               sub={`${platform === 'all' ? 'All platforms' : platform.toUpperCase()} · ${WINDOW_LABELS[activeWin]}`} />
         <KpiCard label="Total Views"      value={kpis.totalViews > 0 ? fmt(kpis.totalViews) : '—'}   sub="Sum for selected window" />
         <KpiCard label="Avg Engagement"   value={kpis.avgER > 0 ? kpis.avgER.toFixed(1) + '%' : '—'} sub="(Likes + cmts + shares + saves) / views" />
         <KpiCard label="Avg Watch %"      value={kpis.avgWatch > 0 ? kpis.avgWatch.toFixed(1) + '%' : '—'} sub={`${kpis.eliteCount} elite posts (ER ≥12%)`} />
@@ -418,8 +414,8 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       {/* ── Charts ──────────────────────────────────────────────── */}
       {rows.length > 0 && (
         <div className="grid gap-px mb-8" style={{ gridTemplateColumns: '1fr 1fr', background: '#141414' }}>
-          <ReachByPostChart rows={rows} win={win} />
-          <EROverTimeChart rows={rows} win={win} />
+          <ReachByPostChart rows={rows} win={activeWin} />
+          <EROverTimeChart rows={rows} win={activeWin} />
         </div>
       )}
 
@@ -441,6 +437,9 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
             {p}
           </button>
         ))}
+        <span className="ml-auto text-[9px] tracking-[.14em] uppercase self-center" style={{ color: '#252525' }}>
+          {rows.length} posts
+        </span>
       </div>
 
       {/* ── Table ───────────────────────────────────────────────── */}
@@ -470,8 +469,8 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                 </td>
               </tr>
             ) : (
-              rows.map((post, i) => {
-                const w       = post[win]
+              pagedRows.map((post, i) => {
+                const w       = post[activeWin]
                 const er      = calcER(w)
                 const t       = tier(er, w.views > 0)
                 const ts      = TIER_STYLES[t]
@@ -525,27 +524,27 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     {/* Editable metric cells */}
                     <EditableCell
                       value={w.views} displayValue={hasData ? fmt(w.views) : '—'} color={hasData ? '#f2ede4' : '#252525'}
-                      postUUID={post.uuid} platform={platform} metricWindow={win} field="views" isPercent={false}
+                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="views" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
                       value={w.likes} displayValue={hasData ? fmt(w.likes) : '—'} color={hasData ? '#aaa' : '#252525'}
-                      postUUID={post.uuid} platform={platform} metricWindow={win} field="likes" isPercent={false}
+                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="likes" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
                       value={w.comments} displayValue={hasData ? fmt(w.comments) : '—'} color={hasData ? '#aaa' : '#252525'}
-                      postUUID={post.uuid} platform={platform} metricWindow={win} field="comments" isPercent={false}
+                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="comments" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
                       value={w.saves} displayValue={hasData ? fmt(w.saves) : '—'} color={hasData ? '#aaa' : '#252525'}
-                      postUUID={post.uuid} platform={platform} metricWindow={win} field="saves" isPercent={false}
+                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="saves" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
                       value={w.shares} displayValue={hasData ? fmt(w.shares) : '—'} color={hasData ? '#aaa' : '#252525'}
-                      postUUID={post.uuid} platform={platform} metricWindow={win} field="shares" isPercent={false}
+                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="shares" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
 
@@ -568,7 +567,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
 
                     <EditableCell
                       value={w.watch_pct} displayValue={hasData ? pct(w.watch_pct) : '—'} color={hasData ? '#aaa' : '#252525'}
-                      postUUID={post.uuid} platform={platform} metricWindow={win} field="watch_pct" isPercent={true}
+                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="watch_pct" isPercent={true}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
 
@@ -585,6 +584,8 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
           </tbody>
         </table>
       </div>
+
+      <Paginator page={page} total={rows.length} perPage={PAGE_SIZE} onChange={setPage} />
 
       <p className="mt-3 text-[9px]" style={{ color: '#1e1e1e' }}>
         Click any metric cell to edit · ER = (likes + comments + shares + saves) / views

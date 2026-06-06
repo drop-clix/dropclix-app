@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useMemo, useRef, Fragment } from 'react'
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import type { AdCampaign, AdCreative } from '@/app/(dashboard)/ads/page'
 import {
   updateAdCampaign, deleteAdCampaign,
   updateAdCreative, deleteAdCreative,
 } from '@/app/(dashboard)/edit-actions'
+import { Paginator } from '@/components/portal/Paginator'
 
 // ── Formatters ─────────────────────────────────────────────────────────────
 
@@ -354,6 +355,9 @@ export function AdsClient({
   const [sortDir,      setSortDir     ] = useState<'asc' | 'desc'>('asc')
   const [editingId,    setEditingId   ] = useState<string | null>(null)
   const [hoveredId,    setHoveredId   ] = useState<string | null>(null)
+  const [page,         setPage        ] = useState(1)
+
+  useEffect(() => { setPage(1) }, [statusFilter, sortKey])
 
   const counts = useMemo(() => ({
     all: campaigns.length,
@@ -377,6 +381,8 @@ export function AdsClient({
     })
     return out
   }, [campaigns, statusFilter, sortKey, sortDir])
+
+  const pagedRows = useMemo(() => rows.slice((page - 1) * 10, page * 10), [rows, page])
 
   function handleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -485,7 +491,7 @@ export function AdsClient({
           <tbody>
             {rows.length === 0 ? (
               <tr><td colSpan={12} className="text-center py-12 text-[11px]" style={{ color: '#2a2a2a' }}>No campaigns match this filter.</td></tr>
-            ) : rows.map((c, i) => {
+            ) : pagedRows.map((c, i) => {
               const isWinner   = c.roas > 0
               const isEditing  = editingId === c.id
               const isHovered  = hoveredId === c.id
@@ -590,6 +596,7 @@ export function AdsClient({
           </tbody>
         </table>
       </div>
+      <Paginator page={page} total={rows.length} perPage={10} onChange={setPage} />
 
       {/* ── Campaign Details strip ──────────────────────────────────── */}
       <div>

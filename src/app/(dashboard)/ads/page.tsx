@@ -1,5 +1,6 @@
 import { getPortalContext } from '@/lib/supabase/portal'
 import { AdsClient } from '@/components/portal/AdsClient'
+import { FilterBar } from '@/components/portal/FilterBar'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,7 @@ export default async function AdsPage() {
         </p>
       </div>
 
+      <FilterBar />
       <AdsClient
         campaigns={campaigns}
         creatives={creatives}

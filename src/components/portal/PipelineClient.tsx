@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useMemo, useRef, Fragment } from 'react'
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { updatePipelineItem, deletePipelineItem } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
+import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
+import { Paginator } from '@/components/portal/Paginator'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -604,10 +606,11 @@ function ItemEditPanel({
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 10
+
 export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] }) {
   const [items,        setItems       ] = useState<PipelineItem[]>(initialItems)
   const [filter,       setFilter      ] = useState<FilterKey>('ACTIVE')
-  const [platFilter,   setPlatFilter  ] = useState<string>('all')
   const [pillarFilter, setPillarFilter] = useState<string>('All')
   const [search,       setSearch      ] = useState('')
   const [sortKey,      setSortKey     ] = useState<SortKey>('priority')
@@ -615,6 +618,11 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
   const [editingId,    setEditingId   ] = useState<string | null>(null)
   const [hoveredId,    setHoveredId   ] = useState<string | null>(null)
   const [saveError,    setSaveError   ] = useState<string | null>(null)
+  const [page,         setPage        ] = useState(1)
+
+  const { platform, scope, from, to } = usePortalFilters()
+
+  useEffect(() => { setPage(1) }, [platform, scope, from, to, filter, pillarFilter, search])
 
   // Phase counts
   const counts = useMemo(() => {
@@ -637,7 +645,21 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
     let out = items.slice()
     if (filter === 'ACTIVE') out = out.filter(i => ACTIVE_STATUSES.has(i.status))
     else if (filter !== 'ALL') out = out.filter(i => i.status === filter)
-    if (platFilter !== 'all') out = out.filter(i => i.platform.includes(platFilter))
+    // Global platform filter
+    out = filterByPlatform(out, platform)
+    // Global scope filter (by scheduledDate or postedAt or week derivation — use a helper date)
+    if (scope !== 'all') {
+      out = filterByScope(
+        out.map(i => ({
+          ...i,
+          date: i.postedAt?.split('T')[0] ?? i.scheduledDate ?? '',
+        })),
+        scope, from, to,
+      ).map(i => {
+        const original = out.find(o => o.id === i.id)
+        return original!
+      })
+    }
     if (pillarFilter !== 'All') out = out.filter(i => i.pillar === pillarFilter)
     const q = search.toLowerCase().trim()
     if (q) {
@@ -656,7 +678,9 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
       return sortDir === 'asc' ? cmp : -cmp
     })
     return out
-  }, [items, filter, platFilter, pillarFilter, search, sortKey, sortDir])
+  }, [items, filter, platform, scope, from, to, pillarFilter, search, sortKey, sortDir])
+
+  const pagedRows = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [rows, page])
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
@@ -727,24 +751,6 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
 
       {/* ── Filter row ───────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <div className="flex gap-2">
-          {['all', 'ig', 'tt', 'yt'].map(p => (
-            <button
-              key={p}
-              onClick={() => setPlatFilter(p)}
-              className="text-[9px] font-medium tracking-[.16em] uppercase px-4 py-2.5 transition-colors"
-              style={{
-                color:      platFilter === p ? '#c9a96e' : '#333',
-                background: platFilter === p ? 'rgba(201,169,110,.07)' : 'transparent',
-                border:     `1px solid ${platFilter === p ? 'rgba(201,169,110,.4)' : '#1a1a1a'}`,
-                cursor: 'pointer',
-              }}
-            >
-              {p === 'all' ? 'All Platforms' : p.toUpperCase()}
-            </button>
-          ))}
-        </div>
-
         <input
           type="text"
           placeholder="Search title, ID, pillar, week…"
@@ -842,7 +848,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                 </td>
               </tr>
             ) : (
-              rows.map(item => {
+              pagedRows.map(item => {
                 const pCfg      = PRIORITY_CFG[item.priority] ?? PRIORITY_CFG[4]
                 const isEditing = editingId === item.id
                 const isHovered = hoveredId === item.id
@@ -984,6 +990,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
           </tbody>
         </table>
       </div>
+      <Paginator page={page} total={rows.length} perPage={PAGE_SIZE} onChange={setPage} />
 
       {/* Priority legend */}
       <div className="flex flex-wrap gap-4 mt-3">

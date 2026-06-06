@@ -1,6 +1,7 @@
 import { getPortalContext } from '@/lib/supabase/portal'
 import { GoalsEditableCards } from '@/components/portal/GoalsClient'
 import type { GoalRow as ClientGoalRow } from '@/components/portal/GoalsClient'
+import { FilterBar } from '@/components/portal/FilterBar'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -261,6 +262,8 @@ export default async function GoalsPage() {
           )}
         </p>
       </div>
+
+      <FilterBar />
 
       {/* ── What needs to happen this week ──────────────────────── */}
       <div className="mb-8" style={{ border: '1px solid rgba(201,169,110,.2)', borderLeft: '3px solid #c9a96e' }}>

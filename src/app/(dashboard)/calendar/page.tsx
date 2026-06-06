@@ -1,5 +1,6 @@
 import { getPortalContext } from '@/lib/supabase/portal'
 import { CalendarClient } from '@/components/portal/CalendarClient'
+import { FilterBar } from '@/components/portal/FilterBar'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -97,6 +98,7 @@ export default async function CalendarPage() {
         </p>
       </div>
 
+      <FilterBar />
       <CalendarClient
         events={events}
         earliestISO={earliestISO}
