@@ -106,7 +106,7 @@ export default async function AnalyticsPage() {
         </p>
       </div>
 
-      <FilterBar />
+      <FilterBar showScope />
       <AnalyticsClient posts={posts} />
     </div>
   )

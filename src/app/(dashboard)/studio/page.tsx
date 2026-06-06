@@ -2,7 +2,6 @@ import { getPortalContext } from '@/lib/supabase/portal'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { StudioClient } from '@/components/portal/StudioClient'
 import type { StudioItem } from '@/components/portal/StudioClient'
-import { FilterBar } from '@/components/portal/FilterBar'
 
 async function fetchNextPostId(clientId: string): Promise<string> {
   const admin = createAdminClient()
@@ -23,6 +22,14 @@ async function fetchNextPostId(clientId: string): Promise<string> {
   return `#ig${String(maxNum + 1).padStart(4, '0')}`
 }
 
+export type PipelineStats = {
+  PLANNED: number
+  SCRIPTED: number
+  FILMING: number
+  REVIEWING: number
+  POSTED: number
+}
+
 export default async function StudioPage() {
   const { supabase, clientId } = await getPortalContext()
   const cid = clientId ?? '00000000-0000-0000-0000-000000000000'
@@ -33,13 +40,17 @@ export default async function StudioPage() {
     week: string | null; script_content: string | null; notes: string | null
   }
 
-  const [pipelineRes, nextPostId] = await Promise.all([
+  const [pipelineRes, allStatusRes, nextPostId] = await Promise.all([
     supabase
       .from('pipeline_items')
       .select('id, post_id, title, platform, pillar, status, priority, week, script_content, notes')
       .eq('client_id', cid)
       .not('status', 'in', '("POSTED","CANCELLED")')
       .order('priority', { ascending: true }),
+    supabase
+      .from('pipeline_items')
+      .select('status')
+      .eq('client_id', cid),
     clientId ? fetchNextPostId(clientId) : Promise.resolve('#ig0001'),
   ])
 
@@ -55,6 +66,15 @@ export default async function StudioPage() {
     scriptContent: r.script_content,
     notes:         r.notes,
   }))
+
+  const allStatuses = (allStatusRes.data ?? []) as unknown as { status: string }[]
+  const pipelineStats: PipelineStats = {
+    PLANNED:   allStatuses.filter(s => s.status === 'PLANNED').length,
+    SCRIPTED:  allStatuses.filter(s => s.status === 'SCRIPTED').length,
+    FILMING:   allStatuses.filter(s => s.status === 'FILMING').length,
+    REVIEWING: allStatuses.filter(s => s.status === 'REVIEWING').length,
+    POSTED:    allStatuses.filter(s => s.status === 'POSTED').length,
+  }
 
   return (
     <div className="p-10">
@@ -73,14 +93,11 @@ export default async function StudioPage() {
           Studio
         </h1>
         <p className="text-[12px] font-light mt-1" style={{ color: '#444' }}>
-          {items.filter(i => i.status === 'SCRIPTED').length} scripts to review
-          · {items.filter(i => i.status === 'FILMING' || i.status === 'REVIEWING').length} in production
-          · {items.length} active items total
+          {pipelineStats.SCRIPTED} scripts · {pipelineStats.FILMING + pipelineStats.REVIEWING} in production · {pipelineStats.POSTED} posted
         </p>
       </div>
 
-      <FilterBar />
-      <StudioClient items={items} nextPostId={nextPostId} />
+      <StudioClient items={items} nextPostId={nextPostId} pipelineStats={pipelineStats} />
     </div>
   )
 }

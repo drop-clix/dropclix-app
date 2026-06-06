@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { updatePipelineItem, deletePipelineItem } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
+import { PlatformPills, ScopeDropdown } from '@/components/portal/FilterBar'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -609,10 +611,10 @@ function ItemEditPanel({
 const PAGE_SIZE = 10
 
 export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] }) {
+  const searchParams = useSearchParams()
   const [items,        setItems       ] = useState<PipelineItem[]>(initialItems)
-  const [filter,       setFilter      ] = useState<FilterKey>('ACTIVE')
-  const [pillarFilter, setPillarFilter] = useState<string>('All')
-  const [search,       setSearch      ] = useState('')
+  const [filter,  setFilter ] = useState<FilterKey>(() => (searchParams.get('phase') as FilterKey) ?? 'ACTIVE')
+  const [search,  setSearch ] = useState('')
   const [sortKey,      setSortKey     ] = useState<SortKey>('priority')
   const [sortDir,      setSortDir     ] = useState<'asc' | 'desc'>('asc')
   const [editingId,    setEditingId   ] = useState<string | null>(null)
@@ -620,9 +622,9 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
   const [saveError,    setSaveError   ] = useState<string | null>(null)
   const [page,         setPage        ] = useState(1)
 
-  const { platform, scope, from, to } = usePortalFilters()
+  const { platform, scope, from, to, setFilters } = usePortalFilters()
 
-  useEffect(() => { setPage(1) }, [platform, scope, from, to, filter, pillarFilter, search])
+  useEffect(() => { setPage(1) }, [platform, scope, from, to, filter, search])
 
   // Phase counts
   const counts = useMemo(() => {
@@ -633,12 +635,6 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
     }
     return c
   }, [items])
-
-  // Distinct pillars
-  const pillars = useMemo(
-    () => ['All', ...Array.from(new Set(items.map(i => i.pillar).filter(Boolean))).sort()],
-    [items],
-  )
 
   // Filtered + sorted rows
   const rows = useMemo(() => {
@@ -660,7 +656,6 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
         return original!
       })
     }
-    if (pillarFilter !== 'All') out = out.filter(i => i.pillar === pillarFilter)
     const q = search.toLowerCase().trim()
     if (q) {
       out = out.filter(i =>
@@ -678,7 +673,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
       return sortDir === 'asc' ? cmp : -cmp
     })
     return out
-  }, [items, filter, platform, scope, from, to, pillarFilter, search, sortKey, sortDir])
+  }, [items, filter, platform, scope, from, to, search, sortKey, sortDir])
 
   const pagedRows = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [rows, page])
 
@@ -749,47 +744,34 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
         })}
       </div>
 
-      {/* ── Filter row ───────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
+      {/* ── Platform pills ───────────────────────────────────────── */}
+      <div className="mb-4">
+        <PlatformPills
+          platform={platform}
+          onChange={p => setFilters({ platform: p })}
+        />
+      </div>
+
+      {/* ── Search + scope ───────────────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-6">
         <input
           type="text"
           placeholder="Search title, ID, pillar, week…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-1.5 text-[11px] outline-none"
+          className="flex-1 px-3 py-1.5 text-[11px] outline-none"
           style={{
             background: '#080808', border: '1px solid #1a1a1a',
-            color: '#f2ede4', fontFamily: 'DM Sans, sans-serif', maxWidth: 320,
+            color: '#f2ede4', fontFamily: 'DM Sans, sans-serif',
           }}
           onFocus={e => (e.target.style.borderColor = '#c9a96e')}
           onBlur={e  => (e.target.style.borderColor = '#1a1a1a')}
         />
-
-        <p className="ml-auto text-[9px] tracking-[.14em] uppercase" style={{ color: '#252525' }}>
-          {rows.length} of {items.length} items
-        </p>
-      </div>
-
-      {/* ── Pillar filter ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <span className="text-[8px] tracking-[.18em] uppercase self-center mr-1" style={{ color: '#252525' }}>
-          Pillar
-        </span>
-        {pillars.map(p => (
-          <button
-            key={p}
-            onClick={() => setPillarFilter(p)}
-            className="text-[8px] font-medium tracking-[.12em] uppercase px-3 py-2 transition-colors"
-            style={{
-              color:      pillarFilter === p ? '#c9a96e' : '#333',
-              background: pillarFilter === p ? 'rgba(201,169,110,.08)' : 'transparent',
-              border:     `1px solid ${pillarFilter === p ? 'rgba(201,169,110,.35)' : '#1a1a1a'}`,
-              cursor: 'pointer',
-            }}
-          >
-            {p}
-          </button>
-        ))}
+        <ScopeDropdown
+          scope={scope}
+          onChange={s => setFilters({ scope: s })}
+          compact
+        />
       </div>
 
       {saveError && (

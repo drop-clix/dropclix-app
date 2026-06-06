@@ -107,7 +107,7 @@ export function usePortalFilters(): PortalFilters & {
   const router       = useRouter()
   const pathname     = usePathname()
 
-  const platform = (searchParams.get('platform') ?? 'all') as PlatformFilter
+  const platform = (searchParams.get('platform') ?? 'ig') as PlatformFilter
   const win      = (searchParams.get('win')      ?? 'eom') as WindowFilter
   const scope    = (searchParams.get('scope')    ?? 'all') as ScopeFilter
   const from     = searchParams.get('from')

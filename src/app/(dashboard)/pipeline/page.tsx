@@ -1,6 +1,5 @@
 import { getPortalContext } from '@/lib/supabase/portal'
 import { PipelineClient } from '@/components/portal/PipelineClient'
-import { FilterBar } from '@/components/portal/FilterBar'
 
 export type PipelineItem = {
   id: string
@@ -78,7 +77,6 @@ export default async function PipelinePage() {
         </p>
       </div>
 
-      <FilterBar />
       <PipelineClient initialItems={items} />
     </div>
   )

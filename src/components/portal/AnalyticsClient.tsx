@@ -61,6 +61,13 @@ type WindowKey = 'w24' | 'w3' | 'w7' | 'eom'
 
 const WINDOW_LABELS: Record<WindowKey, string> = { w24: '24 Hr', w3: '3 Day', w7: '7 Day', eom: 'EOM' }
 
+const WINDOWS: { key: WindowKey; label: string }[] = [
+  { key: 'w24', label: '24HR' },
+  { key: 'w3',  label: '3DAY' },
+  { key: 'w7',  label: '7DAY' },
+  { key: 'eom', label: 'EOM'  },
+]
+
 // ── Editable metric cell ───────────────────────────────────────────────────
 
 type EditableField = 'views' | 'likes' | 'comments' | 'shares' | 'saves' | 'watch_pct'
@@ -337,7 +344,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page,    setPage   ] = useState(1)
 
-  const { platform, win, scope, from, to } = usePortalFilters()
+  const { platform, win, scope, from, to, setFilters } = usePortalFilters()
 
   // Reset page when filters change
   useEffect(() => { setPage(1) }, [platform, win, scope, from, to, pillar])
@@ -420,7 +427,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       )}
 
       {/* ── Pillar filter ────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-2 mb-8">
+      <div className="flex flex-wrap gap-2 mb-6">
         <span className="text-[8px] tracking-[.18em] uppercase self-center mr-1" style={{ color: '#252525' }}>Pillar</span>
         {PILLARS.map(p => (
           <button
@@ -437,15 +444,54 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
             {p}
           </button>
         ))}
-        <span className="ml-auto text-[9px] tracking-[.14em] uppercase self-center" style={{ color: '#252525' }}>
-          {rows.length} posts
-        </span>
       </div>
 
       {/* ── Table ───────────────────────────────────────────────── */}
       <div style={{ border: '1px solid #141414', overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
           <thead>
+            {/* Window selector row */}
+            <tr style={{ background: '#060606', borderBottom: '1px solid #111' }}>
+              <th colSpan={12} style={{ padding: '8px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 9, color: '#252525', letterSpacing: '.12em' }}>
+                    {rows.length} posts
+                  </span>
+                  {/* Sliding window segmented control */}
+                  <div style={{ position: 'relative', display: 'flex', background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 2, height: 26, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        position: 'absolute', top: 0, left: 0, height: '100%', width: 52,
+                        background: 'rgba(201,169,110,.09)',
+                        borderRight: '1px solid rgba(201,169,110,.25)',
+                        borderLeft: WINDOWS.findIndex(w => w.key === activeWin) > 0 ? '1px solid rgba(201,169,110,.25)' : 'none',
+                        transform: `translateX(${WINDOWS.findIndex(w => w.key === activeWin) * 52}px)`,
+                        transition: 'transform .15s ease',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                    {WINDOWS.map((w, i) => (
+                      <button
+                        key={w.key}
+                        onClick={() => setFilters({ win: w.key })}
+                        style={{
+                          width: 52, height: '100%',
+                          fontSize: 8, fontWeight: 500, letterSpacing: '.16em', textTransform: 'uppercase',
+                          fontFamily: 'DM Sans, sans-serif',
+                          color: activeWin === w.key ? '#c9a96e' : '#2e2e2e',
+                          background: 'transparent', border: 'none',
+                          borderRight: i < WINDOWS.length - 1 ? '1px solid #131313' : 'none',
+                          cursor: 'pointer', position: 'relative', zIndex: 1,
+                          transition: 'color .15s',
+                        }}
+                      >
+                        {w.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </th>
+            </tr>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
               <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>ID</th>
               <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', minWidth: 180 }}>Title</th>

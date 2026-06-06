@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { usePortalFilters } from '@/hooks/usePortalFilters'
-import type { PlatformFilter, WindowFilter, ScopeFilter } from '@/hooks/usePortalFilters'
+import type { PlatformFilter, ScopeFilter } from '@/hooks/usePortalFilters'
 
 // ── SVG icons ─────────────────────────────────────────────────────────────────
 
@@ -46,77 +46,220 @@ function LfIcon({ size = 13 }: { size?: number }) {
   )
 }
 
-function AllIcon({ size = 12 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 12 12" fill="none">
-      <circle cx="3" cy="3" r="1.2" fill="currentColor"/>
-      <circle cx="9" cy="3" r="1.2" fill="currentColor"/>
-      <circle cx="3" cy="9" r="1.2" fill="currentColor"/>
-      <circle cx="9" cy="9" r="1.2" fill="currentColor"/>
-    </svg>
-  )
-}
-
-// ── Platform config ────────────────────────────────────────────────────────────
+// ── Platform config (no ALL) ───────────────────────────────────────────────────
 
 const PLATFORMS: { key: PlatformFilter; label: string; icon: React.ReactNode }[] = [
-  { key: 'all', label: 'All',  icon: <AllIcon /> },
-  { key: 'ig',  label: 'IG',   icon: <IgIcon /> },
-  { key: 'tt',  label: 'TT',   icon: <TtIcon /> },
-  { key: 'yt',  label: 'YT',   icon: <YtIcon /> },
-  { key: 'lf',  label: 'LF',   icon: <LfIcon /> },
+  { key: 'ig',  label: 'IG',  icon: <IgIcon /> },
+  { key: 'tt',  label: 'TT',  icon: <TtIcon /> },
+  { key: 'yt',  label: 'YT',  icon: <YtIcon /> },
+  { key: 'lf',  label: 'LF',  icon: <LfIcon /> },
 ]
 
-// ── Window config ─────────────────────────────────────────────────────────────
+// ── Scope config ───────────────────────────────────────────────────────────────
 
-const WINDOWS: { key: WindowFilter; label: string }[] = [
-  { key: 'w24', label: '24HR' },
-  { key: 'w3',  label: '3DAY' },
-  { key: 'w7',  label: '7DAY' },
-  { key: 'eom', label: 'EOM'  },
+const FULL_SCOPE: { key: ScopeFilter; label: string }[] = [
+  { key: 'all',  label: 'All Time'  },
+  { key: 'week', label: 'This Week' },
+  { key: 'jan',  label: 'January'   },
+  { key: 'feb',  label: 'February'  },
+  { key: 'mar',  label: 'March'     },
+  { key: 'apr',  label: 'April'     },
+  { key: 'may',  label: 'May'       },
+  { key: 'jun',  label: 'June'      },
+  { key: 'jul',  label: 'July'      },
+  { key: 'aug',  label: 'August'    },
+  { key: 'sep',  label: 'September' },
+  { key: 'oct',  label: 'October'   },
+  { key: 'nov',  label: 'November'  },
+  { key: 'dec',  label: 'December'  },
 ]
 
-// ── Scope config ──────────────────────────────────────────────────────────────
-
-const SCOPE_OPTIONS: { key: ScopeFilter; label: string }[] = [
+const COMPACT_SCOPE: { key: ScopeFilter; label: string }[] = [
   { key: 'all',   label: 'All Time'   },
   { key: 'week',  label: 'This Week'  },
   { key: 'month', label: 'This Month' },
-  { key: 'jan',   label: 'January'    },
-  { key: 'feb',   label: 'February'   },
-  { key: 'mar',   label: 'March'      },
-  { key: 'apr',   label: 'April'      },
-  { key: 'may',   label: 'May'        },
-  { key: 'jun',   label: 'June'       },
-  { key: 'jul',   label: 'July'       },
-  { key: 'aug',   label: 'August'     },
-  { key: 'sep',   label: 'September'  },
-  { key: 'oct',   label: 'October'    },
-  { key: 'nov',   label: 'November'   },
-  { key: 'dec',   label: 'December'   },
-  { key: 'custom',label: 'Custom'     },
 ]
 
-// ── FilterBar ─────────────────────────────────────────────────────────────────
+// ── PlatformPills (shared) ─────────────────────────────────────────────────────
 
-export function FilterBar() {
-  const { platform, win, scope, from, to, setFilters } = usePortalFilters()
-  const [scopeOpen, setScopeOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+export function PlatformPills({
+  platform,
+  onChange,
+}: {
+  platform: PlatformFilter
+  onChange: (p: PlatformFilter) => void
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      {PLATFORMS.map(p => {
+        const active = platform === p.key
+        return (
+          <button
+            key={p.key}
+            onClick={() => onChange(p.key)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              height: 30,
+              padding: '0 11px',
+              fontSize: 10,
+              fontWeight: 500,
+              letterSpacing: '.12em',
+              textTransform: 'uppercase',
+              fontFamily: 'DM Sans, sans-serif',
+              cursor: 'pointer',
+              border: `1px solid ${active ? 'rgba(201,169,110,.5)' : '#1e1e1e'}`,
+              background: active ? '#c9a96e' : '#0d0d0d',
+              color: active ? '#000' : '#3a3a3a',
+              boxShadow: active ? '0 0 10px rgba(201,169,110,.2)' : 'none',
+              transition: 'all .15s ease',
+              borderRadius: 2,
+            }}
+            onMouseEnter={e => {
+              if (!active) {
+                const el = e.currentTarget as HTMLButtonElement
+                el.style.color = '#c9a96e'
+                el.style.borderColor = 'rgba(201,169,110,.25)'
+                el.style.transform = 'translateY(-1px)'
+              }
+            }}
+            onMouseLeave={e => {
+              if (!active) {
+                const el = e.currentTarget as HTMLButtonElement
+                el.style.color = '#3a3a3a'
+                el.style.borderColor = '#1e1e1e'
+                el.style.transform = 'translateY(0)'
+              }
+            }}
+          >
+            <span style={{ color: active ? '#000' : 'currentColor', display: 'flex', alignItems: 'center' }}>
+              {p.icon}
+            </span>
+            {p.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
-  const activeWinIdx = WINDOWS.findIndex(w => w.key === win)
-  const scopeLabel = SCOPE_OPTIONS.find(s => s.key === scope)?.label ?? 'All Time'
+// ── ScopeDropdown (shared) ─────────────────────────────────────────────────────
 
-  // Close dropdown when clicking outside
+export function ScopeDropdown({
+  scope,
+  onChange,
+  compact = false,
+}: {
+  scope: ScopeFilter
+  onChange: (s: ScopeFilter) => void
+  compact?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const options = compact ? COMPACT_SCOPE : FULL_SCOPE
+  const label = options.find(o => o.key === scope)?.label
+    ?? FULL_SCOPE.find(o => o.key === scope)?.label
+    ?? 'All Time'
+
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setScopeOpen(false)
-      }
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
   }, [])
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          height: 30,
+          padding: '0 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          fontSize: 10,
+          fontWeight: 500,
+          letterSpacing: '.12em',
+          textTransform: 'uppercase',
+          fontFamily: 'DM Sans, sans-serif',
+          color: scope !== 'all' ? '#c9a96e' : '#3a3a3a',
+          background: scope !== 'all' ? 'rgba(201,169,110,.06)' : '#0d0d0d',
+          border: `1px solid ${scope !== 'all' ? 'rgba(201,169,110,.3)' : '#1e1e1e'}`,
+          cursor: 'pointer',
+          borderRadius: 2,
+          transition: 'all .15s',
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ fontSize: 8, color: '#3a3a3a', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', display: 'inline-block' }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 6px)',
+          left: 0,
+          zIndex: 200,
+          background: '#0a0a0a',
+          border: '1px solid #1e1e1e',
+          minWidth: 148,
+          boxShadow: '0 8px 24px rgba(0,0,0,.6)',
+          maxHeight: 320,
+          overflowY: 'auto',
+        }}>
+          {options.map(o => (
+            <button
+              key={o.key}
+              onClick={() => { onChange(o.key); setOpen(false) }}
+              style={{
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                padding: '7px 14px',
+                fontSize: 11,
+                fontFamily: 'DM Sans, sans-serif',
+                color: scope === o.key ? '#c9a96e' : '#444',
+                background: scope === o.key ? 'rgba(201,169,110,.06)' : 'transparent',
+                border: 'none',
+                borderBottom: '1px solid #111',
+                cursor: 'pointer',
+                transition: 'all .1s',
+              }}
+              onMouseEnter={e => {
+                const el = e.currentTarget as HTMLButtonElement
+                if (scope !== o.key) el.style.background = '#111'
+                el.style.color = '#c9a96e'
+              }}
+              onMouseLeave={e => {
+                const el = e.currentTarget as HTMLButtonElement
+                el.style.background = scope === o.key ? 'rgba(201,169,110,.06)' : 'transparent'
+                el.style.color = scope === o.key ? '#c9a96e' : '#444'
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── FilterBar ─────────────────────────────────────────────────────────────────
+// showScope: show the time/scope dropdown (default false)
+// scopeCompact: compact mode — ALL TIME / THIS WEEK / THIS MONTH (default false = full month list)
+
+export function FilterBar({
+  showScope = false,
+  scopeCompact = false,
+}: {
+  showScope?: boolean
+  scopeCompact?: boolean
+}) {
+  const { platform, scope, setFilters } = usePortalFilters()
 
   return (
     <div
@@ -127,276 +270,22 @@ export function FilterBar() {
         gap: 12,
         borderBottom: '1px solid #141414',
         marginBottom: 24,
-        paddingBottom: 0,
       }}
     >
-      {/* ── Platform pills ───────────────────────────── */}
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        {PLATFORMS.map(p => {
-          const active = platform === p.key
-          return (
-            <button
-              key={p.key}
-              onClick={() => setFilters({ platform: p.key })}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                height: 30,
-                padding: '0 11px',
-                fontSize: 10,
-                fontWeight: 500,
-                letterSpacing: '.12em',
-                textTransform: 'uppercase',
-                fontFamily: 'DM Sans, sans-serif',
-                cursor: 'pointer',
-                border: `1px solid ${active ? 'rgba(201,169,110,.5)' : '#1e1e1e'}`,
-                background: active ? '#c9a96e' : '#0d0d0d',
-                color: active ? '#000' : '#3a3a3a',
-                boxShadow: active ? '0 0 10px rgba(201,169,110,.2)' : 'none',
-                transition: 'all .15s ease',
-                borderRadius: 2,
-              }}
-              onMouseEnter={e => {
-                if (!active) {
-                  (e.currentTarget as HTMLButtonElement).style.color = '#c9a96e'
-                  ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(201,169,110,.25)'
-                  ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'
-                }
-              }}
-              onMouseLeave={e => {
-                if (!active) {
-                  (e.currentTarget as HTMLButtonElement).style.color = '#3a3a3a'
-                  ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#1e1e1e'
-                  ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'
-                }
-              }}
-            >
-              <span style={{ color: active ? '#000' : 'currentColor', display: 'flex', alignItems: 'center' }}>
-                {p.icon}
-              </span>
-              {p.label}
-            </button>
-          )
-        })}
-      </div>
+      <PlatformPills
+        platform={platform}
+        onChange={p => setFilters({ platform: p })}
+      />
 
-      {/* ── Divider ──────────────────────────────────── */}
-      <div style={{ width: 1, height: 22, background: '#1a1a1a', flexShrink: 0 }} />
-
-      {/* ── Window segmented control ──────────────────── */}
-      <div
-        style={{
-          position: 'relative',
-          display: 'flex',
-          background: '#0a0a0a',
-          border: '1px solid #1a1a1a',
-          borderRadius: 2,
-          overflow: 'hidden',
-          height: 30,
-          flexShrink: 0,
-        }}
-      >
-        {/* Sliding indicator */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            height: '100%',
-            width: 58,
-            background: 'rgba(201,169,110,.08)',
-            borderRight: '1px solid rgba(201,169,110,.25)',
-            borderLeft:  activeWinIdx > 0 ? '1px solid rgba(201,169,110,.25)' : 'none',
-            transform: `translateX(${activeWinIdx * 58}px)`,
-            transition: 'transform .15s ease',
-            pointerEvents: 'none',
-          }}
-        />
-        {WINDOWS.map((w, i) => (
-          <button
-            key={w.key}
-            onClick={() => setFilters({ win: w.key })}
-            style={{
-              width: 58,
-              height: '100%',
-              fontSize: 9,
-              fontWeight: 500,
-              letterSpacing: '.16em',
-              textTransform: 'uppercase',
-              fontFamily: 'DM Sans, sans-serif',
-              color: win === w.key ? '#c9a96e' : '#2e2e2e',
-              background: 'transparent',
-              border: 'none',
-              borderRight: i < WINDOWS.length - 1 ? '1px solid #131313' : 'none',
-              cursor: 'pointer',
-              position: 'relative',
-              zIndex: 1,
-              transition: 'color .15s',
-            }}
-            onMouseEnter={e => {
-              if (win !== w.key) (e.currentTarget as HTMLButtonElement).style.color = '#666'
-            }}
-            onMouseLeave={e => {
-              if (win !== w.key) (e.currentTarget as HTMLButtonElement).style.color = '#2e2e2e'
-            }}
-          >
-            {w.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Divider ──────────────────────────────────── */}
-      <div style={{ width: 1, height: 22, background: '#1a1a1a', flexShrink: 0 }} />
-
-      {/* ── Scope dropdown ────────────────────────────── */}
-      <div ref={dropdownRef} style={{ position: 'relative', flexShrink: 0 }}>
-        <button
-          onClick={() => setScopeOpen(v => !v)}
-          style={{
-            height: 30,
-            padding: '0 12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 7,
-            fontSize: 10,
-            fontWeight: 500,
-            letterSpacing: '.12em',
-            textTransform: 'uppercase',
-            fontFamily: 'DM Sans, sans-serif',
-            color: scope !== 'all' ? '#c9a96e' : '#3a3a3a',
-            background: scope !== 'all' ? 'rgba(201,169,110,.06)' : '#0d0d0d',
-            border: `1px solid ${scope !== 'all' ? 'rgba(201,169,110,.3)' : '#1e1e1e'}`,
-            cursor: 'pointer',
-            borderRadius: 2,
-            transition: 'all .15s',
-          }}
-        >
-          <span>{scopeLabel}</span>
-          <span
-            style={{
-              fontSize: 8,
-              color: '#3a3a3a',
-              transform: scopeOpen ? 'rotate(180deg)' : 'rotate(0)',
-              transition: 'transform .15s',
-              display: 'inline-block',
-            }}
-          >
-            ▾
-          </span>
-        </button>
-
-        {scopeOpen && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 'calc(100% + 6px)',
-              left: 0,
-              zIndex: 100,
-              background: '#0a0a0a',
-              border: '1px solid #1e1e1e',
-              minWidth: 160,
-              boxShadow: '0 8px 24px rgba(0,0,0,.6)',
-            }}
-          >
-            {SCOPE_OPTIONS.filter(s => s.key !== 'custom').map(s => (
-              <button
-                key={s.key}
-                onClick={() => {
-                  setFilters({ scope: s.key })
-                  setScopeOpen(false)
-                }}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '8px 14px',
-                  fontSize: 11,
-                  fontFamily: 'DM Sans, sans-serif',
-                  color: scope === s.key ? '#c9a96e' : '#444',
-                  background: scope === s.key ? 'rgba(201,169,110,.06)' : 'transparent',
-                  border: 'none',
-                  borderBottom: '1px solid #111',
-                  cursor: 'pointer',
-                  transition: 'all .1s',
-                }}
-                onMouseEnter={e => {
-                  if (scope !== s.key) (e.currentTarget as HTMLButtonElement).style.background = '#111'
-                  ;(e.currentTarget as HTMLButtonElement).style.color = '#c9a96e'
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLButtonElement).style.background = scope === s.key ? 'rgba(201,169,110,.06)' : 'transparent'
-                  ;(e.currentTarget as HTMLButtonElement).style.color = scope === s.key ? '#c9a96e' : '#444'
-                }}
-              >
-                {s.label}
-              </button>
-            ))}
-
-            {/* Custom separator + option */}
-            <div style={{ borderTop: '1px solid #1e1e1e' }}>
-              <button
-                onClick={() => {
-                  setFilters({ scope: 'custom' })
-                  setScopeOpen(false)
-                }}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '8px 14px',
-                  fontSize: 11,
-                  fontFamily: 'DM Sans, sans-serif',
-                  color: scope === 'custom' ? '#c9a96e' : '#444',
-                  background: scope === 'custom' ? 'rgba(201,169,110,.06)' : 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLButtonElement).style.background = '#111'
-                  ;(e.currentTarget as HTMLButtonElement).style.color = '#c9a96e'
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLButtonElement).style.background = scope === 'custom' ? 'rgba(201,169,110,.06)' : 'transparent'
-                  ;(e.currentTarget as HTMLButtonElement).style.color = scope === 'custom' ? '#c9a96e' : '#444'
-                }}
-              >
-                Custom Range
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Custom date range inputs */}
-      {scope === 'custom' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
-          <input
-            type="date"
-            value={from ?? ''}
-            onChange={e => setFilters({ from: e.target.value || null })}
-            style={{
-              height: 30, padding: '0 8px',
-              fontSize: 10, fontFamily: 'DM Sans, sans-serif',
-              background: '#0d0d0d', border: '1px solid #1e1e1e',
-              color: '#c9a96e', outline: 'none', cursor: 'pointer',
-              borderRadius: 2,
-            }}
+      {showScope && (
+        <>
+          <div style={{ width: 1, height: 22, background: '#1a1a1a', flexShrink: 0 }} />
+          <ScopeDropdown
+            scope={scope}
+            onChange={s => setFilters({ scope: s })}
+            compact={scopeCompact}
           />
-          <span style={{ fontSize: 10, color: '#2a2a2a' }}>→</span>
-          <input
-            type="date"
-            value={to ?? ''}
-            onChange={e => setFilters({ to: e.target.value || null })}
-            style={{
-              height: 30, padding: '0 8px',
-              fontSize: 10, fontFamily: 'DM Sans, sans-serif',
-              background: '#0d0d0d', border: '1px solid #1e1e1e',
-              color: '#c9a96e', outline: 'none', cursor: 'pointer',
-              borderRadius: 2,
-            }}
-          />
-        </div>
+        </>
       )}
     </div>
   )

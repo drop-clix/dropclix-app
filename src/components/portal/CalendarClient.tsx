@@ -617,7 +617,7 @@ export function CalendarClient({
                       {cell.date}
                       {isToday && <span style={{ display: 'inline-block', width: 4, height: 4, borderRadius: '50%', background: '#c9a96e' }} />}
                     </div>
-                    {cell.evs.slice(0, 3).map((ev, i) => (
+                    {cell.evs.slice(0, 2).map((ev, i) => (
                       <EventPill
                         key={ev.id}
                         ev={ev}
@@ -627,7 +627,7 @@ export function CalendarClient({
                         onTouchStart={e => onPillTouchStart(e, ev)}
                       />
                     ))}
-                    {cell.evs.length > 3 && <span className="text-[8px]" style={{ color: '#333' }}>+{cell.evs.length - 3} more</span>}
+                    {cell.evs.length > 2 && <span className="text-[8px]" style={{ color: '#333' }}>+{cell.evs.length - 2} more</span>}
                   </div>
                 )
               })}

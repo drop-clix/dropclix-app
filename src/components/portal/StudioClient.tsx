@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createPost, importPostsBatch, checkExistingPostIds } from '@/app/(dashboard)/studio/actions'
 import type { NewPostData, WindowMetrics } from '@/app/(dashboard)/studio/actions'
+import type { PipelineStats } from '@/app/(dashboard)/studio/page'
 import { erToDecision } from '@/lib/decision'
 import { usePortalFilters, filterByPlatform } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
@@ -1020,11 +1022,20 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
 
 // ── Main StudioClient ─────────────────────────────────────────────────────────
 
-export function StudioClient({ items, nextPostId }: { items: StudioItem[]; nextPostId: string }) {
+export function StudioClient({
+  items,
+  nextPostId,
+  pipelineStats,
+}: {
+  items: StudioItem[]
+  nextPostId: string
+  pipelineStats: PipelineStats
+}) {
   const [tab, setTab] = useState<StudioTab>('scripts')
   const [importMode, setImportMode] = useState<ImportMode>('new')
   const [importKey, setImportKey] = useState(0)
   const [page, setPage] = useState(1)
+  const router = useRouter()
 
   const { platform } = usePortalFilters()
   useEffect(() => { setPage(1) }, [platform, tab])
@@ -1036,14 +1047,6 @@ export function StudioClient({ items, nextPostId }: { items: StudioItem[]; nextP
   const scripted   = filterByPlatform(allScripted,   platform)
   const production = filterByPlatform(allProduction, platform)
   const planned    = filterByPlatform(allPlanned,    platform)
-
-  const statusCounts = {
-    PLANNED:   items.filter(i => i.status === 'PLANNED').length,
-    SCRIPTED:  scripted.length,
-    FILMING:   items.filter(i => i.status === 'FILMING').length,
-    REVIEWING: items.filter(i => i.status === 'REVIEWING').length,
-    POSTED:    items.filter(i => i.status === 'POSTED').length,
-  }
 
   const tabs: { key: StudioTab; label: string; count?: number }[] = [
     { key: 'scripts',    label: 'Scripts',    count: scripted.length   },
@@ -1061,27 +1064,46 @@ export function StudioClient({ items, nextPostId }: { items: StudioItem[]; nextP
     borderRadius: 4, cursor: 'pointer', transition: 'all .15s',
   })
 
+  const STAT_ENTRIES: { key: keyof PipelineStats; phase: string }[] = [
+    { key: 'PLANNED',   phase: 'PLANNED'   },
+    { key: 'SCRIPTED',  phase: 'SCRIPTED'  },
+    { key: 'FILMING',   phase: 'FILMING'   },
+    { key: 'REVIEWING', phase: 'REVIEWING' },
+    { key: 'POSTED',    phase: 'POSTED'    },
+  ]
+
   return (
     <div>
-      {/* Phase funnel */}
+      {/* Pipeline stats bar */}
       <div style={{
-        display: 'flex', gap: 2, marginBottom: 32,
-        background: '#0a0a0a', border: '1px solid #141414',
-        borderRadius: 6, padding: '20px 24px',
-        alignItems: 'center', flexWrap: 'wrap',
+        display: 'flex', gap: 1, marginBottom: 32, background: '#141414',
       }}>
-        {Object.entries(statusCounts).map(([status, count], i, arr) => (
-          <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <div style={{ textAlign: 'center', padding: '0 10px' }}>
-              <p style={{ fontSize: 16, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 400, margin: 0, color: STATUS_COLOR[status] ?? '#555' }}>
-                {count}
-              </p>
-              <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#333', margin: '2px 0 0' }}>
-                {status}
-              </p>
-            </div>
-            {i < arr.length - 1 && <span style={{ color: '#1e1e1e', fontSize: 14, margin: '0 2px' }}>→</span>}
-          </div>
+        {STAT_ENTRIES.map(({ key, phase }) => (
+          <button
+            key={key}
+            onClick={() => router.push(`/pipeline?phase=${phase}`)}
+            style={{
+              flex: 1, padding: '18px 16px', background: '#0a0a0a',
+              border: 'none', cursor: 'pointer', textAlign: 'center',
+              transition: 'background .15s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#0d0d0d' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#0a0a0a' }}
+          >
+            <p style={{
+              fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300,
+              fontSize: 26, lineHeight: 1, margin: 0,
+              color: STATUS_COLOR[key] ?? '#555',
+            }}>
+              {pipelineStats[key]}
+            </p>
+            <p style={{
+              fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase',
+              color: '#333', margin: '5px 0 0',
+            }}>
+              {key}
+            </p>
+          </button>
         ))}
       </div>
 

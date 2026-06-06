@@ -87,6 +87,23 @@ Dashboard KPI "Engagement Rate" was wrong — only used `likes + comments`. Fixe
 **5. Welcome screen**
 `src/components/portal/WelcomeOverlay.tsx` — `position:fixed` overlay, shows once per session via `sessionStorage`. Gold "Welcome back, [client name]" heading + Drop CLIX wordmark. Slides up + fades out after 1.8s (700ms CSS transition). Added to `(dashboard)/layout.tsx` alongside `SidebarShell`.
 
+### Session 20 ✅ — Global FilterBar, platform/window/scope filters, pagination
+
+**1. Filter hook (`src/hooks/usePortalFilters.ts`)**
+Central hook + utilities. Types: `PlatformFilter` ('all'|'ig'|'tt'|'yt'|'lf'), `WindowFilter` ('w24'|'w3'|'w7'|'eom'), `ScopeFilter` ('all'|'week'|'month'|`month-${string}`|'custom'). URL params: `platform`, `win`, `scope`, `from`, `to`. `setFilters()` uses `router.replace()` with `{ scroll: false }`. Utility functions: `getScopeRange(scope, from, to)` → `{ from, to } | null`; `filterByScope<T>(rows, scope, from, to, getDate)` — applies date range client-side; `filterByPlatform<T>(rows, platform, getPlatform, getFormat)` — 'lf' filter checks `platform.includes('yt') && format === 'Long-form'`.
+
+**2. FilterBar component (`src/components/portal/FilterBar.tsx`)**
+52px height, 3 groups side-by-side. Platform pills (ALL/IG/TT/YT/LF) with inline SVG icons — active: gold bg + black text + subtle glow. Window segmented control (24HR/3DAY/7DAY/EOM) with absolute-positioned sliding gold underline indicator (`transform: translateX(${idx * 58}px)`, 0.15s transition). Scope dropdown (custom, not native `<select>`) with click-outside dismiss — options: ALL TIME / THIS WEEK / THIS MONTH / individual month pills / CUSTOM; custom date inputs appear when scope=custom. FilterBar rendered in all 9 tab page.tsx files (server components), above the client delegate.
+
+**3. Pagination (`src/components/portal/Paginator.tsx`)**
+Props: `page`, `total`, `perPage=10`, `onChange`. Left/right arrow buttons (28×28px), `null` if ≤1 page. "Page X of Y" in DM Sans 11px. Added to: AnalyticsClient, PipelineClient, StudioClient (Scripts + Planned tabs), AdsClient.
+
+**4. AnglesClient (`src/components/portal/AnglesClient.tsx`)**
+Angles page converted from pure server component to server-fetch + client delegate. `angles/page.tsx` now does a minimal Supabase fetch and passes `rawPosts: RawAnglesPost[]` to `<AnglesClient>`. AnglesClient reads filters from `usePortalFilters()` and computes all breakdowns via `useMemo`. `RawAnglesPost` type exported from AnglesClient for page.tsx to use.
+
+**5. Client components updated**
+`AnalyticsClient`, `PipelineClient`, `StudioClient`, `AdsClient` — all now read `platform`, `win`, `scope` from `usePortalFilters()` instead of managing local platform/window state. Each adds `useEffect` to reset `page` to 1 whenever filters change.
+
 ## Key decisions / gotchas
 
 - **Next.js 16 proxy**: `middleware.ts` is deprecated. Use `src/proxy.ts` with `export function proxy()`.
@@ -106,6 +123,17 @@ Dashboard KPI "Engagement Rate" was wrong — only used `likes + comments`. Fixe
 - **YT post IDs**: `#yt0001`–`#yt0039` (Shorts), `#LF0001`–`#LF0014` (Long-form). `pipeline_items.yt_type` = 'Short' or 'Long-form'. `post_analytics.yt_id` = YouTube Video ID.
 - **Decision auto-calculation**: Decision is always derived from ER% when any analytics window has `views > 0`. Thresholds: ≥12% → Double Down, 4–11.9% → Iterate, <4% → Kill. Shared utility at `src/lib/decision.ts`. Decision is updated: on `createPost()` (best window), on `updateAnalyticsMetric()` (eom→w7→w3→w24), and on every `ingest-eom-csv.mjs` run. Never hardcode 'Iterate' as a default — leave null if no data.
 - **State naming**: Use `win` not `window` for WindowKey state variables (avoids browser global shadowing).
+- **Global filters via URL params**: `platform`, `win`, `scope`, `from`, `to`. `FilterBar` reads/writes via `usePortalFilters`. All client components read the same params — no new DB queries on filter change. Filters persist across tab navigation.
+- **EditableCell must use post's own platform**: When saving analytics metrics, pass `post.platform[0] ?? 'ig'` not the filter's `platform` value — the filter may be 'all' which is not a valid platform for DB writes.
+- **LF filter requires `format` field**: To filter Long-form YT, Analytics query must select `format` and `PostRow` type must include it. `filterByPlatform` receives a `getFormat` callback for this case.
+- **Angles is now a client component**: `angles/page.tsx` is a minimal server fetch; all computation is in `AnglesClient.tsx`. Do not add server-side computation back to angles/page.tsx.
+- **Default platform is 'ig'**: `usePortalFilters` defaults to `platform='ig'` (not 'all'). Dashboard, Goals, and all tabs open with IG selected.
+- **FilterBar exports**: `PlatformPills` and `ScopeDropdown` are exported separately for components that compose their own filter UI (DashboardClient, PipelineClient, GoalsDashboard). Use these instead of `FilterBar` when the page manages its own layout.
+- **filterByPlatform signature**: 2-3 args only: `(items, platform, getFormat?)`. Item type must extend `{ platform: string[] }` natively — no `getPlatform` callback.
+- **Pipeline phase URL param**: PipelineClient reads `?phase=STATUS` on mount to initialize the filter state. Studio stats tiles navigate to `/pipeline?phase=SCRIPTED` etc.
+- **Goals page is now GoalsDashboard**: `goals/page.tsx` is a thin server fetcher. All logic in `GoalsDashboard` (GoalsClient.tsx) — platform filtering, actuals, report card grades, modal. Types `RawGoalPost` and `RawGoal` exported from `goals/page.tsx`.
+- **Report card grade computation in GoalsDashboard**: Client computes WeekGrade[] + MonthGrade[] from filtered rawPosts. Types WeekGrade/MonthGrade/PostSummary/ScoreComponents imported from `report-card/page.tsx`.
+- **PipelineStats type**: Exported from `studio/page.tsx` — `{ PLANNED, SCRIPTED, FILMING, REVIEWING, POSTED }` (all number). Server fetches all pipeline statuses (separate query from the active items query).
 - **Supabase untyped rows**: Cast with `as unknown as RawRow[]` — no generated DB types.
 - **Pipeline RLS**: Clients have SELECT only. Updates use `edit-actions.ts` + `admin.ts` after verifying ownership.
 - **admin.ts**: ONLY import in server actions / server components. Never in `'use client'` files.
@@ -189,6 +217,8 @@ src/
     SidebarShell.tsx             ← collapsible sidebar + all nav rendering
     SignOutButton.tsx
     DashboardCharts.tsx
+    FilterBar.tsx                ← global platform/window/scope filter bar (all 9 tabs)
+    Paginator.tsx                ← pagination arrows + "Page X of Y" (Analytics, Pipeline, Studio, Ads)
     AnalyticsClient.tsx
     PipelineClient.tsx
     AdsClient.tsx
@@ -196,7 +226,10 @@ src/
     GoalsClient.tsx
     ReportCardClient.tsx
     StudioClient.tsx
+    AnglesClient.tsx             ← angles client delegate (converted from server component in S20)
     PortalNav.tsx                ← UNUSED (replaced by SidebarShell)
+  hooks/
+    usePortalFilters.ts          ← URL-synced filter state hook + filterByPlatform/filterByScope utils
   lib/supabase/
     client.ts                    ← browser singleton
     server.ts                    ← async server client
@@ -294,10 +327,35 @@ Decision thresholds: ≥12% = Double Down, 4–11.9% = Iterate, <4% = Kill.
 Same decision thresholds: ≥12% = Double Down, 4–11.9% = Iterate, <4% = Kill.
 Use `ingest-yt-csv.mjs` for all future YouTube imports — it applies this formula automatically.
 
+### Session 21 ✅ — Major filter system overhaul + page restructuring
+
+**1. Dashboard (DashboardClient)**
+`DashboardClient.tsx` — new client component replacing the server-rendered dashboard. Server fetches rawPosts + rawPipeline and passes to client. Client applies platform + scope filters via `useMemo`. Platform pills (IG/TT/YT/LF, default IG) and scope dropdown (ALL TIME / THIS WEEK / Jan–Dec). Chart cards get platform-colored glow (ig=#c9a96e, tt=#a78bfa, yt/lf=#4cc9ff, 15% opacity wide box-shadow). KPIs, charts, recent posts, pipeline strip all reactive to filter. Empty state with platform icon + "No [Platform] data yet" message. Default platform changed from 'all' → 'ig' in `usePortalFilters`.
+
+**2. FilterBar redesign**
+`FilterBar.tsx` completely rewritten. Removed ALL pill, removed window segmented control, removed custom date range. Exports: `PlatformPills` (IG/TT/YT/LF), `ScopeDropdown` (compact=false: ALL TIME + 12 months; compact=true: ALL TIME / THIS WEEK / THIS MONTH), `FilterBar` (composes both; `showScope` prop adds scope dropdown; `scopeCompact` prop uses compact scope).
+
+**3. Analytics**
+`FilterBar showScope` added to analytics/page.tsx. Window segmented control (24HR/3DAY/7DAY/EOM) moved from top FilterBar to a `<thead>` sub-row inside the Analytics table — spans all 12 columns, absolute-positioned sliding gold underline indicator.
+
+**4. Pipeline**
+`FilterBar` removed from pipeline/page.tsx. `PipelineClient` manages its own two-row filter: row 1 = `PlatformPills`, row 2 = full-width search + `ScopeDropdown` (compact). Pillar filter chips removed entirely. `filter` state initialized from `?phase=` URL param on mount via `useSearchParams()`.
+
+**5. Calendar**
+`FilterBar` removed from calendar/page.tsx. Max 2 events per cell (was 3), "+X more" indicator updated.
+
+**6. Goals → GoalsDashboard**
+`GoalsClient.tsx` completely rewritten as `GoalsDashboard`. Server fetches rawPosts (with platform + format + analytics) + goals, passes to client. Client computes: platform-filtered actuals for current month (Followers Gained / Posts / Total Views / Elite Videos ≥12% ER), report card grades (weekGrades + monthGrades via full computation ported from report-card/page.tsx). 4 goal cards with editable targets (2s debounce, no blur). Report Card snapshot card shows current month grade/score + stats + wins/misses. "View Full Report Card" button opens full-screen modal with `ReportCardClient`.
+
+**7. Report Card merged into Goals**
+Report Card removed from sidebar navigation (`SidebarShell.tsx` NAV_ITEMS). `/report-card` route still exists for direct access. All report card data now computed in GoalsDashboard client from filtered posts.
+
+**8. Studio stats bar**
+`PipelineStats` type exported from `studio/page.tsx`. Page now fetches ALL pipeline item statuses (extra query), computes counts (PLANNED/SCRIPTED/FILMING/REVIEWING/POSTED), passes to StudioClient. Stats bar replaces the old "Phase funnel" — 5 clickable stat tiles that navigate to `/pipeline?phase=[STATUS]`. `FilterBar` removed from studio/page.tsx.
+
 ## Next sessions
-- Session 20: Update Modal (cross-window edit overlay for Analytics/Angles/Report Card rows)
-- Session 21: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
-- Session 22: Goals enhancements — Elite Videos + Watch% Avg targets; weekly actuals from last 7 days
+- Session 22: Update Modal (cross-window edit overlay for Analytics/Angles rows)
+- Session 23: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
 
 ## CSV Import Standard
 

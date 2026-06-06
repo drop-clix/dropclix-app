@@ -62,11 +62,6 @@ const NAV_ITEMS = [
     label: 'Goals',
     icon: <Ico d="M8 2a6 6 0 100 12A6 6 0 008 2zM8 5a3 3 0 100 6 3 3 0 000-6zM8 7.5a.5.5 0 110 1 .5.5 0 010-1z" />,
   },
-  {
-    href: '/report-card',
-    label: 'Report Card',
-    icon: <Ico d="M4 2h8a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1zM6 6h4M6 9h4M6 12h2" />,
-  },
 ]
 
 // ── Hamburger icon ────────────────────────────────────────────────────────

@@ -71,15 +71,19 @@ function fmtNum(n: number): string {
 // ── Chart card wrapper ─────────────────────────────────────────────────────
 
 function ChartCard({
-  title, children, height = 190,
+  title, children, height = 190, glowColor,
 }: {
-  title: string; children: React.ReactNode; height?: number
+  title: string; children: React.ReactNode; height?: number; glowColor?: string
 }) {
   return (
     <div style={{
       background: BG,
       border: '1px solid #141414',
       padding: '20px 20px 16px',
+      boxShadow: glowColor
+        ? `0 0 60px ${glowColor}26, 0 4px 24px rgba(0,0,0,.5)`
+        : '0 4px 16px rgba(0,0,0,.3)',
+      transition: 'box-shadow .3s ease',
     }}>
       <p style={{
         fontSize: 8,
@@ -249,9 +253,11 @@ function PillarERChart({ data }: { data: PillarPoint[] }) {
 export function DashboardCharts({
   monthly,
   pillars,
+  glowColor,
 }: {
   monthly: MonthlyPoint[]
   pillars: PillarPoint[]
+  glowColor?: string
 }) {
   const hasPillars = pillars.length > 0
 
@@ -262,10 +268,10 @@ export function DashboardCharts({
         className="grid gap-px mb-px"
         style={{ gridTemplateColumns: '1fr 1fr', background: '#141414' }}
       >
-        <ChartCard title="Follower Growth by Month">
+        <ChartCard title="Follower Growth by Month" glowColor={glowColor}>
           <FollowerGrowthChart data={monthly} />
         </ChartCard>
-        <ChartCard title="Monthly Views">
+        <ChartCard title="Monthly Views" glowColor={glowColor}>
           <MonthlyViewsChart data={monthly} />
         </ChartCard>
       </div>
@@ -275,11 +281,11 @@ export function DashboardCharts({
         className="grid gap-px mb-px"
         style={{ gridTemplateColumns: hasPillars ? '1fr 1fr' : '1fr', background: '#141414' }}
       >
-        <ChartCard title="Posts Volume + Follower Gain">
+        <ChartCard title="Posts Volume + Follower Gain" glowColor={glowColor}>
           <PostsVolumeChart data={monthly} />
         </ChartCard>
         {hasPillars && (
-          <ChartCard title="Avg ER% by Content Pillar" height={Math.max(190, pillars.length * 36)}>
+          <ChartCard title="Avg ER% by Content Pillar" height={Math.max(190, pillars.length * 36)} glowColor={glowColor}>
             <PillarERChart data={pillars} />
           </ChartCard>
         )}
