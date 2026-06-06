@@ -128,15 +128,24 @@ function analyticsRow(postUuid, window, m) {
 // Track what will happen
 const report = { newPosts: [], updatedEom: [], insertedEom: [], insertedW7: [] }
 
-const stubsToInsert    = []
-const analyticsToWipe  = []   // UUIDs whose eom (and w7 if applicable) rows get deleted
+const stubsToInsert     = []
+const analyticsToWipe   = []   // UUIDs whose eom (and w7 if applicable) rows get deleted
 const analyticsToInsert = []
+const decisionUpdates   = []   // { uuid, post_id, decision } — computed from EOM ER%
+
+function eomToDecision(v, l, c, sh, sa) {
+  if (!v) return null
+  const er = ((l || 0) + (c || 0) + (sh || 0) + (sa || 0)) / v * 100
+  if (er >= 12) return 'Double Down'
+  if (er >= 4)  return 'Iterate'
+  return 'Kill'
+}
 
 for (const row of csvRows) {
   let postUuid = postMap[row.post_id]?.id
 
   if (!postUuid) {
-    // New post stub
+    // New post stub — Decision will be set after analytics insert
     postUuid = randomUUID()
     stubsToInsert.push({
       id:        postUuid,
@@ -149,6 +158,12 @@ for (const row of csvRows) {
     })
     report.newPosts.push(row.post_id)
   }
+
+  // Compute Decision from EOM ER%
+  const decision = eomToDecision(
+    row.eom_views, row.eom_likes, row.eom_comments, row.eom_shares, row.eom_saves
+  )
+  if (decision) decisionUpdates.push({ uuid: postUuid, post_id: row.post_id, decision })
 
   // Determine which windows to wipe + re-insert
   const windowsToWipe = ['eom']
@@ -278,11 +293,13 @@ for (const row of csvRows) {
   const action  = existed ? 'UPDATE eom' : 'INSERT post + eom'
   const w7note  = hasW7 ? ' + w7' : ''
   const sr      = row.eom_skip_rate !== null ? ` skip=${row.eom_skip_rate}%` : ''
+  const dec     = decisionUpdates.find(d => d.post_id === row.post_id)?.decision ?? '—'
   console.log(
     `  ${row.post_id.padEnd(8)} [${action}${w7note}]` +
     `  views=${row.eom_views} likes=${row.eom_likes} comments=${row.eom_comments}` +
     `  shares=${row.eom_shares} saves=${row.eom_saves}` +
-    `  watch=${row.eom_watch_pct}%${sr} followers=${row.eom_followers}`
+    `  watch=${row.eom_watch_pct}%${sr} followers=${row.eom_followers}` +
+    `  → decision=${dec}`
   )
 }
 
@@ -345,6 +362,16 @@ console.log(`✓ Wiped stale analytics for ${analyticsToWipe.length} post(s)`)
 const { error: insErr } = await sb.from('post_analytics').insert(analyticsToInsert)
 if (insErr) { console.error('Analytics insert failed:', insErr.message); process.exit(1) }
 console.log(`✓ Inserted ${analyticsToInsert.length} analytics rows`)
+
+// 3.5. Update Decision for each post based on EOM ER%
+let decisionUpdated = 0
+for (const { uuid, post_id, decision } of decisionUpdates) {
+  const { error } = await sb.from('posts').update({ decision }).eq('id', uuid)
+  if (error) console.error(`Decision update failed for ${post_id}:`, error.message)
+  else decisionUpdated++
+}
+if (decisionUpdated > 0)
+  console.log(`✓ Updated Decision for ${decisionUpdated} post(s): ${decisionUpdates.map(d => `${d.post_id}=${d.decision}`).join(', ')}`)
 
 // ── Apply pipeline + calendar sync ───────────────────────────────────────
 console.log('\n── Applying pipeline + calendar sync ─────────────────────────')

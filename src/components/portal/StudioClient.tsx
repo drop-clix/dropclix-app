@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { createPost, importPostsBatch } from '@/app/(dashboard)/studio/actions'
+import { createPost, importPostsBatch, checkExistingPostIds } from '@/app/(dashboard)/studio/actions'
 import type { NewPostData, WindowMetrics } from '@/app/(dashboard)/studio/actions'
+import { erToDecision } from '@/lib/decision'
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -71,7 +72,10 @@ const METRIC_FIELDS: { key: keyof WindowMetrics; label: string; isPercent?: bool
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-type WindowState = Record<keyof WindowMetrics, string>
+type WindowState = {
+  views: string; likes: string; comments: string; shares: string
+  saves: string; watch_pct: string; followers: string
+}
 
 function emptyWin(): WindowState {
   return { views: '', likes: '', comments: '', shares: '', saves: '', watch_pct: '', followers: '' }
@@ -128,34 +132,6 @@ function parseCSV(text: string): { headers: string[]; rows: Record<string, strin
   return { headers, rows }
 }
 
-function autoMap(headers: string[]): Record<string, string> {
-  const lower = headers.map(h => h.toLowerCase().replace(/[\s_-]/g, ''))
-  const find = (...terms: string[]) => {
-    for (const term of terms) {
-      const i = lower.findIndex(h => h.includes(term))
-      if (i >= 0) return headers[i]
-    }
-    return ''
-  }
-  return {
-    post_id:  find('postid', 'post_id', '#id', 'id'),
-    title:    find('title', 'name'),
-    date:     find('date', 'posted'),
-    platform: find('platform', 'plat'),
-    pillar:   find('pillar', 'content'),
-    hook:     find('hook', 'hooktype'),
-    format:   find('format'),
-    decision: find('decision', 'verdict'),
-    cta:      find('cta', 'calltoaction'),
-    views:    find('views', 'reach', 'eoмviews', 'eomviews'),
-    likes:    find('likes', 'eomlikes'),
-    comments: find('comments', 'eomcomments'),
-    shares:   find('shares', 'eomshares'),
-    saves:    find('saves', 'eomsaves'),
-    watch_pct:find('watch', 'watchpct', 'watchrate'),
-    followers:find('followers', 'followergain'),
-  }
-}
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
@@ -300,7 +276,7 @@ function NewPostForm({ nextPostId, onSuccess }: { nextPostId: string; onSuccess:
   const [hook,      setHook     ] = useState('')
   const [format,    setFormat   ] = useState('')
   const [cta,       setCta      ] = useState('')
-  const [decision,  setDecision ] = useState('Iterate')
+  const [decision,  setDecision ] = useState('')
   const [activeWin, setActiveWin] = useState<WindowKey>('eom')
   const [windows,   setWindows  ] = useState<Record<WindowKey, WindowState>>({
     w24: emptyWin(), w3: emptyWin(), w7: emptyWin(), eom: emptyWin(),
@@ -494,7 +470,7 @@ function NewPostForm({ nextPostId, onSuccess }: { nextPostId: string; onSuccess:
                 min={0}
                 step={key === 'watch_pct' ? '0.1' : '1'}
                 style={{ ...inputStyle, textAlign: 'right' }}
-                value={windows[activeWin][key]}
+                value={(windows[activeWin] as Record<string, string>)[key] ?? ''}
                 onChange={e => updateWindow(activeWin, key, e.target.value)}
                 placeholder="0"
               />
@@ -527,104 +503,258 @@ function NewPostForm({ nextPostId, onSuccess }: { nextPostId: string; onSuccess:
 
 // ── CSV Importer ──────────────────────────────────────────────────────────────
 
-const APP_FIELDS = [
-  { key: 'post_id',   label: 'Post ID',    required: false },
-  { key: 'title',     label: 'Title',       required: true  },
-  { key: 'date',      label: 'Date',        required: true  },
-  { key: 'platform',  label: 'Platform',    required: true  },
-  { key: 'pillar',    label: 'Pillar',      required: false },
-  { key: 'hook',      label: 'Hook Type',   required: false },
-  { key: 'format',    label: 'Format',      required: false },
-  { key: 'decision',  label: 'Decision',    required: false },
-  { key: 'cta',       label: 'CTA',         required: false },
-  { key: 'views',     label: 'Views (EOM)', required: false },
-  { key: 'likes',     label: 'Likes',       required: false },
-  { key: 'comments',  label: 'Comments',    required: false },
-  { key: 'shares',    label: 'Shares',      required: false },
-  { key: 'saves',     label: 'Saves',       required: false },
-  { key: 'watch_pct', label: 'Watch%',      required: false },
-  { key: 'followers', label: 'Followers',   required: false },
+const STANDARD_CSV_HEADERS = [
+  'post_id','title','platform','date','pillar','hook_type','format','decision',
+  'views_24h','likes_24h','comments_24h','shares_24h','saves_24h','watch_pct_24h','skip_rate_24h','followers_24h',
+  'views_3d','likes_3d','comments_3d','shares_3d','saves_3d','watch_pct_3d',
+  'views_7d','likes_7d','comments_7d','shares_7d','saves_7d','watch_pct_7d',
+  'eom_views','eom_likes','eom_comments','eom_shares','eom_saves','eom_watch_pct','eom_skip_rate','eom_followers',
 ]
 
+const TEMPLATE_CSV =
+  STANDARD_CSV_HEADERS.join(',') + '\n' +
+  '#ig0001,Example Post Title,ig|tt|yt,2026-01-01,Sales Tips,Hard Statement,Talking Head,,1000,50,3,2,10,62.5,48.2,5,,,,,,,,,,,,5000,120,8,5,30,58.0,45.5,12\n'
+
+type FilledWindow = {
+  key:      'w24' | 'w3' | 'w7' | 'eom'
+  label:    string
+  metrics:  WindowMetrics
+  er:       number
+  decision: string
+}
+
+type PreviewRow = {
+  postId:        string
+  title:         string
+  platforms:     string[]
+  date:          string
+  pillar:        string
+  hookType:      string
+  format:        string
+  filledWindows: FilledWindow[]
+  bestDecision:  string
+}
+
+type ImportResult = {
+  imported:        number
+  updated:         number
+  pipelineCreated: number
+  calendarCreated: number
+  failed:          number
+  errors:          string[]
+}
+
+function buildPreviewRows(rows: Record<string, string>[], nextPostId: string): PreviewRow[] {
+  const nextNum = parseInt(nextPostId.match(/(\d+)/)?.[1] ?? '0')
+  return rows.map((row, idx) => {
+    const rawPlatform = (row.platform ?? '').trim()
+    const platforms = rawPlatform
+      ? rawPlatform.split('|').map(p => p.trim().toLowerCase()).filter(Boolean)
+      : ['ig']
+
+    const filledWindows: FilledWindow[] = []
+
+    const v24 = parseNum(row.views_24h)
+    if (v24 > 0) {
+      const m: WindowMetrics = {
+        views:     v24,
+        likes:     parseNum(row.likes_24h),
+        comments:  parseNum(row.comments_24h),
+        shares:    parseNum(row.shares_24h),
+        saves:     parseNum(row.saves_24h),
+        watch_pct: parseNum(row.watch_pct_24h),
+        followers: parseNum(row.followers_24h),
+        skip_rate: parseNum(row.skip_rate_24h) || undefined,
+      }
+      const er = ((m.likes + m.comments + m.shares + m.saves) / m.views) * 100
+      filledWindows.push({ key: 'w24', label: '24h', metrics: m, er, decision: erToDecision(er) })
+    }
+
+    const v3 = parseNum(row.views_3d)
+    if (v3 > 0) {
+      const m: WindowMetrics = {
+        views:     v3,
+        likes:     parseNum(row.likes_3d),
+        comments:  parseNum(row.comments_3d),
+        shares:    parseNum(row.shares_3d),
+        saves:     parseNum(row.saves_3d),
+        watch_pct: parseNum(row.watch_pct_3d),
+        followers: 0,
+      }
+      const er = ((m.likes + m.comments + m.shares + m.saves) / m.views) * 100
+      filledWindows.push({ key: 'w3', label: '3-Day', metrics: m, er, decision: erToDecision(er) })
+    }
+
+    const v7 = parseNum(row.views_7d)
+    if (v7 > 0) {
+      const m: WindowMetrics = {
+        views:     v7,
+        likes:     parseNum(row.likes_7d),
+        comments:  parseNum(row.comments_7d),
+        shares:    parseNum(row.shares_7d),
+        saves:     parseNum(row.saves_7d),
+        watch_pct: parseNum(row.watch_pct_7d),
+        followers: 0,
+      }
+      const er = ((m.likes + m.comments + m.shares + m.saves) / m.views) * 100
+      filledWindows.push({ key: 'w7', label: '7-Day', metrics: m, er, decision: erToDecision(er) })
+    }
+
+    const veom = parseNum(row.eom_views)
+    if (veom > 0) {
+      const m: WindowMetrics = {
+        views:     veom,
+        likes:     parseNum(row.eom_likes),
+        comments:  parseNum(row.eom_comments),
+        shares:    parseNum(row.eom_shares),
+        saves:     parseNum(row.eom_saves),
+        watch_pct: parseNum(row.eom_watch_pct),
+        followers: parseNum(row.eom_followers),
+        skip_rate: parseNum(row.eom_skip_rate) || undefined,
+      }
+      const er = ((m.likes + m.comments + m.shares + m.saves) / m.views) * 100
+      filledWindows.push({ key: 'eom', label: 'EOM', metrics: m, er, decision: erToDecision(er) })
+    }
+
+    const best = filledWindows.find(w => w.key === 'eom')
+      ?? filledWindows.find(w => w.key === 'w7')
+      ?? filledWindows.find(w => w.key === 'w3')
+      ?? filledWindows.find(w => w.key === 'w24')
+      ?? null
+
+    return {
+      postId:        row.post_id?.trim() || `#ig${String(nextNum + idx).padStart(4, '0')}`,
+      title:         row.title?.trim()   || '',
+      platforms,
+      date:          row.date?.trim()    || '',
+      pillar:        row.pillar?.trim()  || '',
+      hookType:      row.hook_type?.trim() || '',
+      format:        row.format?.trim()  || '',
+      filledWindows,
+      bestDecision:  best?.decision ?? '',
+    }
+  })
+}
+
+function buildPostsFromPreview(previewRows: PreviewRow[]): NewPostData[] {
+  return previewRows.map(pr => {
+    const windows: Partial<Record<'w24' | 'w3' | 'w7' | 'eom', WindowMetrics>> = {}
+    for (const fw of pr.filledWindows) windows[fw.key] = fw.metrics
+    return {
+      postId:   pr.postId,
+      title:    pr.title,
+      platform: pr.platforms,
+      date:     pr.date,
+      pillar:   pr.pillar,
+      hook:     pr.hookType,
+      format:   pr.format,
+      cta:      '',
+      decision: pr.bestDecision,
+      windows,
+    }
+  })
+}
+
+const DECISION_COLOR: Record<string, string> = {
+  'Double Down': '#39ff88',
+  'Iterate':     '#fbbf24',
+  'Kill':        '#ff3b5f',
+}
+
+const WIN_COLOR: Record<string, string> = {
+  w24: '#c9a96e', w3: '#4cc9ff', w7: '#a78bfa', eom: '#39ff88',
+}
+
 function CSVImporter({ nextPostId }: { nextPostId: string }) {
-  const [headers,   setHeaders  ] = useState<string[]>([])
-  const [rows,      setRows     ] = useState<Record<string, string>[]>([])
-  const [mapping,   setMapping  ] = useState<Record<string, string>>({})
-  const [stage,     setStage    ] = useState<'upload' | 'map' | 'preview' | 'done'>('upload')
-  const [importing, setImporting] = useState(false)
-  const [result,    setResult   ] = useState<{ imported: number; failed: number; errors: string[] } | null>(null)
-  const [error,     setError    ] = useState('')
+  const [stage,       setStage      ] = useState<'upload' | 'checking' | 'preview' | 'importing' | 'done'>('upload')
+  const [rawRows,     setRawRows    ] = useState<Record<string, string>[]>([])
+  const [previewRows, setPreviewRows] = useState<PreviewRow[]>([])
+  const [existingIds, setExistingIds] = useState<Set<string>>(new Set())
+  const [skipSet,     setSkipSet    ] = useState<Set<string>>(new Set())
+  const [result,      setResult     ] = useState<ImportResult | null>(null)
+  const [error,       setError      ] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  function handleDownloadTemplate() {
+    const blob = new Blob([TEMPLATE_CSV], { type: 'text/csv' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = 'dropclix-import-template.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function processText(text: string) {
+    setError('')
+    const { rows } = parseCSV(text)
+    if (!rows.length) { setError('No data rows found in CSV'); return }
+    const preview = buildPreviewRows(rows, nextPostId)
+    setRawRows(rows)
+    setPreviewRows(preview)
+    setSkipSet(new Set())
+    setStage('checking')
+    const postIds  = preview.map(r => r.postId)
+    const existing = await checkExistingPostIds(postIds)
+    setExistingIds(new Set(existing))
+    setStage('preview')
+  }
+
+  function handleFileEvent(file: File) {
     const reader = new FileReader()
-    reader.onload = ev => {
-      const text = ev.target?.result as string
-      const { headers: h, rows: r } = parseCSV(text)
-      if (h.length === 0) { setError('Could not parse CSV — check the file format'); return }
-      setHeaders(h)
-      setRows(r)
-      setMapping(autoMap(h))
-      setStage('map')
-      setError('')
-    }
+    reader.onload = ev => processText(ev.target?.result as string)
     reader.readAsText(file)
   }
 
-  function buildPostsFromRows(): NewPostData[] {
-    const m = mapping
-    const nextNum = parseInt(nextPostId.match(/(\d+)/)?.[1] ?? '0')
-    return rows.map((row, idx) => {
-      const rawPlatform = row[m.platform] ?? 'ig'
-      const platforms = rawPlatform.split(/[,/]/).map(p => p.trim().toLowerCase()).filter(Boolean)
-      const postId = row[m.post_id]?.trim() || `#ig${String(nextNum + idx).padStart(4, '0')}`
-      return {
-        postId,
-        title:    row[m.title]    ?? '',
-        date:     row[m.date]     ?? '',
-        platform: platforms.length > 0 ? platforms : ['ig'],
-        pillar:   row[m.pillar]   ?? '',
-        hook:     row[m.hook]     ?? '',
-        format:   row[m.format]   ?? '',
-        decision: row[m.decision] ?? 'Iterate',
-        cta:      row[m.cta]      ?? '',
-        windows: {
-          eom: {
-            views:     parseNum(row[m.views]     ?? ''),
-            likes:     parseNum(row[m.likes]     ?? ''),
-            comments:  parseNum(row[m.comments]  ?? ''),
-            shares:    parseNum(row[m.shares]    ?? ''),
-            saves:     parseNum(row[m.saves]     ?? ''),
-            watch_pct: parseNum(row[m.watch_pct] ?? ''),
-            followers: parseNum(row[m.followers] ?? ''),
-          },
-        },
-      }
+  function toggleSkip(postId: string) {
+    setSkipSet(prev => {
+      const next = new Set(prev)
+      next.has(postId) ? next.delete(postId) : next.add(postId)
+      return next
     })
   }
 
-  async function handleImport() {
-    setImporting(true)
-    const posts = buildPostsFromRows()
-    const r = await importPostsBatch(posts)
+  async function handleConfirmImport() {
+    setStage('importing')
+    const posts        = buildPostsFromPreview(previewRows)
+    const overwriteIds = previewRows
+      .filter(r => existingIds.has(r.postId) && !skipSet.has(r.postId))
+      .map(r => r.postId)
+    const r = await importPostsBatch(posts, { skipIds: [...skipSet], overwriteIds })
     setResult(r)
     setStage('done')
-    setImporting(false)
   }
 
-  const selectStyle: React.CSSProperties = {
-    ...inputStyle, cursor: 'pointer', appearance: 'none', fontSize: 11,
+  function reset() {
+    setStage('upload'); setRawRows([]); setPreviewRows([])
+    setExistingIds(new Set()); setSkipSet(new Set()); setResult(null); setError('')
   }
 
+  // ── Upload stage ──────────────────────────────────────────────────────────────
   if (stage === 'upload') {
     return (
       <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <p style={{ fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a' }}>
+            CSV Import — Standard Format
+          </p>
+          <button
+            onClick={handleDownloadTemplate}
+            style={{
+              padding: '6px 14px', fontSize: 9,
+              letterSpacing: '.12em', textTransform: 'uppercase',
+              background: 'transparent', border: '1px solid #1e1e1e',
+              color: '#444', cursor: 'pointer', borderRadius: 3,
+            }}
+          >
+            Download Template
+          </button>
+        </div>
+
         <div
           style={{
             border: '2px dashed #1e1e1e', padding: '48px 32px',
-            textAlign: 'center', cursor: 'pointer',
+            textAlign: 'center', cursor: 'pointer', borderRadius: 4,
             transition: 'border-color .2s',
           }}
           onClick={() => fileRef.current?.click()}
@@ -634,156 +764,252 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
             e.preventDefault()
             e.currentTarget.style.borderColor = '#1e1e1e'
             const file = e.dataTransfer.files?.[0]
-            if (file) {
-              const reader = new FileReader()
-              reader.onload = ev => {
-                const text = ev.target?.result as string
-                const { headers: h, rows: r } = parseCSV(text)
-                if (h.length === 0) { setError('Could not parse CSV'); return }
-                setHeaders(h); setRows(r); setMapping(autoMap(h)); setStage('map')
-              }
-              reader.readAsText(file)
-            }
+            if (file) handleFileEvent(file)
           }}
         >
-          <p style={{ fontSize: 13, color: '#333', marginBottom: 8 }}>Drop a CSV file here</p>
+          <p style={{ fontSize: 13, color: '#333', marginBottom: 8 }}>Drop CSV file here</p>
           <p style={{ fontSize: 10, color: '#252525' }}>or click to browse</p>
-          <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} style={{ display: 'none' }} />
+          <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFileEvent(f) }} />
         </div>
+
         {error && <p style={{ fontSize: 11, color: '#ff3b5f', marginTop: 8 }}>{error}</p>}
-        <div style={{ marginTop: 16, padding: '12px 16px', background: '#060606', border: '1px solid #141414' }}>
-          <p style={{ fontSize: 9, color: '#333', marginBottom: 4, letterSpacing: '.12em', textTransform: 'uppercase' }}>Expected columns (example)</p>
-          <p style={{ fontSize: 10, color: '#252525', fontFamily: 'monospace', lineHeight: 1.8 }}>
-            title, date, platform, pillar, hook, format, decision, views, likes, comments, shares, saves, watch_pct, followers
+
+        <div style={{ marginTop: 14, padding: '12px 16px', background: '#060606', border: '1px solid #141414', borderRadius: 3 }}>
+          <p style={{ fontSize: 8, color: '#2a2a2a', letterSpacing: '.14em', textTransform: 'uppercase', marginBottom: 6 }}>
+            Standard column format (pipe-separated platform)
           </p>
+          <p style={{ fontSize: 9, color: '#252525', fontFamily: 'monospace', lineHeight: 1.9, wordBreak: 'break-all' }}>
+            post_id, title, platform (ig|tt|yt), date, pillar, hook_type, format, decision*, views_24h, likes_24h, comments_24h, shares_24h, saves_24h, watch_pct_24h, skip_rate_24h, followers_24h, views_3d … watch_pct_3d, views_7d … watch_pct_7d, eom_views … eom_followers
+          </p>
+          <p style={{ fontSize: 8, color: '#252525', marginTop: 6 }}>* decision column is always ignored — auto-calculated from ER%</p>
         </div>
       </div>
     )
   }
 
-  if (stage === 'map') {
+  // ── Checking stage ────────────────────────────────────────────────────────────
+  if (stage === 'checking') {
     return (
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <p style={{ fontSize: 11, color: '#c9a96e' }}>{rows.length} rows · Map columns below</p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => { setStage('upload'); setHeaders([]); setRows([]) }}
-              style={{ padding: '6px 12px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer' }}>
-              Back
-            </button>
-            <button onClick={() => setStage('preview')}
-              style={{ padding: '6px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'rgba(201,169,110,.08)', border: '1px solid rgba(201,169,110,.3)', color: '#c9a96e', cursor: 'pointer' }}>
-              Preview →
-            </button>
-          </div>
-        </div>
-
-        <div style={{ border: '1px solid #141414', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-                {['App Field', 'CSV Column'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '10px 16px', fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2a2a2a' }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {APP_FIELDS.map((field, i) => (
-                <tr key={field.key} style={{ borderBottom: '1px solid #0e0e0e', background: i % 2 === 0 ? '#060606' : '#070707' }}>
-                  <td style={{ padding: '8px 16px' }}>
-                    <span style={{ fontSize: 11, color: field.required ? '#f2ede4' : '#555' }}>
-                      {field.label}
-                      {field.required && <span style={{ color: '#ff3b5f', marginLeft: 3 }}>*</span>}
-                    </span>
-                  </td>
-                  <td style={{ padding: '8px 16px' }}>
-                    <select
-                      style={{ ...selectStyle, maxWidth: 220 }}
-                      value={mapping[field.key] ?? ''}
-                      onChange={e => setMapping(m => ({ ...m, [field.key]: e.target.value }))}
-                    >
-                      <option value="" style={{ background: '#0a0a0a' }}>{field.required ? '— required —' : '(skip)'}</option>
-                      {headers.map(h => (
-                        <option key={h} value={h} style={{ background: '#0a0a0a' }}>{h}</option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div style={{ padding: '48px 32px', textAlign: 'center' }}>
+        <p style={{ fontSize: 12, color: '#444' }}>Checking for duplicates…</p>
       </div>
     )
   }
 
+  // ── Preview stage ─────────────────────────────────────────────────────────────
   if (stage === 'preview') {
-    const preview = buildPostsFromRows().slice(0, 5)
+    const toImport  = previewRows.filter(r => !skipSet.has(r.postId)).length
+    const dupCount  = previewRows.filter(r => existingIds.has(r.postId)).length
+    const skipCount = [...skipSet].length
+
     return (
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <p style={{ fontSize: 11, color: '#c9a96e' }}>Preview — {rows.length} posts will be imported</p>
+        {/* Header bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div>
+            <p style={{ fontSize: 12, color: '#c9a96e', marginBottom: 3 }}>
+              {previewRows.length} post{previewRows.length !== 1 ? 's' : ''} ready to review
+            </p>
+            <p style={{ fontSize: 9, color: '#333' }}>
+              {dupCount > 0 && <span style={{ color: '#f59e0b' }}>{dupCount} duplicate{dupCount !== 1 ? 's' : ''} detected · </span>}
+              {skipCount > 0 && <span style={{ color: '#555' }}>{skipCount} skipped · </span>}
+              {toImport} will be imported
+            </p>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setStage('map')}
-              style={{ padding: '6px 12px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer' }}>
-              Back
+            <button onClick={reset}
+              style={{ padding: '7px 14px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer', borderRadius: 3 }}>
+              Cancel
             </button>
-            <button onClick={handleImport} disabled={importing}
-              style={{ padding: '6px 18px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: importing ? '#1a1a1a' : 'rgba(201,169,110,.12)', border: `1px solid ${importing ? '#1e1e1e' : 'rgba(201,169,110,.4)'}`, color: importing ? '#333' : '#c9a96e', cursor: importing ? 'not-allowed' : 'pointer' }}>
-              {importing ? 'Importing...' : `Import All ${rows.length} Posts`}
+            <button onClick={handleConfirmImport} disabled={toImport === 0}
+              style={{
+                padding: '7px 18px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+                background: toImport === 0 ? '#1a1a1a' : 'rgba(201,169,110,.12)',
+                border: `1px solid ${toImport === 0 ? '#1e1e1e' : 'rgba(201,169,110,.4)'}`,
+                color: toImport === 0 ? '#333' : '#c9a96e',
+                cursor: toImport === 0 ? 'not-allowed' : 'pointer', borderRadius: 3,
+              }}>
+              Confirm Import ({toImport})
             </button>
           </div>
         </div>
 
-        <div style={{ border: '1px solid #141414', overflowX: 'auto', marginBottom: 8 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-                {['Post ID', 'Title', 'Date', 'Platform', 'Pillar', 'EOM Views'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '10px 14px', fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase', color: '#2a2a2a', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {preview.map((p, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #0e0e0e', background: i % 2 === 0 ? '#060606' : '#070707' }}>
-                  <td style={{ padding: '8px 14px', fontSize: 10, color: '#c9a96e', fontFamily: 'monospace' }}>{p.postId}</td>
-                  <td style={{ padding: '8px 14px', fontSize: 11, color: '#f2ede4', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</td>
-                  <td style={{ padding: '8px 14px', fontSize: 10, color: '#555' }}>{p.date}</td>
-                  <td style={{ padding: '8px 14px' }}><div style={{ display: 'flex', gap: 3 }}>{p.platform.map(pl => <PlatBadge key={pl} platform={pl} />)}</div></td>
-                  <td style={{ padding: '8px 14px', fontSize: 10, color: '#444' }}>{p.pillar || '—'}</td>
-                  <td style={{ padding: '8px 14px', fontSize: 11, color: '#555' }}>{p.windows.eom?.views || '—'}</td>
-                </tr>
-              ))}
-              {rows.length > 5 && (
-                <tr style={{ background: '#060606' }}>
-                  <td colSpan={6} style={{ padding: '8px 14px', fontSize: 10, color: '#2a2a2a', textAlign: 'center' }}>
-                    +{rows.length - 5} more rows not shown
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {/* Per-post preview blocks */}
+        <div>
+          {previewRows.map((pr, idx) => {
+            const isDup  = existingIds.has(pr.postId)
+            const skip   = skipSet.has(pr.postId)
+            const border = isDup ? '1px solid rgba(245,158,11,.3)' : '1px solid #141414'
+            const borderL = isDup ? '3px solid #f59e0b' : '3px solid #1e1e1e'
+            const bg     = isDup && !skip ? 'rgba(245,158,11,.03)' : '#060606'
+
+            return (
+              <div key={pr.postId + idx} style={{
+                marginBottom: 10, border, borderLeft: borderL,
+                background: bg, borderRadius: 4,
+                opacity: skip ? 0.35 : 1,
+              }}>
+                {/* Post header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #0e0e0e', flexWrap: 'wrap' }}>
+                  {isDup && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', flexShrink: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={skip}
+                        onChange={() => toggleSkip(pr.postId)}
+                        style={{ accentColor: '#f59e0b' }}
+                      />
+                      <span style={{ fontSize: 8, color: '#f59e0b', letterSpacing: '.1em', textTransform: 'uppercase' }}>
+                        Skip
+                      </span>
+                    </label>
+                  )}
+                  <span style={{ fontSize: 10, color: '#c9a96e', fontFamily: 'monospace', flexShrink: 0 }}>{pr.postId}</span>
+                  <span style={{ fontSize: 12, color: '#f2ede4', flex: 1, minWidth: 120 }}>{pr.title}</span>
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    {pr.platforms.map(p => <PlatBadge key={p} platform={p} />)}
+                  </div>
+                  <span style={{ fontSize: 9, color: '#555', flexShrink: 0 }}>{pr.date}</span>
+                  {pr.pillar && <span style={{ fontSize: 9, color: '#444', flexShrink: 0 }}>{pr.pillar}</span>}
+                  {pr.format && <span style={{ fontSize: 9, color: '#333', flexShrink: 0 }}>{pr.format}</span>}
+
+                  {/* Window presence badges */}
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    {(['w24', 'w3', 'w7', 'eom'] as const).map(wk => {
+                      const has = pr.filledWindows.some(fw => fw.key === wk)
+                      const col = WIN_COLOR[wk]
+                      return (
+                        <span key={wk} style={{
+                          fontSize: 7, padding: '2px 5px', borderRadius: 2, fontWeight: 600, letterSpacing: '.08em',
+                          background: has ? `${col}18` : 'transparent',
+                          border: `1px solid ${has ? col + '40' : '#1a1a1a'}`,
+                          color: has ? col : '#2a2a2a',
+                        }}>
+                          {wk === 'w24' ? '24h' : wk === 'w3' ? '3d' : wk === 'w7' ? '7d' : 'EOM'}
+                        </span>
+                      )
+                    })}
+                  </div>
+
+                  {isDup && !skip && (
+                    <span style={{ fontSize: 8, color: '#f59e0b', letterSpacing: '.08em', flexShrink: 0 }}>
+                      exists — will update
+                    </span>
+                  )}
+                </div>
+
+                {/* Window metrics sub-table */}
+                {pr.filledWindows.length > 0 && (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
+                      <thead>
+                        <tr style={{ background: '#040404' }}>
+                          {['Window','Views','Likes','Cmts','Shares','Saves','Watch%','Skip%','Followers','ER%','Decision'].map(h => (
+                            <th key={h} style={{ textAlign: 'right', padding: '5px 10px', fontSize: 7, letterSpacing: '.12em', textTransform: 'uppercase', color: '#222', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                              {h === 'Window' ? <span style={{ textAlign: 'left', display: 'block' }}>{h}</span> : h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pr.filledWindows.map(fw => {
+                          const col     = WIN_COLOR[fw.key]
+                          const dColor  = DECISION_COLOR[fw.decision] ?? '#555'
+                          return (
+                            <tr key={fw.key} style={{ borderTop: '1px solid #0a0a0a' }}>
+                              <td style={{ padding: '7px 10px' }}>
+                                <span style={{ fontSize: 9, fontWeight: 600, color: col, letterSpacing: '.08em' }}>{fw.label}</span>
+                              </td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 10, color: '#ccc', fontFamily: 'monospace' }}>{fw.metrics.views.toLocaleString()}</td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 10, color: '#888', fontFamily: 'monospace' }}>{fw.metrics.likes.toLocaleString()}</td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 10, color: '#888', fontFamily: 'monospace' }}>{fw.metrics.comments.toLocaleString()}</td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 10, color: '#888', fontFamily: 'monospace' }}>{fw.metrics.shares.toLocaleString()}</td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 10, color: '#888', fontFamily: 'monospace' }}>{fw.metrics.saves.toLocaleString()}</td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 10, color: '#666', fontFamily: 'monospace' }}>{fw.metrics.watch_pct > 0 ? fw.metrics.watch_pct.toFixed(1) + '%' : '—'}</td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 10, color: '#555', fontFamily: 'monospace' }}>{fw.metrics.skip_rate != null && fw.metrics.skip_rate > 0 ? fw.metrics.skip_rate.toFixed(1) + '%' : '—'}</td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 10, color: '#555', fontFamily: 'monospace' }}>{fw.metrics.followers > 0 ? fw.metrics.followers.toLocaleString() : '—'}</td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 10, color: '#aaa', fontFamily: 'monospace', fontWeight: 600 }}>{fw.er.toFixed(2)}%</td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                <span style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.08em', color: dColor, padding: '2px 6px', borderRadius: 2, background: `${dColor}12`, border: `1px solid ${dColor}30` }}>
+                                  {fw.decision}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {pr.filledWindows.length === 0 && (
+                  <p style={{ fontSize: 9, color: '#2a2a2a', padding: '10px 16px' }}>No metric windows detected — post will be created without analytics</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer confirm bar */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20, paddingTop: 16, borderTop: '1px solid #141414' }}>
+          <button onClick={reset}
+            style={{ padding: '9px 18px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer', borderRadius: 3 }}>
+            Cancel
+          </button>
+          <button onClick={handleConfirmImport} disabled={toImport === 0}
+            style={{
+              padding: '9px 22px', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase',
+              background: toImport === 0 ? '#1a1a1a' : 'rgba(201,169,110,.12)',
+              border: `1px solid ${toImport === 0 ? '#1e1e1e' : 'rgba(201,169,110,.4)'}`,
+              color: toImport === 0 ? '#333' : '#c9a96e',
+              cursor: toImport === 0 ? 'not-allowed' : 'pointer', borderRadius: 3, fontWeight: 600,
+            }}>
+            Confirm Import ({toImport} post{toImport !== 1 ? 's' : ''})
+          </button>
         </div>
       </div>
     )
   }
 
-  // done
+  // ── Importing stage ───────────────────────────────────────────────────────────
+  if (stage === 'importing') {
+    return (
+      <div style={{ padding: '48px 32px', textAlign: 'center' }}>
+        <p style={{ fontSize: 12, color: '#444' }}>Importing…</p>
+      </div>
+    )
+  }
+
+  // ── Done stage ────────────────────────────────────────────────────────────────
+  const hasErrors = (result?.failed ?? 0) > 0
   return (
-    <div style={{ padding: '32px', background: '#0a0a0a', border: `1px solid ${result?.failed ? 'rgba(255,59,95,.2)' : 'rgba(57,255,136,.2)'}`, borderLeft: `3px solid ${result?.failed ? '#ff3b5f' : '#39ff88'}` }}>
-      <p style={{ fontSize: 14, color: result?.failed ? '#ff3b5f' : '#39ff88', marginBottom: 8 }}>
-        Import complete — {result?.imported ?? 0} posts created, {result?.failed ?? 0} failed
+    <div style={{
+      padding: '32px', background: '#0a0a0a', borderRadius: 4,
+      border: `1px solid ${hasErrors ? 'rgba(255,59,95,.2)' : 'rgba(57,255,136,.2)'}`,
+      borderLeft: `3px solid ${hasErrors ? '#ff3b5f' : '#39ff88'}`,
+    }}>
+      <p style={{ fontSize: 15, color: hasErrors ? '#ff3b5f' : '#39ff88', marginBottom: 12, fontWeight: 400 }}>
+        Import complete
       </p>
-      {result?.errors.slice(0, 3).map((e, i) => (
-        <p key={i} style={{ fontSize: 10, color: '#ff3b5f', marginBottom: 2 }}>{e}</p>
+      <div style={{ display: 'flex', gap: 28, marginBottom: 14, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Posts imported',     value: result?.imported        ?? 0, color: '#39ff88' },
+          { label: 'Posts updated',      value: result?.updated         ?? 0, color: '#4cc9ff' },
+          { label: 'Pipeline items',     value: result?.pipelineCreated ?? 0, color: '#c9a96e' },
+          { label: 'Calendar events',    value: result?.calendarCreated ?? 0, color: '#a78bfa' },
+          ...(hasErrors ? [{ label: 'Failed', value: result?.failed ?? 0, color: '#ff3b5f' }] : []),
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: 22, color, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, margin: 0 }}>{value}</p>
+            <p style={{ fontSize: 8, color: '#444', letterSpacing: '.14em', textTransform: 'uppercase', margin: '3px 0 0' }}>{label}</p>
+          </div>
+        ))}
+      </div>
+      {result?.errors.slice(0, 5).map((e, i) => (
+        <p key={i} style={{ fontSize: 10, color: '#ff3b5f', marginBottom: 3 }}>{e}</p>
       ))}
-      <button
-        onClick={() => { setStage('upload'); setHeaders([]); setRows([]); setResult(null) }}
-        style={{ marginTop: 16, padding: '7px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer' }}
-      >
+      <button onClick={reset}
+        style={{ marginTop: 16, padding: '7px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer', borderRadius: 3 }}>
         Import Another CSV
       </button>
     </div>

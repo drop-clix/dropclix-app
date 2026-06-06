@@ -82,7 +82,7 @@ function EditableCell({
   metricWindow: string
   field: EditableField
   isPercent: boolean
-  onSave: (field: EditableField, val: number) => void
+  onSave: (field: EditableField, val: number, decision?: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [local, setLocal] = useState(String(isPercent ? value.toFixed(2) : Math.round(value)))
@@ -95,7 +95,7 @@ function EditableCell({
     setSaving(true)
     const result = await updateAnalyticsMetric(postUUID, platform, metricWindow, field, n)
     setSaving(false)
-    if (!result.error) onSave(field, n)
+    if (!result.error) onSave(field, n, result.decision)
     setEditing(false)
   }
 
@@ -334,11 +334,13 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   const [sortKey,  setSortKey ] = useState<SortKey>('views')
   const [sortDir,  setSortDir ] = useState<SortDir>('desc')
 
-  function handleMetricSave(postUUID: string, field: EditableField, value: number) {
+  function handleMetricSave(postUUID: string, field: EditableField, value: number, decision?: string) {
     setPosts(prev => prev.map(p => {
       if (p.uuid !== postUUID) return p
       const winData = { ...p[win], [field]: value } as WindowData
-      return { ...p, [win]: winData }
+      const updated = { ...p, [win]: winData }
+      if (decision !== undefined) updated.decision = decision
+      return updated
     }))
   }
 
@@ -524,27 +526,27 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     <EditableCell
                       value={w.views} displayValue={hasData ? fmt(w.views) : '—'} color={hasData ? '#f2ede4' : '#252525'}
                       postUUID={post.uuid} platform={platform} metricWindow={win} field="views" isPercent={false}
-                      onSave={(f, v) => handleMetricSave(post.uuid, f, v)}
+                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
                       value={w.likes} displayValue={hasData ? fmt(w.likes) : '—'} color={hasData ? '#aaa' : '#252525'}
                       postUUID={post.uuid} platform={platform} metricWindow={win} field="likes" isPercent={false}
-                      onSave={(f, v) => handleMetricSave(post.uuid, f, v)}
+                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
                       value={w.comments} displayValue={hasData ? fmt(w.comments) : '—'} color={hasData ? '#aaa' : '#252525'}
                       postUUID={post.uuid} platform={platform} metricWindow={win} field="comments" isPercent={false}
-                      onSave={(f, v) => handleMetricSave(post.uuid, f, v)}
+                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
                       value={w.saves} displayValue={hasData ? fmt(w.saves) : '—'} color={hasData ? '#aaa' : '#252525'}
                       postUUID={post.uuid} platform={platform} metricWindow={win} field="saves" isPercent={false}
-                      onSave={(f, v) => handleMetricSave(post.uuid, f, v)}
+                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
                       value={w.shares} displayValue={hasData ? fmt(w.shares) : '—'} color={hasData ? '#aaa' : '#252525'}
                       postUUID={post.uuid} platform={platform} metricWindow={win} field="shares" isPercent={false}
-                      onSave={(f, v) => handleMetricSave(post.uuid, f, v)}
+                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
 
                     {/* ER % + tier (computed, not directly editable) */}
@@ -567,7 +569,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     <EditableCell
                       value={w.watch_pct} displayValue={hasData ? pct(w.watch_pct) : '—'} color={hasData ? '#aaa' : '#252525'}
                       postUUID={post.uuid} platform={platform} metricWindow={win} field="watch_pct" isPercent={true}
-                      onSave={(f, v) => handleMetricSave(post.uuid, f, v)}
+                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
 
                     {/* Decision */}

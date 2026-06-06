@@ -54,6 +54,22 @@ Global spacing applied. KPI cards: `28px 24px 22px`; table rows: `py-4`; filter 
 ### Session 14 ✅ — Recharts charts + collapsible sidebar
 `recharts@3.8.1`. Dashboard: 4 charts (follower growth bar, monthly views line, posts+followers composed, ER% by pillar vertical bar). Analytics: 2 charts (Reach by Post bar, ER% Over Time line). Collapsible sidebar via `SidebarShell.tsx` (56px collapsed / 220px expanded, hover + pin). `PortalNav.tsx` now unused.
 
+### Session 18-pre ✅ — Decision logic audit + auto-calculation everywhere
+
+**Problem:** Decision (`posts.decision`) was write-once at creation, never updated from ER% after that. ER% tier badges and Decision labels were completely disconnected — could contradict each other.
+
+**Shared utility:** `src/lib/decision.ts` — `erToDecision(er)` and `computeDecision(likes, comments, shares, saves, views)`. Single source of truth for all callers.
+
+**Fixes applied:**
+1. **`studio/actions.ts:createPost()`** — before inserting the post, iterates windows (eom→w7→w3→w24) and computes Decision from the first window with `views > 0`. Falls back to the form's Decision field only if no analytics data exists.
+2. **`StudioClient.tsx:buildPostsFromRows()`** (CSV importer) — computes Decision from EOM metrics in the CSV row when views > 0. Falls back to mapped `decision` column, then empty string. No longer defaults to `'Iterate'`.
+3. **`StudioClient.tsx:NewPostForm`** — Decision default changed from `'Iterate'` to `''` (blank). Server action auto-computes from metrics.
+4. **`edit-actions.ts:updateAnalyticsMetric()`** — after saving any metric, queries all windows (eom→w7→w3→w24) for the same post+platform, finds the best window with views > 0, computes Decision, and updates `posts.decision`. Returns `{ decision }` so the client can update React state immediately.
+5. **`AnalyticsClient.tsx`** — `EditableCell.onSave` and `handleMetricSave()` now accept an optional `decision` string and apply it to the matching post in React state so the Decision badge updates instantly without a page reload.
+6. **`scripts/ingest-eom-csv.mjs`** — after upserting EOM analytics, computes Decision from EOM ER% for every row and `UPDATE posts SET decision = ...`. Decision is shown in the dry-run preview output.
+
+**Invariant:** Decision is always ER%-derived when analytics data (views > 0) is available. The form's Decision dropdown is only used as a fallback for posts with no analytics yet (pre-publish pipeline stubs).
+
 ### Session 17 ✅ — Importer, formula audit, smart popup, welcome screen
 
 **1. Studio Importer (`/studio` tab "Import")**
@@ -86,6 +102,7 @@ Dashboard KPI "Engagement Rate" was wrong — only used `likes + comments`. Fixe
 - **Dashboard queries**: Use `metric_window = 'eom'` for aggregate totals. Pipeline active = not POSTED/CANCELLED.
 - **Analytics data join**: `posts.select('..., post_analytics(...)')` returns analytics as nested array keyed by `metric_window`.
 - **ER formula**: `(likes + comments + shares + saves) / views × 100`.
+- **Decision auto-calculation**: Decision is always derived from ER% when any analytics window has `views > 0`. Thresholds: ≥12% → Double Down, 4–11.9% → Iterate, <4% → Kill. Shared utility at `src/lib/decision.ts`. Decision is updated: on `createPost()` (best window), on `updateAnalyticsMetric()` (eom→w7→w3→w24), and on every `ingest-eom-csv.mjs` run. Never hardcode 'Iterate' as a default — leave null if no data.
 - **State naming**: Use `win` not `window` for WindowKey state variables (avoids browser global shadowing).
 - **Supabase untyped rows**: Cast with `as unknown as RawRow[]` — no generated DB types.
 - **Pipeline RLS**: Clients have SELECT only. Updates use `edit-actions.ts` + `admin.ts` after verifying ownership.
@@ -260,6 +277,35 @@ Touch (mobile): document-level `touchmove`/`touchend` listeners (added once on m
 - Session 18: Update Modal (cross-window edit overlay for Analytics/Angles/Report Card rows)
 - Session 19: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
 - Session 20: Goals enhancements — Elite Videos + Watch% Avg targets; weekly actuals from last 7 days
+
+## CSV Import Standard
+
+**This format is locked. Never change column order or names without explicit instruction.**
+
+Template file: `scripts/templates/dropclix-import-template.csv`
+
+### Column order (exact)
+
+```
+post_id, title, platform, date, pillar, hook_type, format, decision,
+views_24h, likes_24h, comments_24h, shares_24h, saves_24h, watch_pct_24h, skip_rate_24h, followers_24h,
+views_3d, likes_3d, comments_3d, shares_3d, saves_3d, watch_pct_3d,
+views_7d, likes_7d, comments_7d, shares_7d, saves_7d, watch_pct_7d,
+eom_views, eom_likes, eom_comments, eom_shares, eom_saves, eom_watch_pct, eom_skip_rate, eom_followers
+```
+
+### Rules
+- **platform**: pipe-separated — `ig|tt|yt` (not comma-separated)
+- **decision**: always left blank — the importer auto-calculates from ER%
+- **Smart window detection**: a window row is only inserted if `views_*` > 0. Blank or zero = skip that window entirely.
+- **Any blank column is silently skipped** — you don't need to fill all 36 columns.
+- **Source of truth**: `sell_the_situation_24hr_v2.csv` format (Downloads folder)
+- **Download Template button** in Studio → Import → CSV Import generates this template client-side from a hardcoded string matching the locked format.
+
+### ER% and Decision auto-calculation
+ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision picked from best window (eom→w7→w3→w24). Thresholds: ≥12% = Double Down, 4–11.9% = Iterate, <4% = Kill.
+
+---
 
 ## Scripts
 
