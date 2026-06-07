@@ -1,14 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
-type Suggestion = {
-  icon: string
-  headline: string
-  body: string
-  trigger: string
-}
-
-type SuggestionPost = {
+type ContextPost = {
   id: string
   title: string
   platform: string
@@ -21,120 +14,121 @@ type SuggestionPost = {
   decision: string | null
 }
 
-type Payload = {
-  mode?: 'monthly' | 'projection'
-  platform?: string
-  scope?: string
-  projectionMetric?: string
-  goalsSummary?: string
-  posts?: SuggestionPost[]
+type Suggestion = {
+  icon: string
+  headline: string
+  body: string
+  trigger: string
 }
 
-function fallback(posts: SuggestionPost[], mode: string): Suggestion[] {
-  const sorted = [...posts].sort((a, b) => b.er - a.er)
-  const top = sorted[0]
-  const bottom = sorted[sorted.length - 1]
-  if (!top) {
-    return [{ icon: 'spark', headline: 'Import fresh analytics', body: 'No matching posts were available for this filter.', trigger: '0 posts in request' }]
-  }
-  const avg = posts.reduce((s, p) => s + p.er, 0) / posts.length
-  return [
-    {
-      icon: 'trend',
-      headline: `Repeat ${top.pillar ?? 'the top pillar'}`,
-      body: `${top.title} leads this view at ${top.er.toFixed(1)}% ER and ${top.reach.toLocaleString()} reach.`,
-      trigger: `${top.id} is ${(top.er - avg).toFixed(1)} pts above avg`,
-    },
-    {
-      icon: 'hook',
-      headline: `Use ${top.hook ?? 'the winning hook'} earlier`,
-      body: `The strongest post uses this hook type, so test it in the first line of the next batch.`,
-      trigger: `${top.id} hook: ${top.hook ?? 'unknown'}`,
-    },
-    {
-      icon: 'watch',
-      headline: 'Protect retention',
-      body: `Use the top post pacing as the baseline before changing CTA or format.`,
-      trigger: `${top.watch.toFixed(1)}% watch on ${top.id}`,
-    },
-    {
-      icon: 'repair',
-      headline: 'Rewrite the low performer',
-      body: `${bottom?.title ?? top.title} is the clearest place to test a sharper opening.`,
-      trigger: `${bottom?.id ?? top.id} sits at ${(bottom?.er ?? top.er).toFixed(1)}% ER`,
-    },
-    ...(mode === 'projection' ? [{
-      icon: 'pace',
-      headline: 'Keep one variable stable',
-      body: 'The projection uses the last 10 posts, so change pillar or hook, not both in the same test.',
-      trigger: `${Math.min(posts.length, 10)} posts in projection sample`,
-    }] : []),
-  ].slice(0, mode === 'projection' ? 6 : 4)
+function fmt(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return n.toLocaleString()
 }
 
-function coerceSuggestions(value: unknown): Suggestion[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .map(item => {
-      if (!item || typeof item !== 'object') return null
-      const row = item as Record<string, unknown>
-      const headline = typeof row.headline === 'string' ? row.headline : ''
-      const body = typeof row.body === 'string' ? row.body : ''
-      const trigger = typeof row.trigger === 'string' ? row.trigger : ''
-      const icon = typeof row.icon === 'string' ? row.icon : 'spark'
-      if (!headline || !body || !trigger) return null
-      return { icon, headline, body, trigger }
+export async function POST(req: NextRequest) {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return NextResponse.json({
+      suggestions: [
+        {
+          icon: 'alert',
+          headline: 'Add ANTHROPIC_API_KEY to enable AI insights',
+          body: 'Add your Anthropic API key to .env.local as ANTHROPIC_API_KEY to generate personalised suggestions.',
+          trigger: 'Configuration required',
+        },
+      ] satisfies Suggestion[],
     })
-    .filter((item): item is Suggestion => Boolean(item))
-}
-
-export async function POST(request: Request) {
-  const payload = await request.json() as Payload
-  const posts = (payload.posts ?? []).slice(0, 24)
-  const mode = payload.mode ?? 'monthly'
-  const fallbackSuggestions = fallback(posts, mode)
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ suggestions: fallbackSuggestions, source: 'fallback' })
   }
+
+  const { posts, platform, mode, projectionMetric, goalsSummary } = (await req.json()) as {
+    posts: ContextPost[]
+    platform: string
+    mode?: string
+    projectionMetric?: string
+    goalsSummary?: string
+  }
+
+  if (!posts?.length) {
+    return NextResponse.json({ suggestions: [] })
+  }
+
+  const sorted = [...posts].sort((a, b) => b.er - a.er)
+  const top5 = sorted.slice(0, 5)
+  const bottom5 = sorted.slice(-5).reverse()
+  const avgER = posts.reduce((s, p) => s + p.er, 0) / posts.length
+  const avgReach = posts.reduce((s, p) => s + p.reach, 0) / posts.length
+
+  const pillarMap = new Map<string, { er: number[]; count: number }>()
+  for (const p of posts) {
+    const pl = p.pillar ?? 'Other'
+    if (!pillarMap.has(pl)) pillarMap.set(pl, { er: [], count: 0 })
+    const m = pillarMap.get(pl)!
+    m.er.push(p.er); m.count++
+  }
+  const pillarStats = [...pillarMap.entries()]
+    .map(([pillar, m]) => ({ pillar, avgER: +(m.er.reduce((s, v) => s + v, 0) / m.er.length).toFixed(1), count: m.count }))
+    .sort((a, b) => b.avgER - a.avgER)
+
+  const hookMap = new Map<string, { er: number[]; count: number }>()
+  for (const p of posts) {
+    const h = p.hook ?? 'Unknown'
+    if (!hookMap.has(h)) hookMap.set(h, { er: [], count: 0 })
+    hookMap.get(h)!.er.push(p.er)
+    hookMap.get(h)!.count++
+  }
+  const hookStats = [...hookMap.entries()]
+    .map(([hook, m]) => ({ hook, avgER: +(m.er.reduce((s, v) => s + v, 0) / m.er.length).toFixed(1), count: m.count }))
+    .sort((a, b) => b.avgER - a.avgER)
+
+  const platformName = platform === 'ig' ? 'Instagram' : platform === 'yt' ? 'YouTube' : platform === 'tt' ? 'TikTok' : platform
+
+  const prompt = `You are a data-driven content strategy advisor for a ${platformName} creator.
+${mode === 'projection' ? `Focus on the projection metric: ${projectionMetric ?? 'overall performance'}.` : ''}
+${goalsSummary ? `Creator goals: ${goalsSummary}` : ''}
+
+DATA (${posts.length} posts, avg ER ${avgER.toFixed(1)}%, avg reach ${fmt(avgReach)}):
+
+TOP 5:
+${top5.map(p => `- ${p.id} "${p.title}" | ER: ${p.er.toFixed(1)}% | Reach: ${fmt(p.reach)} | Pillar: ${p.pillar ?? '—'} | Hook: ${p.hook ?? '—'}`).join('\n')}
+
+BOTTOM 5:
+${bottom5.map(p => `- ${p.id} "${p.title}" | ER: ${p.er.toFixed(1)}% | Reach: ${fmt(p.reach)} | Pillar: ${p.pillar ?? '—'}`).join('\n')}
+
+PILLAR BREAKDOWN:
+${pillarStats.map(p => `- ${p.pillar}: avg ${p.avgER}% ER (${p.count} posts)`).join('\n')}
+
+HOOK BREAKDOWN:
+${hookStats.slice(0, 5).map(h => `- ${h.hook}: avg ${h.avgER}% ER (${h.count} posts)`).join('\n')}
+
+Return exactly 4 specific, data-driven suggestions as JSON. Reference actual post IDs, pillar names, hook types, or ER% numbers. Never give generic advice.
+
+Format (JSON array only, no other text):
+[
+  {
+    "icon": "trend" | "fire" | "pillar" | "hook" | "repair" | "spark" | "pace",
+    "headline": "5-8 word action headline",
+    "body": "One specific sentence referencing actual data from above.",
+    "trigger": "Key metric that triggered this (e.g. '8.2% vs 5.1% avg')"
+  }
+]`
 
   try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-    const count = mode === 'projection' ? '4 to 6' : '4'
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 900,
-      temperature: 0.2,
-      system: [
-        `You write concise analytics recommendations for a premium social media dashboard.`,
-        `Return JSON only with shape {"suggestions":[{"icon":"trend","headline":"...","body":"...","trigger":"..."}]}.`,
-        `Every suggestion must cite actual post IDs, numbers, pillar names, hook types, or goals from the provided data.`,
-        `Do not give generic advice. Use no markdown.`,
-      ].join(' '),
-      messages: [{
-        role: 'user',
-        content: JSON.stringify({
-          mode,
-          count,
-          platform: payload.platform,
-          scope: payload.scope,
-          projectionMetric: payload.projectionMetric,
-          goals: payload.goalsSummary,
-          posts,
-        }),
-      }],
+    const client = new Anthropic({ apiKey })
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }],
     })
 
-    const text = message.content
-      .filter(block => block.type === 'text')
-      .map(block => block.text)
-      .join('')
-      .trim()
-    const parsed = JSON.parse(text) as { suggestions?: unknown }
-    const suggestions = coerceSuggestions(parsed.suggestions)
-    return NextResponse.json({ suggestions: suggestions.length ? suggestions : fallbackSuggestions, source: suggestions.length ? 'claude' : 'fallback' })
-  } catch (error) {
-    console.error('Claude suggestions failed:', error)
-    return NextResponse.json({ suggestions: fallbackSuggestions, source: 'fallback' })
+    const text = message.content[0].type === 'text' ? message.content[0].text : '[]'
+    const match = text.match(/\[[\s\S]*\]/)
+    const suggestions: Suggestion[] = match ? JSON.parse(match[0]) : []
+
+    return NextResponse.json({ suggestions: suggestions.slice(0, 4) })
+  } catch (err) {
+    console.error('AI suggestions error:', err)
+    return NextResponse.json({ suggestions: [] })
   }
 }

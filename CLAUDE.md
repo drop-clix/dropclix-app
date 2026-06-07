@@ -202,6 +202,12 @@ Add A record: Name `portal` → Value `76.76.21.21`, Proxy **OFF** (grey cloud).
 - **Filter tabs**: `px-4 py-2.5 gap-2`; pillar chips: `px-3 py-2`
 - **Section gaps**: KPI grid `mb-8`; filter row `mb-6`; KPI-to-table `mb-8`
 - **Edit panels**: `28px 32px` padding
+- **Dashboard types**: `RawDashPost`, `RawDashPipeline`, `RawDashCalendar`, `RawDashGoal` all exported from `DashboardClient.tsx`. `dashboard/page.tsx` imports from there.
+- **AI Suggestions API**: DashboardClient calls `/api/ai-suggestions` (NOT `/api/suggestions`). Request body: `{ posts: ContextPost[], platform, mode, projectionMetric?, goalsSummary? }`. Response: `{ suggestions: { icon, headline, body, trigger }[] }`. Needs `ANTHROPIC_API_KEY` in `.env.local`.
+- **Dashboard projection AI drawer**: Opens on projection card click, shows right-side slide-in panel. Uses `fallbackSuggestions()` immediately then replaces with API result.
+- **Pipeline ID display**: Use `formatDisplayId(postId, platform[])` in PipelineClient — never render `item.postId` raw, as 45 legacy `#0XXX` items exist. Helper infers `ig`/`yt`/`tt` prefix from `platform[0]`.
+- **ChartCard glow**: `0 0 56px ${platformColor}1f` box-shadow. Platform colors: ig=#c9a96e, yt/lf=#4cc9ff, tt=#2dd4bf.
+- **AdvancedAnalyticsCharts**: Added to AnalyticsClient below the paginator + legend. Contains all 4 charts in 2 grid rows.
 
 ## File structure (src/)
 
@@ -369,9 +375,34 @@ Report Card removed from sidebar navigation (`SidebarShell.tsx` NAV_ITEMS). `/re
 **8. Studio stats bar**
 `PipelineStats` type exported from `studio/page.tsx`. Page now fetches ALL pipeline item statuses (extra query), computes counts (PLANNED/SCRIPTED/FILMING/REVIEWING/POSTED), passes to StudioClient. Stats bar replaces the old "Phase funnel" — 5 clickable stat tiles that navigate to `/pipeline?phase=[STATUS]`. `FilterBar` removed from studio/page.tsx.
 
+### Session 22 ✅ — Dashboard overhaul, Analytics charts, Pipeline ID fix
+
+**1. Dashboard (`DashboardClient.tsx`) — full rewrite**
+All graphs, pipeline status strip, and recent content table removed. Replaced with:
+- **4 toggle KPI cards**: Followers Gained ↔ Conversion Rate | Total Reach ↔ Avg Watch% | Avg ER% ↔ Top Video | Posts (static). Each card uses local boolean toggle state.
+- **30-Day Projections**: 3 cards (Follower Gain / Reach / Avg ER%) computed from last 10 posts. Clicking any card opens right-side AI Suggestions drawer that calls Claude API.
+- **7-Day Calendar Snapshot**: Horizontal week view, arrow navigation, platform-colored event pills (gold=IG, blue=YT, teal=TT), max 2 per day + "+X more". Click pill → PostSnapshot popup (grade + top 3 stats + link to Calendar tab).
+- **Pipeline Snapshot**: Platform+scope filtered items, max 18, click navigates to `/pipeline?phase=STATUS`.
+- **AI Suggestions**: 4 cards powered by `/api/ai-suggestions` (Claude API). Fallback to computed client-side suggestions when API unavailable.
+
+**2. `dashboard/page.tsx`** fetches `posts`, `pipeline_items`, `calendar_events`, `goals` in parallel. Exports `RawDashPost`, `RawDashPipeline`, `RawDashCalendar`, `RawDashGoal` types (all from DashboardClient).
+
+**3. AI Suggestions API (`/api/ai-suggestions/route.ts`)**
+POST with `{ posts, platform, mode, projectionMetric, goalsSummary }`. Returns `{ suggestions: { icon, headline, body, trigger }[] }`. Uses `claude-sonnet-4-5`. Handles missing `ANTHROPIC_API_KEY` gracefully (returns config-prompt card). `/api/suggestions/route.ts` retained for external callers.
+
+**4. Analytics charts** — `AdvancedAnalyticsCharts` component added to `AnalyticsClient.tsx`:
+- Row 1: Monthly Views/Reach by Post (bar, top/last/all modes) | ER% Over Time (line, click-to-snapshot)
+- Row 2: Posts Volume vs Growth% (dual-axis composed) | Avg ER% by Pillar (horizontal bar)
+- All in `ChartCard` (dark bg, platform glow box-shadow, hover lift, expandable).
+
+**5. Pipeline post ID display fix** — `formatDisplayId(postId, platform)` helper in `PipelineClient.tsx`:
+- IDs already in `#(ig|tt|yt|LF)NNNN` format → returned as-is.
+- Legacy `#0XXX` numeric IDs → prefix inferred from `item.platform[0]` and formatted `#ig0001` / `#yt0001` / `#tt0001`.
+- Applied at both table row ID cell and edit panel header.
+
 ## Next sessions
-- Session 22: Update Modal (cross-window edit overlay for Analytics/Angles rows)
-- Session 23: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
+- Session 23: Update Modal (cross-window edit overlay for Analytics/Angles rows)
+- Session 24: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
 
 ## CSV Import Standard
 

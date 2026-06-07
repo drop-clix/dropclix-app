@@ -49,6 +49,15 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+function formatDisplayId(postId: string, platform: string[]): string {
+  if (/^#(ig|tt|yt|LF)\d+$/i.test(postId)) return postId
+  const numMatch = postId.match(/^#?(\d+)$/)
+  if (!numMatch) return postId
+  const plat = platform[0] ?? 'ig'
+  const prefix = plat === 'yt' ? 'yt' : plat === 'tt' ? 'tt' : 'ig'
+  return `#${prefix}${numMatch[1].padStart(4, '0')}`
+}
+
 // Convert ISO/UTC string → datetime-local input value (local time)
 function isoToLocal(iso: string | null | undefined): string {
   if (!iso) return ''
@@ -252,7 +261,7 @@ function ItemEditPanel({
     >
       <div className="flex items-center justify-between mb-5">
         <span className="text-[9px] font-medium tracking-[.2em] uppercase" style={{ color: '#c9a96e' }}>
-          Editing · {item.postId}
+          Editing · {formatDisplayId(item.postId, item.platform)}
         </span>
         <div className="flex gap-2">
           <button
@@ -867,7 +876,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                       {/* ID */}
                       <td className="px-4 py-4">
                         <span className="text-[10px] font-medium" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
-                          {item.postId}
+                          {formatDisplayId(item.postId, item.platform)}
                         </span>
                       </td>
 

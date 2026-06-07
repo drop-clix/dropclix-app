@@ -1,6 +1,6 @@
 import { getPortalContext } from '@/lib/supabase/portal'
 import { DashboardClient } from '@/components/portal/DashboardClient'
-import type { RawDashCalendar, RawDashGoal, RawDashPipeline, RawDashPost } from '@/components/portal/DashboardClient'
+import type { RawDashPost, RawDashPipeline, RawDashCalendar, RawDashGoal } from '@/components/portal/DashboardClient'
 
 export default async function DashboardPage() {
   const { supabase, clientId, userEmail } = await getPortalContext()
