@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { usePortalFilters } from '@/hooks/usePortalFilters'
+import { useClientConfig } from '@/lib/client-config-context'
 import type { PlatformFilter, ScopeFilter } from '@/hooks/usePortalFilters'
 
 // ── SVG icons ─────────────────────────────────────────────────────────────────
@@ -89,9 +90,12 @@ export function PlatformPills({
   platform: PlatformFilter
   onChange: (p: PlatformFilter) => void
 }) {
+  const { enabledPlatforms } = useClientConfig()
+  const visiblePlatforms = PLATFORMS.filter(p => enabledPlatforms.includes(p.key))
+
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-      {PLATFORMS.map(p => {
+      {visiblePlatforms.map(p => {
         const active = platform === p.key
         return (
           <button

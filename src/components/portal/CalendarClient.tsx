@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { CalendarEvent } from '@/app/(dashboard)/calendar/page'
 import { updateCalendarEvent, deleteCalendarEvent } from '@/app/(dashboard)/edit-actions'
+import { EmptyState } from '@/components/portal/EmptyState'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -510,6 +511,16 @@ export function CalendarClient({
       setEditingId(match.id)
     })
   }, [linkedPost, events])
+
+  if (initialEvents.length === 0) {
+    return (
+      <EmptyState
+        icon="calendar"
+        headline="No calendar events yet."
+        body="Your content manager will add scheduled and posted videos here — check back soon."
+      />
+    )
+  }
 
   return (
     <div>

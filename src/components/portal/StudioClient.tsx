@@ -4,10 +4,11 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createPost, importPostsBatch, checkExistingPostIds } from '@/app/(dashboard)/studio/actions'
 import type { NewPostData, WindowMetrics } from '@/app/(dashboard)/studio/actions'
-import type { PipelineStats } from '@/app/(dashboard)/studio/page'
+import type { PipelineStats, YTConnectionStatus } from '@/app/(dashboard)/studio/page'
 import { erToDecision } from '@/lib/decision'
 import { usePortalFilters, filterByPlatform } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
+import { EmptyState } from '@/components/portal/EmptyState'
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -1026,10 +1027,12 @@ export function StudioClient({
   items,
   nextPostId,
   pipelineStats,
+  ytStatus,
 }: {
   items: StudioItem[]
   nextPostId: string
   pipelineStats: PipelineStats
+  ytStatus?: YTConnectionStatus
 }) {
   const [tab, setTab] = useState<StudioTab>('scripts')
   const [importMode, setImportMode] = useState<ImportMode>('new')
@@ -1107,6 +1110,45 @@ export function StudioClient({
         ))}
       </div>
 
+      {/* YouTube connection status */}
+      {ytStatus !== undefined && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
+          padding: '8px 14px',
+          background: ytStatus.connected ? 'rgba(76,201,255,.05)' : 'rgba(255,255,255,.02)',
+          border: `1px solid ${ytStatus.connected ? 'rgba(76,201,255,.15)' : '#141414'}`,
+        }}>
+          <svg width={13} height={13} viewBox="0 0 24 24" fill={ytStatus.connected ? '#4cc9ff' : '#2a2a2a'}>
+            <path d="M23.5 6.2s-.3-2-1.2-2.8c-1.1-1.2-2.4-1.2-3-1.3C16.6 2 12 2 12 2s-4.6 0-7.3.1c-.6.1-1.9.1-3 1.3C.8 4.2.5 6.2.5 6.2S.2 8.5.2 10.8v2.1c0 2.3.3 4.6.3 4.6s.3 2 1.2 2.8c1.1 1.2 2.6 1.1 3.3 1.2C7.2 21.7 12 21.8 12 21.8s4.6 0 7.3-.2c.6-.1 1.9-.1 3-1.2.9-.8 1.2-2.8 1.2-2.8s.3-2.3.3-4.6v-2.1C23.8 8.5 23.5 6.2 23.5 6.2zM9.7 15.5V8.4l8.1 3.6-8.1 3.5z"/>
+          </svg>
+          <span style={{ fontSize: 9, fontWeight: 500, letterSpacing: '.14em', textTransform: 'uppercase', color: ytStatus.connected ? '#4cc9ff' : '#2a2a2a' }}>
+            YouTube
+          </span>
+          <span style={{ width: 1, height: 10, background: ytStatus.connected ? 'rgba(76,201,255,.2)' : '#1e1e1e' }} />
+          <span style={{ fontSize: 9, color: ytStatus.connected ? '#4cc9ff' : '#333', fontWeight: 300 }}>
+            {ytStatus.connected
+              ? `${ytStatus.channelName ? ytStatus.channelName + ' · ' : ''}Connected`
+              : 'Not connected'}
+          </span>
+          {ytStatus.connected && ytStatus.lastSyncedAt && (
+            <span style={{ fontSize: 8, color: '#333', marginLeft: 4 }}>
+              · Last sync {new Date(ytStatus.lastSyncedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </span>
+          )}
+          {!ytStatus.connected && (
+            <a
+              href="/admin"
+              style={{
+                marginLeft: 'auto', fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase',
+                color: '#2a2a2a', textDecoration: 'none',
+              }}
+            >
+              Connect in Admin →
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
         {tabs.map(t => (
@@ -1132,7 +1174,7 @@ export function StudioClient({
         return (
           <div>
             {sorted.length === 0 ? (
-              <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#333' }}>No scripts awaiting review.</p>
+              <EmptyState icon="video" headline="No scripts awaiting review." body="Scripted videos will appear here once they're added to the pipeline." />
             ) : (
               <>
                 {paged.map(item => <ScriptCard key={item.id} item={item} />)}
@@ -1149,7 +1191,7 @@ export function StudioClient({
         return (
           <div>
             {production.length === 0 ? (
-              <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#333' }}>Nothing in production right now.</p>
+              <EmptyState icon="video" headline="Nothing in production right now." body="Videos being filmed or reviewed will appear here." />
             ) : (
               <>
                 {filming.length > 0 && (
@@ -1176,7 +1218,7 @@ export function StudioClient({
         return (
           <div>
             {sorted.length === 0 ? (
-              <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#333' }}>No planned items.</p>
+              <EmptyState icon="grid" headline="No planned content yet." body="Video ideas and planned content will appear here once they're added." />
             ) : (
               <>
                 {paged.map(item => <ProductionRow key={item.id} item={item} />)}

@@ -5,6 +5,7 @@ import { updateGoalTarget } from '@/app/(dashboard)/edit-actions'
 import { usePortalFilters, filterByPlatform } from '@/hooks/usePortalFilters'
 import { PlatformPills } from '@/components/portal/FilterBar'
 import { ReportCardClient } from '@/components/portal/ReportCardClient'
+import { EmptyState } from '@/components/portal/EmptyState'
 import type { WeekGrade, MonthGrade, PostSummary, ScoreComponents } from '@/app/(dashboard)/report-card/page'
 import type { RawGoalPost, RawGoal } from '@/app/(dashboard)/goals/page'
 
@@ -411,6 +412,16 @@ export function GoalsDashboard({
   ]
 
   const [mo, yr] = currentKey ? [+currentKey.slice(5, 7), +currentKey.slice(0, 4)] : [0, 0]
+
+  if (rawPosts.length === 0) {
+    return (
+      <EmptyState
+        icon="target"
+        headline="No data to track yet."
+        body="Goal progress will appear here once your first content is imported."
+      />
+    )
+  }
 
   return (
     <>

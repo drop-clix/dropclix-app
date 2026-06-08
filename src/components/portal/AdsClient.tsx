@@ -7,6 +7,7 @@ import {
   updateAdCreative, deleteAdCreative,
 } from '@/app/(dashboard)/edit-actions'
 import { Paginator } from '@/components/portal/Paginator'
+import { EmptyState } from '@/components/portal/EmptyState'
 
 // ── Formatters ─────────────────────────────────────────────────────────────
 
@@ -426,6 +427,16 @@ export function AdsClient({
 
   function handleCreativeDelete(id: string) {
     setCreatives(prev => prev.filter(cr => cr.id !== id))
+  }
+
+  if (campaigns.length === 0) {
+    return (
+      <EmptyState
+        icon="ad"
+        headline="No ad campaigns tracked yet."
+        body="Ad campaign performance data will appear here once campaigns are imported."
+      />
+    )
   }
 
   // Recalculate summary KPIs from current state

@@ -2,11 +2,12 @@
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { updatePipelineItem, deletePipelineItem } from '@/app/(dashboard)/edit-actions'
+import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
 import { PlatformPills, ScopeDropdown } from '@/components/portal/FilterBar'
+import { EmptyState } from '@/components/portal/EmptyState'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -46,6 +47,122 @@ const ACTIVE_STATUSES = new Set(['SCRIPTED','PLANNED','FILMING','EDITING','REVIE
 type SortKey = 'priority' | 'status' | 'pillar' | 'week' | 'title'
 type FilterKey = 'ALL' | 'ACTIVE' | string
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+
+// ── YT Link Modal ──────────────────────────────────────────────────────────
+
+function YTIcon({ size = 12, color = '#4cc9ff' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <path d="M23.5 6.2s-.3-2-1.2-2.8c-1.1-1.2-2.4-1.2-3-1.3C16.6 2 12 2 12 2s-4.6 0-7.3.1c-.6.1-1.9.1-3 1.3C.8 4.2.5 6.2.5 6.2S.2 8.5.2 10.8v2.1c0 2.3.3 4.6.3 4.6s.3 2 1.2 2.8c1.1 1.2 2.6 1.1 3.3 1.2C7.2 21.7 12 21.8 12 21.8s4.6 0 7.3-.2c.6-.1 1.9-.1 3-1.2.9-.8 1.2-2.8 1.2-2.8s.3-2.3.3-4.6v-2.1C23.8 8.5 23.5 6.2 23.5 6.2zM9.7 15.5V8.4l8.1 3.6-8.1 3.5z"/>
+    </svg>
+  )
+}
+
+function YTLinkModal({
+  item,
+  onClose,
+  onLinked,
+}: {
+  item: PipelineItem
+  onClose: () => void
+  onLinked: (ytId: string) => void
+}) {
+  const [input, setInput]     = useState(item.ytId ?? '')
+  const [saving, setSaving]   = useState(false)
+  const [errMsg, setErrMsg]   = useState('')
+
+  async function handleSave() {
+    const val = input.trim()
+    if (!val) return
+    setSaving(true)
+    setErrMsg('')
+    const result = await linkYouTubeVideo(item.postId, val)
+    setSaving(false)
+    if (result.error) { setErrMsg(result.error); return }
+    onLinked(result.ytId!)
+    onClose()
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9000,
+        background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: '#0a0a0a', border: '1px solid #1e1e1e',
+          borderTop: '2px solid #4cc9ff', padding: '28px 32px', width: 420, maxWidth: '90vw',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ marginBottom: 18 }}>
+          <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.22em', textTransform: 'uppercase', color: '#4cc9ff', marginBottom: 4 }}>
+            Link YouTube Video
+          </p>
+          <p style={{ fontSize: 13, color: '#f2ede4', fontWeight: 300 }}>{item.title}</p>
+          <p style={{ fontSize: 10, color: '#c9a96e', fontFamily: 'monospace', marginTop: 2 }}>{item.postId}</p>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 6 }}>
+            YouTube URL or Video ID
+          </p>
+          <input
+            autoFocus
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="https://youtu.be/abc123XYZ89 or abc123XYZ89"
+            onKeyDown={e => e.key === 'Enter' && handleSave()}
+            style={{
+              width: '100%', background: '#080808', border: '1px solid #1e1e1e',
+              color: '#f2ede4', padding: '8px 10px', fontSize: 12,
+              fontFamily: "'DM Sans', sans-serif", outline: 'none',
+            }}
+            onFocus={e => { e.target.style.borderColor = '#4cc9ff' }}
+            onBlur={e =>  { e.target.style.borderColor = '#1e1e1e' }}
+          />
+          {errMsg && (
+            <p style={{ fontSize: 10, color: '#ff3b5f', marginTop: 5 }}>{errMsg}</p>
+          )}
+        </div>
+
+        {item.ytId && (
+          <p style={{ fontSize: 9, color: '#2a2a2a', marginBottom: 16 }}>
+            Currently linked: <span style={{ color: '#4cc9ff', fontFamily: 'monospace' }}>{item.ytId}</span>
+          </p>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '7px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+              background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!input.trim() || saving}
+            style={{
+              padding: '7px 20px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+              background: 'rgba(76,201,255,.1)', border: '1px solid rgba(76,201,255,.4)',
+              color: '#4cc9ff', cursor: saving ? 'wait' : 'pointer',
+              opacity: !input.trim() ? 0.4 : 1,
+            }}
+          >
+            {saving ? 'Saving…' : 'Link Video'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -631,6 +748,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
   const [hoveredId,    setHoveredId   ] = useState<string | null>(null)
   const [saveError,    setSaveError   ] = useState<string | null>(null)
   const [page,         setPage        ] = useState(1)
+  const [ytLinkItem,   setYtLinkItem  ] = useState<PipelineItem | null>(null)
 
   const { platform, scope, from, to, setFilters } = usePortalFilters()
 
@@ -712,8 +830,22 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
     if (editingId === id) setEditingId(null)
   }
 
+  function handleYtLinked(itemId: string, ytId: string) {
+    setItems(prev => prev.map(i => i.id === itemId ? { ...i, ytId } : i))
+  }
+
   const arrow = (key: SortKey) =>
     sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
+
+  if (initialItems.length === 0) {
+    return (
+      <EmptyState
+        icon="pipeline"
+        headline="No content in the pipeline yet."
+        body="Your content manager will add upcoming videos here — check back soon."
+      />
+    )
+  }
 
   const phaseCards: { key: FilterKey; label: string; color: string }[] = [
     { key: 'ACTIVE',    label: 'Active',    color: '#c9a96e' },
@@ -727,6 +859,15 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
 
   return (
     <div>
+
+      {/* YT Link modal */}
+      {ytLinkItem && (
+        <YTLinkModal
+          item={ytLinkItem}
+          onClose={() => setYtLinkItem(null)}
+          onLinked={ytId => handleYtLinked(ytLinkItem.id, ytId)}
+        />
+      )}
 
       {/* ── Phase cards ──────────────────────────────────────────── */}
       <div
@@ -839,13 +980,15 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                 Status{arrow('status')}
               </th>
               <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
+                  style={{ color: '#2a2a2a', width: 40 }}>YT</th>
+              <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
                   style={{ color: '#2a2a2a', width: 80 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-16 text-[11px]" style={{ color: '#2a2a2a' }}>
+                <td colSpan={10} className="text-center py-16 text-[11px]" style={{ color: '#2a2a2a' }}>
                   No pipeline items match this filter.
                 </td>
               </tr>
@@ -933,6 +1076,25 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                         )}
                       </td>
 
+                      {/* YT link indicator */}
+                      <td className="px-3 py-4" onClick={e => e.stopPropagation()}>
+                        {item.platform.includes('yt') || item.ytType != null ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); setYtLinkItem(item) }}
+                            title={item.ytId ? `Linked: ${item.ytId}` : 'Link YouTube video'}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              width: 24, height: 24, cursor: 'pointer',
+                              background: item.ytId ? 'rgba(76,201,255,.1)' : 'transparent',
+                              border: `1px solid ${item.ytId ? 'rgba(76,201,255,.4)' : '#1e1e1e'}`,
+                              borderRadius: 3,
+                            }}
+                          >
+                            <YTIcon size={11} color={item.ytId ? '#4cc9ff' : '#2a2a2a'} />
+                          </button>
+                        ) : null}
+                      </td>
+
                       {/* Actions */}
                       <td className="px-4 py-4">
                         <div
@@ -975,7 +1137,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                     {/* Edit panel */}
                     {isEditing && (
                       <tr>
-                        <td colSpan={9} style={{ padding: 0 }}>
+                        <td colSpan={10} style={{ padding: 0 }}>
                           <ItemEditPanel
                             item={item}
                             onUpdate={handleUpdate}

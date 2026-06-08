@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PlatformPills, ScopeDropdown } from '@/components/portal/FilterBar'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
+import { EmptyState } from '@/components/portal/EmptyState'
+import { OnboardingBanner } from '@/components/portal/OnboardingBanner'
 import type { PlatformFilter } from '@/hooks/usePortalFilters'
 
 export type RawDashPost = {
@@ -455,8 +457,21 @@ export function DashboardClient({
 
   const selectedPost = selectedPostId ? postById.get(selectedPostId) ?? null : null
 
+  if (rawPosts.length === 0) {
+    return (
+      <div className="p-10">
+        <EmptyState
+          icon="chart"
+          headline="No data yet."
+          body="Your content manager will import your videos here — check back soon."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="p-10 max-w-[1320px]">
+      <OnboardingBanner postCount={rawPosts.length} />
       <div className="mb-8" style={{ borderBottom: '1px solid #141414', paddingBottom: 28 }}>
         <p className="text-[9px] font-medium tracking-[.26em] uppercase mb-2 flex items-center gap-3" style={{ color: '#c9a96e' }}>
           <span style={{ display: 'block', width: 20, height: 1, background: '#c9a96e' }} />

@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { SignOutButton } from '@/components/portal/SignOutButton'
-import { impersonateClient } from './actions'
+import { AdminYouTubeSection } from './AdminYouTubeSection'
+import { AdminClientsSection, type ClientRow } from './AdminClientsSection'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -17,17 +19,88 @@ export default async function AdminPage() {
 
   if (profile?.role !== 'admin') redirect('/')
 
-  const { data: clients } = await supabase
-    .from('clients')
-    .select('id, name, email, slug, created_at')
-    .order('created_at', { ascending: false })
+  const adm = createAdminClient()
+
+  const [clientsRes, connectionsRes, postsRes] = await Promise.all([
+    adm
+      .from('clients')
+      .select('id, name, email, slug, created_at, monthly_retainer, enabled_platforms, enabled_tabs')
+      .order('created_at', { ascending: false }),
+    adm
+      .from('platform_connections')
+      .select('client_id, channel_name, channel_id, subscriber_count, created_at, last_synced_at')
+      .eq('platform', 'youtube'),
+    // Fetch post counts + last activity date per client
+    adm
+      .from('posts')
+      .select('client_id, date')
+      .order('date', { ascending: false }),
+  ])
+
+  const rawClients = (clientsRes.data ?? []) as unknown as {
+    id: string
+    name: string
+    email: string
+    slug: string
+    created_at: string
+    monthly_retainer: number | null
+    enabled_platforms: string[] | null
+    enabled_tabs: string[] | null
+  }[]
+
+  const allPosts = (postsRes.data ?? []) as unknown as { client_id: string; date: string | null }[]
+
+  // Build post count + last activity maps
+  const postCountMap = new Map<string, number>()
+  const lastActivityMap = new Map<string, string | null>()
+  for (const post of allPosts) {
+    const cid = post.client_id
+    postCountMap.set(cid, (postCountMap.get(cid) ?? 0) + 1)
+    if (!lastActivityMap.has(cid)) {
+      lastActivityMap.set(cid, post.date ?? null)
+    }
+  }
+
+  const clients: ClientRow[] = rawClients.map(c => ({
+    id:                c.id,
+    name:              c.name,
+    email:             c.email,
+    slug:              c.slug,
+    created_at:        c.created_at,
+    monthly_retainer:  c.monthly_retainer,
+    postCount:         postCountMap.get(c.id) ?? 0,
+    lastActivity:      lastActivityMap.get(c.id) ?? null,
+    enabled_platforms: (c.enabled_platforms as string[] | null) ?? ['ig'],
+    enabled_tabs:      (c.enabled_tabs      as string[] | null) ?? ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals'],
+  }))
+
+  const ytConnections = (connectionsRes.data ?? []) as unknown as {
+    client_id: string
+    channel_name: string | null
+    channel_id: string | null
+    subscriber_count: number | null
+    created_at: string | null
+    last_synced_at: string | null
+  }[]
+
+  const ytSectionConnections = ytConnections.map(c => ({
+    clientId:        c.client_id,
+    channelName:     c.channel_name,
+    channelId:       c.channel_id,
+    subscriberCount: c.subscriber_count,
+    createdAt:       c.created_at,
+    lastSyncedAt:    c.last_synced_at,
+  }))
 
   return (
     <div className="min-h-screen p-10" style={{ background: '#060606' }}>
       <div className="max-w-3xl">
 
         {/* Header */}
-        <div className="flex items-start justify-between mb-10" style={{ borderBottom: '1px solid #141414', paddingBottom: 28 }}>
+        <div
+          className="flex items-start justify-between mb-10"
+          style={{ borderBottom: '1px solid #141414', paddingBottom: 28 }}
+        >
           <div>
             <div className="flex items-center gap-3 mb-2">
               <span
@@ -37,9 +110,7 @@ export default async function AdminPage() {
                 Drop
               </span>
               <div style={{ width: 1, height: 16, background: 'rgba(201,169,110,.35)' }} />
-              <span
-                className="font-jakarta font-light tracking-[.36em] uppercase text-[11px] text-gold-gradient"
-              >
+              <span className="font-jakarta font-light tracking-[.36em] uppercase text-[11px] text-gold-gradient">
                 Clix
               </span>
             </div>
@@ -56,66 +127,18 @@ export default async function AdminPage() {
           <SignOutButton />
         </div>
 
-        {/* Clients */}
-        <div>
-          <p
-            className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3"
-            style={{ color: '#c9a96e' }}
-          >
-            <span style={{ display: 'block', width: 20, height: 1, background: '#c9a96e' }} />
-            Clients
-          </p>
+        {/* Clients section */}
+        <AdminClientsSection clients={clients} />
 
-          {!clients || clients.length === 0 ? (
-            <div
-              className="px-6 py-10 text-center text-[11px] font-light"
-              style={{ background: '#080808', border: '1px solid #141414', color: '#2a2a2a' }}
-            >
-              No clients yet — add clients to Supabase to get started.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-px" style={{ background: '#141414' }}>
-              {clients.map(client => (
-                <div
-                  key={client.id}
-                  className="flex items-center justify-between px-6 py-4"
-                  style={{ background: '#0a0a0a' }}
-                >
-                  <div>
-                    <p className="text-[13px] font-light" style={{ color: '#f2ede4' }}>
-                      {client.name}
-                    </p>
-                    <p className="text-[10px] font-light mt-0.5" style={{ color: '#444' }}>
-                      {client.email}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <p
-                      className="text-[8px] tracking-[.14em] uppercase px-2 py-1"
-                      style={{ background: '#141414', color: '#c9a96e' }}
-                    >
-                      {client.slug}
-                    </p>
-                    <form action={impersonateClient}>
-                      <input type="hidden" name="clientId" value={client.id} />
-                      <button
-                        type="submit"
-                        className="text-[9px] tracking-[.14em] uppercase px-3 py-1.5 font-medium cursor-pointer"
-                        style={{
-                          background: 'rgba(201,169,110,.12)',
-                          color: '#c9a96e',
-                          border: '1px solid rgba(201,169,110,.25)',
-                        }}
-                      >
-                        View Portal →
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* YouTube connections */}
+        {clients.length > 0 && (
+          <div style={{ marginTop: 48 }}>
+            <AdminYouTubeSection
+              clients={clients.map(c => ({ id: c.id, name: c.name }))}
+              connections={ytSectionConnections}
+            />
+          </div>
+        )}
 
       </div>
     </div>

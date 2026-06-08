@@ -337,3 +337,60 @@ export async function deleteCalendarEvent(eventId: string): Promise<{ error?: st
   revalidatePath('/calendar')
   return {}
 }
+
+// ── YouTube video linking ─────────────────────────────────────────────────────
+
+// Extracts a YouTube video ID from a URL or returns the string as-is if it's already an ID
+function extractYouTubeId(input: string): string {
+  const clean = input.trim()
+  // Full URL patterns: youtu.be/<id>, youtube.com/watch?v=<id>, youtube.com/shorts/<id>
+  const patterns = [
+    /youtu\.be\/([A-Za-z0-9_-]{11})/,
+    /[?&]v=([A-Za-z0-9_-]{11})/,
+    /\/shorts\/([A-Za-z0-9_-]{11})/,
+    /\/embed\/([A-Za-z0-9_-]{11})/,
+  ]
+  for (const re of patterns) {
+    const m = clean.match(re)
+    if (m) return m[1]
+  }
+  // Assume raw 11-char video ID
+  if (/^[A-Za-z0-9_-]{11}$/.test(clean)) return clean
+  return clean
+}
+
+// Link a pipeline post to a YouTube video. Sets yt_id on ALL post_analytics rows for that post.
+// postTextId: text like '#yt0001'. ytInput: full URL or raw 11-char video ID.
+export async function linkYouTubeVideo(
+  postTextId: string,
+  ytInput: string,
+): Promise<{ ytId?: string; error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+
+  const ytId = extractYouTubeId(ytInput)
+  if (!ytId) return { error: 'Invalid YouTube URL or video ID' }
+
+  // Resolve text post_id → UUID via posts table
+  const { data: postRow, error: postErr } = await c.admin
+    .from('posts')
+    .select('id')
+    .eq('post_id', postTextId)
+    .eq('client_id', c.cid)
+    .single()
+
+  if (postErr || !postRow) return { error: 'Post not found' }
+  const postUuid = (postRow as unknown as { id: string }).id
+
+  // Update all post_analytics rows for this post
+  const { error: updErr } = await c.admin
+    .from('post_analytics')
+    .update({ yt_id: ytId })
+    .eq('post_id', postUuid)
+
+  if (updErr) return { error: updErr.message }
+
+  revalidatePath('/pipeline')
+  revalidatePath('/analytics')
+  return { ytId }
+}

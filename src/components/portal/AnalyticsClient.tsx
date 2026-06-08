@@ -10,6 +10,7 @@ import type { PostRow, WindowData } from '@/app/(dashboard)/analytics/page'
 import { updateAnalyticsMetric } from '@/app/(dashboard)/edit-actions'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
+import { EmptyState } from '@/components/portal/EmptyState'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -637,6 +638,16 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   }, [rows, activeWin])
 
   const pagedRows = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [rows, page])
+
+  if (posts.length === 0) {
+    return (
+      <EmptyState
+        icon="chart"
+        headline="No analytics data yet."
+        body="Your content manager will add your videos here — check back soon."
+      />
+    )
+  }
 
   function handleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => d === 'desc' ? 'asc' : 'desc')

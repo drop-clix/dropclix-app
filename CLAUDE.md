@@ -400,9 +400,94 @@ POST with `{ posts, platform, mode, projectionMetric, goalsSummary }`. Returns `
 - Legacy `#0XXX` numeric IDs → prefix inferred from `item.platform[0]` and formatted `#ig0001` / `#yt0001` / `#tt0001`.
 - Applied at both table row ID cell and edit panel header.
 
+### Session 23 ✅ — YouTube OAuth + Analytics Sync + Pipeline YT linking
+
+**1. OAuth Flow**
+- `GET /api/auth/youtube` — redirects to Google OAuth consent. Reads `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REDIRECT_URI` from env. Scopes: `youtube.readonly` + `yt-analytics.readonly`. Passes `client_id` as OAuth `state` param.
+- `GET /api/auth/youtube/callback` — exchanges code for tokens, fetches channel info, upserts into `platform_connections`. Redirects to `/admin?yt_connected=1` on success.
+- `src/lib/youtube-auth.ts` — `getYouTubeConnection(clientId)` returns valid tokens (auto-refreshes if <5min from expiry), `refreshYouTubeToken()`, `fetchChannelInfo()`.
+
+**2. platform_connections table**
+Migration at `supabase/migrations/create_platform_connections.sql`. Run in Supabase SQL Editor before deploying.
+Columns: `id, client_id (FK clients), platform, access_token, refresh_token, token_expiry, channel_id, channel_name, subscriber_count, last_synced_at, connected_at, updated_at`. UNIQUE on `(client_id, platform)`.
+
+**3. YouTube Analytics Sync**
+- `scripts/sync-youtube.mjs` — CLI sync script. Reads tokens from `platform_connections` for Nick's client_id, matches posts by `yt_id` in `post_analytics`, calls YouTube Analytics API per window (w24/w3/w7/eom), upserts into `post_analytics`. Usage: `node scripts/sync-youtube.mjs [--run] [--force]`.
+- `POST /api/admin/sync-youtube` — same sync logic via HTTP. Auth: `Authorization: Bearer <SUPABASE_SECRET_KEY>`. Body: `{ client_id, force? }`. Returns `{ synced, skipped, errors[], lastSyncedAt }`.
+- Metrics per window: views, likes, comments, shares, estimatedMinutesWatched, averageViewPercentage, subscribersGained → mapped to post_analytics columns.
+- Decision auto-computed from YT ER% after every sync.
+- `last_synced_at` updated on `platform_connections` after every sync.
+
+**4. Pipeline YT linking**
+- `PipelineItem.ytId: string | null` added. Pipeline page fetches yt_ids via 2-step join (posts + post_analytics). Displayed in new YT column.
+- YT icon button in the YT column for all YT/LF posts. Blue = linked, dark grey = unlinked. Click opens `YTLinkModal`.
+- `YTLinkModal` — accepts YouTube URL (youtu.be, youtube.com/watch?v=, /shorts/, /embed/) or raw 11-char video ID. Saves via `linkYouTubeVideo()` server action.
+- `linkYouTubeVideo(postTextId, ytInput)` in `edit-actions.ts` — extracts video ID from URL or raw ID, resolves text post_id → UUID, updates all `post_analytics` rows for that post.
+- colSpan updated from 9 → 10 (new YT column).
+
+**5. Admin YouTube section**
+- `AdminYouTubeSection` client component in `src/app/admin/AdminYouTubeSection.tsx`. Shows per-client connection status, channel name, subscriber count, connected date, last sync date. "Connect YouTube" / "Reconnect" links to `/api/auth/youtube?client_id=...`. "Sync Now" calls `/api/admin/sync-youtube`.
+- Admin page fetches `platform_connections` via admin client and passes to section.
+
+**6. Studio YT status indicator**
+- `YTConnectionStatus` type exported from `studio/page.tsx`. Studio page fetches connection from `platform_connections`, passes `ytStatus` prop to `StudioClient`.
+- `StudioClient` renders a slim status bar above the tabs: YouTube icon + "Connected" (blue) or "Not connected" (dark) + last sync date + "Connect in Admin →" link if disconnected.
+
+**Environment:**
+- `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` / `YOUTUBE_REDIRECT_URI` — already in `.env.local`.
+- Local dev: `YOUTUBE_REDIRECT_URI=http://localhost:3001/api/auth/youtube/callback` (set for local testing). Production: change back to `https://portal.drop-clix.com/api/auth/youtube/callback`.
+- Google OAuth console must have BOTH URIs in Authorized Redirect URIs for OAuth to work in both environments.
+
+### Session 24 ✅ — Client onboarding system
+
+**1. Admin — Create Client flow**
+- `AdminClientsSection.tsx` — new client component replaces the old static client list on `/admin`.
+- "New Client" button opens a modal (name, email, slug, optional monthly retainer).
+- Slug is auto-generated from the name, editable. Validates `[a-z0-9-]` format.
+- On submit: calls `createNewClient()` server action → inserts `clients` row → calls `supabase.auth.admin.inviteUserByEmail()` → inserts `users` row → seeds 9 default goals + 1 welcome pipeline item → `revalidatePath('/admin')`.
+- Success banner shows "Client X created — invite sent." for 5 seconds.
+- Error state shown inline in modal (red banner).
+
+**2. Enhanced clients table**
+`AdminClientsSection` now shows per-client: status badge (Active = has posts, Invited = no posts yet), post count, last post date, created date, retainer (if set). Buttons: Resend Invite (re-fires `inviteUserByEmail`), Edit (modal to update name/slug/retainer), View Portal → (existing impersonation).
+
+**3. Goals UPDATE RLS**
+`supabase/migrations/session_24_onboarding.sql` — adds `clients_update_own_goals` policy so clients can now update their own `goals.target` values directly from the portal. Run this in Supabase SQL Editor on any new environment. Also adds `monthly_retainer numeric` column to `clients`.
+
+**4. Server actions in `src/app/admin/actions.ts`**
+- `createNewClient(_prev, formData)` — full onboarding flow (see above). Uses `useActionState`.
+- `resendClientInvite(_prev, formData)` — re-fires invite email for a given email address.
+- `updateClientInfo(_prev, formData)` — updates `clients.name`, `slug`, `monthly_retainer`.
+- `seedClientData(clientId)` — exported helper; seeds 9 default goals + welcome pipeline item. Called by `createNewClient` and available for `scripts/seed-new-client.mjs`.
+
+**5. scripts/seed-new-client.mjs**
+Standalone CLI: `node scripts/seed-new-client.mjs <client_id> [--run]`. Dry-run by default. Idempotent — skips existing goals/pipeline items. Verifies client exists before seeding. Use this when a client was created manually in Supabase without using the admin UI.
+
+**6. Invite email template**
+Supabase sends the default invite email. To customize: Supabase Dashboard → Authentication → Email Templates → Invite User. Suggested template:
+```
+Subject: Welcome to your Drop CLIX Portal
+
+Hi there,
+
+Your Drop CLIX client portal is ready. Click below to set your password and access your analytics dashboard.
+
+{{ .ConfirmationURL }}
+
+Your portal: https://portal.drop-clix.com
+
+— The Drop CLIX Team
+```
+
+**Invariants:**
+- New clients always get 9 seeded goals: 5 monthly (Followers Gained/Posts/Total Views/Elite Videos/Avg ER%) + 4 weekly (Posts/Total Views/Avg ER%/Followers Gained). Targets match the GoalsClient fallback defaults.
+- Welcome pipeline item always has `post_id = '#new0001'` — idempotency check uses this.
+- `monthly_retainer` column added to `clients` table — run migration before deploying.
+- `clients_update_own_goals` RLS policy required for goals targets to save — run migration.
+
 ## Next sessions
-- Session 23: Update Modal (cross-window edit overlay for Analytics/Angles rows)
-- Session 24: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
+- Session 25: Update Modal (cross-window edit overlay for Analytics/Angles rows)
+- Session 26: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
 
 ## CSV Import Standard
 

@@ -250,3 +250,49 @@ export async function importPostsBatch(
   revalidateAll()
   return { imported, updated, pipelineCreated, calendarCreated, failed, errors }
 }
+
+// ── Admin import bypass — explicit clientId, no cookie/session needed ─────────
+
+export async function importPostsForClient(
+  clientId: string,
+  posts: NewPostData[],
+  options: { skipIds?: string[]; overwriteIds?: string[] } = {},
+): Promise<{ imported: number; updated: number; pipelineCreated: number; calendarCreated: number; failed: number; errors: string[] }> {
+  const admin = createAdminClient()
+  const c: Ctx = { admin, cid: clientId }
+
+  const skipSet      = new Set(options.skipIds ?? [])
+  const overwriteSet = new Set(options.overwriteIds ?? [])
+  let imported = 0, updated = 0, pipelineCreated = 0, calendarCreated = 0, failed = 0
+  const errors: string[] = []
+
+  for (const post of posts) {
+    if (skipSet.has(post.postId)) continue
+    const result = overwriteSet.has(post.postId)
+      ? await overwritePostCore(c, post)
+      : await createPostCore(c, post)
+
+    if (result.error) {
+      errors.push(`${post.postId}: ${result.error}`)
+      failed++
+    } else {
+      overwriteSet.has(post.postId) ? updated++ : imported++
+      if (result.pipelineCreated) pipelineCreated++
+      calendarCreated += result.calendarCreated
+    }
+  }
+
+  revalidateAll()
+  return { imported, updated, pipelineCreated, calendarCreated, failed, errors }
+}
+
+export async function checkExistingPostIdsForClient(clientId: string, postIds: string[]): Promise<string[]> {
+  if (postIds.length === 0) return []
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('posts')
+    .select('post_id')
+    .eq('client_id', clientId)
+    .in('post_id', postIds)
+  return ((data ?? []) as unknown as { post_id: string }[]).map(r => r.post_id)
+}

@@ -1,0 +1,728 @@
+'use client'
+
+import { useState, useTransition, useActionState, useEffect, useRef } from 'react'
+import { impersonateClient, createNewClient, resendClientInvite, updateClientInfo, adminImportPosts, adminCheckExistingPostIds } from './actions'
+import type { NewPostData } from '@/app/(dashboard)/studio/actions'
+import { erToDecision } from '@/lib/decision'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export type ClientRow = {
+  id: string
+  name: string
+  email: string
+  slug: string
+  created_at: string
+  monthly_retainer: number | null
+  postCount: number
+  lastActivity: string | null
+  enabled_platforms: string[]
+  enabled_tabs: string[]
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const ALL_PLATFORMS: { key: string; label: string; color: string }[] = [
+  { key: 'ig',  label: 'IG',  color: '#c9a96e' },
+  { key: 'tt',  label: 'TT',  color: '#a78bfa' },
+  { key: 'yt',  label: 'YT',  color: '#4cc9ff' },
+  { key: 'lf',  label: 'LF',  color: '#4cc9ff' },
+]
+
+const ALL_TABS: { key: string; label: string }[] = [
+  { key: 'dashboard', label: 'Dashboard'  },
+  { key: 'analytics', label: 'Analytics'  },
+  { key: 'angles',    label: 'Angles'     },
+  { key: 'pipeline',  label: 'Pipeline'   },
+  { key: 'studio',    label: 'Studio'     },
+  { key: 'ads',       label: 'Ads'        },
+  { key: 'calendar',  label: 'Calendar'   },
+  { key: 'goals',     label: 'Goals'      },
+]
+
+// CSV column order (locked — matches studio importer)
+const CSV_COLUMNS = [
+  'post_id','title','platform','date','pillar','hook_type','format','decision',
+  'views_24h','likes_24h','comments_24h','shares_24h','saves_24h','watch_pct_24h','skip_rate_24h','followers_24h',
+  'views_3d','likes_3d','comments_3d','shares_3d','saves_3d','watch_pct_3d',
+  'views_7d','likes_7d','comments_7d','shares_7d','saves_7d','watch_pct_7d',
+  'eom_views','eom_likes','eom_comments','eom_shares','eom_saves','eom_watch_pct','eom_skip_rate','eom_followers',
+]
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmtDate(iso: string | null) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function slugify(name: string): string {
+  return name.toLowerCase().trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+}
+
+function statusLabel(client: ClientRow): { text: string; color: string; dot: string } {
+  if (client.postCount > 0) return { text: 'Active', color: '#39ff88', dot: '#39ff88' }
+  return { text: 'Invited', color: '#c9a96e', dot: '#c9a96e' }
+}
+
+function n(val: string | null | undefined): number { return parseFloat(val ?? '0') || 0 }
+
+function buildPostFromRow(row: Record<string, string>): NewPostData {
+  const platforms = (row['platform'] ?? 'ig').split('|').filter(Boolean)
+
+  const windows: NewPostData['windows'] = {}
+
+  const w24v = n(row['views_24h'])
+  if (w24v) windows.w24 = { views: w24v, likes: n(row['likes_24h']), comments: n(row['comments_24h']), shares: n(row['shares_24h']), saves: n(row['saves_24h']), watch_pct: n(row['watch_pct_24h']), followers: n(row['followers_24h']), skip_rate: n(row['skip_rate_24h']) || undefined }
+  const w3v = n(row['views_3d'])
+  if (w3v) windows.w3 = { views: w3v, likes: n(row['likes_3d']), comments: n(row['comments_3d']), shares: n(row['shares_3d']), saves: n(row['saves_3d']), watch_pct: n(row['watch_pct_3d']), followers: 0 }
+  const w7v = n(row['views_7d'])
+  if (w7v) windows.w7 = { views: w7v, likes: n(row['likes_7d']), comments: n(row['comments_7d']), shares: n(row['shares_7d']), saves: n(row['saves_7d']), watch_pct: n(row['watch_pct_7d']), followers: 0 }
+  const eomV = n(row['eom_views'])
+  if (eomV) windows.eom = { views: eomV, likes: n(row['eom_likes']), comments: n(row['eom_comments']), shares: n(row['eom_shares']), saves: n(row['eom_saves']), watch_pct: n(row['eom_watch_pct']), followers: n(row['eom_followers']), skip_rate: n(row['eom_skip_rate']) || undefined }
+
+  return {
+    postId:   row['post_id']   ?? '',
+    title:    row['title']     ?? '',
+    platform: platforms,
+    date:     row['date']      ?? '',
+    pillar:   row['pillar']    ?? '',
+    hook:     row['hook_type'] ?? '',
+    format:   row['format']    ?? '',
+    cta:      '',
+    decision: '',
+    windows,
+  }
+}
+
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).filter(l => l.trim())
+  if (lines.length < 2) return []
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g, '_'))
+  return lines.slice(1).map(line => {
+    const vals = line.split(',')
+    return Object.fromEntries(headers.map((h, i) => [h, (vals[i] ?? '').trim()]))
+  })
+}
+
+// ── Input / Label styles ──────────────────────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', background: '#0d0d0d', border: '1px solid #1e1e1e',
+  color: '#f2ede4', fontSize: 13, fontWeight: 300, padding: '10px 14px',
+  outline: 'none', fontFamily: 'inherit',
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: 9, letterSpacing: '0.14em',
+  textTransform: 'uppercase', color: '#444', marginBottom: 6,
+}
+
+// ── CheckboxGroup (platforms or tabs) ─────────────────────────────────────────
+
+function CheckboxGroup({
+  legend, name, options, selected, onChange,
+}: {
+  legend: string
+  name: string
+  options: { key: string; label: string }[]
+  selected: string[]
+  onChange: (keys: string[]) => void
+}) {
+  function toggle(key: string) {
+    onChange(selected.includes(key) ? selected.filter(k => k !== key) : [...selected, key])
+  }
+  return (
+    <div>
+      <label style={labelStyle}>{legend}</label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {options.map(opt => {
+          const active = selected.includes(opt.key)
+          return (
+            <label
+              key={opt.key}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                fontSize: 10, fontWeight: 400, color: active ? '#f2ede4' : '#555',
+                background: active ? 'rgba(201,169,110,.08)' : '#0d0d0d',
+                border: `1px solid ${active ? 'rgba(201,169,110,.3)' : '#1e1e1e'}`,
+                padding: '5px 10px', userSelect: 'none', transition: 'all .15s',
+              }}
+            >
+              <input
+                type="checkbox"
+                name={name}
+                value={opt.key}
+                checked={active}
+                onChange={() => toggle(opt.key)}
+                style={{ display: 'none' }}
+              />
+              {opt.label}
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Create Client Modal ───────────────────────────────────────────────────────
+
+function CreateClientModal({ onClose, onSuccess }: {
+  onClose: () => void
+  onSuccess: (name: string) => void
+}) {
+  const [state, formAction, isPending] = useActionState(createNewClient, null)
+  const [name,             setName           ] = useState('')
+  const [slug,             setSlug           ] = useState('')
+  const [slugTouched,      setSlugTouched    ] = useState(false)
+  const [platforms,        setPlatforms      ] = useState<string[]>(['ig'])
+  const [tabs,             setTabs           ] = useState<string[]>(ALL_TABS.map(t => t.key))
+
+  useEffect(() => {
+    if (state?.success) onSuccess(state.name ?? '')
+  }, [state, onSuccess])
+
+  function handleNameChange(val: string) {
+    setName(val)
+    if (!slugTouched) setSlug(slugify(val))
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#080808', border: '1px solid #1a1a1a', padding: '36px 40px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ marginBottom: 28 }}>
+          <p style={{ fontSize: 9, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#c9a96e', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ display: 'block', width: 16, height: 1, background: '#c9a96e' }} />
+            New Client
+          </p>
+          <h2 style={{ fontSize: 24, fontWeight: 300, color: '#f2ede4', lineHeight: 1.1 }}>Create Client</h2>
+          <p style={{ fontSize: 11, color: '#333', marginTop: 6, fontWeight: 300 }}>An invite email will be sent automatically.</p>
+        </div>
+
+        <form action={formAction}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div>
+              <label style={labelStyle}>Client / Company Name</label>
+              <input name="name" type="text" required placeholder="e.g. Sparta Solar" value={name} onChange={e => handleNameChange(e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Login Email</label>
+              <input name="email" type="email" required placeholder="client@company.com" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Slug <span style={{ color: '#2a2a2a', textTransform: 'none', letterSpacing: 0 }}>(auto-generated, editable)</span></label>
+              <input name="slug" type="text" required placeholder="sparta-solar" value={slug} onChange={e => { setSlug(e.target.value); setSlugTouched(true) }} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Monthly Retainer (optional)</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#444', fontSize: 13 }}>$</span>
+                <input name="retainer" type="number" min="0" step="100" placeholder="4500" style={{ ...inputStyle, paddingLeft: 26 }} />
+              </div>
+            </div>
+
+            <CheckboxGroup legend="Enabled Platforms" name="platforms" options={ALL_PLATFORMS} selected={platforms} onChange={setPlatforms} />
+            <CheckboxGroup legend="Enabled Tabs" name="tabs" options={ALL_TABS} selected={tabs} onChange={setTabs} />
+
+            {state?.error && (
+              <div style={{ padding: '10px 14px', background: 'rgba(255,59,95,.08)', border: '1px solid rgba(255,59,95,.2)', color: '#ff3b5f', fontSize: 11, fontWeight: 300 }}>
+                {state.error}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, paddingTop: 8 }}>
+              <button type="submit" disabled={isPending} style={{ flex: 1, background: isPending ? 'rgba(201,169,110,.06)' : 'rgba(201,169,110,.14)', border: '1px solid rgba(201,169,110,.35)', color: '#c9a96e', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '12px 20px', cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1, fontFamily: 'inherit' }}>
+                {isPending ? 'Creating…' : 'Create & Send Invite →'}
+              </button>
+              <button type="button" onClick={onClose} style={{ background: 'transparent', border: '1px solid #1e1e1e', color: '#444', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '12px 20px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Edit Client Modal ─────────────────────────────────────────────────────────
+
+function EditClientModal({ client, onClose }: {
+  client: ClientRow
+  onClose: () => void
+}) {
+  const [state, formAction, isPending] = useActionState(updateClientInfo, null)
+  const [platforms, setPlatforms] = useState<string[]>(client.enabled_platforms)
+  const [tabs,      setTabs     ] = useState<string[]>(client.enabled_tabs)
+
+  useEffect(() => {
+    if (state?.success) onClose()
+  }, [state, onClose])
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#080808', border: '1px solid #1a1a1a', padding: '36px 40px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ marginBottom: 28 }}>
+          <p style={{ fontSize: 9, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#c9a96e', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ display: 'block', width: 16, height: 1, background: '#c9a96e' }} />
+            Edit Client
+          </p>
+          <h2 style={{ fontSize: 24, fontWeight: 300, color: '#f2ede4', lineHeight: 1.1 }}>{client.name}</h2>
+          <p style={{ fontSize: 11, color: '#333', marginTop: 6, fontWeight: 300 }}>{client.email}</p>
+        </div>
+
+        <form action={formAction}>
+          <input type="hidden" name="id" value={client.id} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div>
+              <label style={labelStyle}>Client / Company Name</label>
+              <input name="name" type="text" required defaultValue={client.name} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Slug</label>
+              <input name="slug" type="text" required defaultValue={client.slug} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Monthly Retainer</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#444', fontSize: 13 }}>$</span>
+                <input name="retainer" type="number" min="0" step="100" defaultValue={client.monthly_retainer ?? ''} style={{ ...inputStyle, paddingLeft: 26 }} />
+              </div>
+            </div>
+
+            <CheckboxGroup legend="Enabled Platforms" name="platforms" options={ALL_PLATFORMS} selected={platforms} onChange={setPlatforms} />
+            <CheckboxGroup legend="Enabled Tabs" name="tabs" options={ALL_TABS} selected={tabs} onChange={setTabs} />
+
+            {state?.error && (
+              <div style={{ padding: '10px 14px', background: 'rgba(255,59,95,.08)', border: '1px solid rgba(255,59,95,.2)', color: '#ff3b5f', fontSize: 11, fontWeight: 300 }}>
+                {state.error}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, paddingTop: 8 }}>
+              <button type="submit" disabled={isPending} style={{ flex: 1, background: isPending ? 'rgba(201,169,110,.06)' : 'rgba(201,169,110,.14)', border: '1px solid rgba(201,169,110,.35)', color: '#c9a96e', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '12px 20px', cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1, fontFamily: 'inherit' }}>
+                {isPending ? 'Saving…' : 'Save Changes'}
+              </button>
+              <button type="button" onClick={onClose} style={{ background: 'transparent', border: '1px solid #1e1e1e', color: '#444', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '12px 20px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Admin Import Modal ────────────────────────────────────────────────────────
+
+type ImportStage = 'upload' | 'preview' | 'importing' | 'done'
+
+function AdminImportModal({ client, onClose }: { client: ClientRow; onClose: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [stage,      setStage     ] = useState<ImportStage>('upload')
+  const [rows,       setRows      ] = useState<Record<string, string>[]>([])
+  const [posts,      setPosts     ] = useState<NewPostData[]>([])
+  const [existing,   setExisting  ] = useState<Set<string>>(new Set())
+  const [overwrite,  setOverwrite ] = useState<Set<string>>(new Set())
+  const [result,     setResult    ] = useState<{ imported: number; updated: number; failed: number; errors: string[] } | null>(null)
+  const [error,      setError     ] = useState<string | null>(null)
+
+  async function handleFile(file: File) {
+    setError(null)
+    const text = await file.text()
+    const parsed = parseCsv(text)
+    if (parsed.length === 0) { setError('No data rows found in CSV.'); return }
+    const built = parsed.map(buildPostFromRow).filter(p => p.postId && p.title)
+    if (built.length === 0) { setError('No valid posts found. Check CSV format.'); return }
+    setRows(parsed)
+    setPosts(built)
+    const ids = built.map(p => p.postId)
+    const ex = await adminCheckExistingPostIds(client.id, ids)
+    setExisting(new Set(ex))
+    setStage('preview')
+  }
+
+  async function handleImport() {
+    setStage('importing')
+    const skipIds: string[]      = []
+    const overwriteIds: string[] = []
+    for (const p of posts) {
+      if (existing.has(p.postId)) {
+        overwrite.has(p.postId) ? overwriteIds.push(p.postId) : skipIds.push(p.postId)
+      }
+    }
+    const res = await adminImportPosts(client.id, posts, { skipIds, overwriteIds })
+    if ('error' in res && res.error) {
+      setError(res.error)
+      setStage('preview')
+      return
+    }
+    setResult({ imported: res.imported, updated: res.updated, failed: res.failed, errors: res.errors })
+    setStage('done')
+  }
+
+  const newCount      = posts.filter(p => !existing.has(p.postId)).length
+  const existingCount = posts.filter(p =>  existing.has(p.postId)).length
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '32px 24px', overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#080808', border: '1px solid #1a1a1a', padding: '36px 40px', width: '100%', maxWidth: 880 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
+          <div>
+            <p style={{ fontSize: 9, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#c9a96e', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ display: 'block', width: 16, height: 1, background: '#c9a96e' }} />
+              Import Data
+            </p>
+            <h2 style={{ fontSize: 22, fontWeight: 300, color: '#f2ede4', lineHeight: 1.1 }}>
+              Import for {client.name}
+            </h2>
+          </div>
+          <button onClick={onClose} style={{ background: 'transparent', border: '1px solid #1e1e1e', color: '#555', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', padding: '6px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Close
+          </button>
+        </div>
+
+        {error && (
+          <div style={{ padding: '10px 14px', marginBottom: 16, background: 'rgba(255,59,95,.08)', border: '1px solid rgba(255,59,95,.2)', color: '#ff3b5f', fontSize: 11 }}>
+            {error}
+          </div>
+        )}
+
+        {/* Upload stage */}
+        {stage === 'upload' && (
+          <div>
+            <p style={{ fontSize: 11, color: '#444', fontWeight: 300, marginBottom: 20 }}>
+              Upload a CSV using the standard Drop CLIX format. Post IDs will be checked against existing data.
+            </p>
+            <div
+              style={{ border: '2px dashed #1e1e1e', padding: '48px 32px', textAlign: 'center', cursor: 'pointer', transition: 'border-color .15s' }}
+              onClick={() => fileRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(201,169,110,.4)' }}
+              onDragLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#1e1e1e' }}
+              onDrop={async e => {
+                e.preventDefault()
+                const file = e.dataTransfer.files[0]
+                if (file) await handleFile(file)
+              }}
+            >
+              <p style={{ fontSize: 11, color: '#555', marginBottom: 8 }}>Drop CSV here or click to browse</p>
+              <p style={{ fontSize: 9, color: '#2a2a2a', letterSpacing: '.1em', textTransform: 'uppercase' }}>
+                {CSV_COLUMNS.slice(0, 8).join(', ')}…
+              </p>
+            </div>
+            <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={async e => {
+              const file = e.target.files?.[0]
+              if (file) await handleFile(file)
+            }} />
+          </div>
+        )}
+
+        {/* Preview stage */}
+        {stage === 'preview' && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+              <span style={{ fontSize: 11, color: '#39ff88' }}>{newCount} new</span>
+              {existingCount > 0 && <span style={{ fontSize: 11, color: '#c9a96e' }}>{existingCount} already exist</span>}
+              <span style={{ fontSize: 11, color: '#555' }}>{posts.length} total rows</span>
+            </div>
+
+            {existingCount > 0 && (
+              <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(201,169,110,.04)', border: '1px solid rgba(201,169,110,.15)', fontSize: 10, color: '#888' }}>
+                Existing posts: check to overwrite, leave unchecked to skip.
+              </div>
+            )}
+
+            {/* Preview table */}
+            <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
+                    <th style={{ textAlign: 'left', padding: '6px 8px', color: '#333', fontWeight: 500, fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase' }}>OW</th>
+                    {['ID','Title','Platform','Date','Pillar','Hook','EOM Views','Decision'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', color: '#333', fontWeight: 500, fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {posts.map((p, i) => {
+                    const isExisting = existing.has(p.postId)
+                    const isOverwrite = overwrite.has(p.postId)
+                    const eomViews = p.windows?.eom?.views ?? 0
+                    const decision = erToDecision(
+                      eomViews > 0
+                        ? ((p.windows?.eom?.likes ?? 0) + (p.windows?.eom?.comments ?? 0) + (p.windows?.eom?.shares ?? 0) + (p.windows?.eom?.saves ?? 0)) / eomViews * 100
+                        : 0
+                    )
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid #0d0d0d', opacity: isExisting && !isOverwrite ? 0.4 : 1 }}>
+                        <td style={{ padding: '5px 8px' }}>
+                          {isExisting ? (
+                            <input
+                              type="checkbox"
+                              checked={isOverwrite}
+                              onChange={() => setOverwrite(prev => {
+                                const next = new Set(prev)
+                                next.has(p.postId) ? next.delete(p.postId) : next.add(p.postId)
+                                return next
+                              })}
+                              style={{ accentColor: '#c9a96e' }}
+                            />
+                          ) : (
+                            <span style={{ color: '#39ff88', fontSize: 8 }}>NEW</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '5px 8px', color: '#888', fontFamily: 'monospace' }}>{p.postId}</td>
+                        <td style={{ padding: '5px 8px', color: '#f2ede4', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</td>
+                        <td style={{ padding: '5px 8px', color: '#555' }}>{p.platform.join(', ')}</td>
+                        <td style={{ padding: '5px 8px', color: '#555' }}>{p.date}</td>
+                        <td style={{ padding: '5px 8px', color: '#555' }}>{p.pillar || '—'}</td>
+                        <td style={{ padding: '5px 8px', color: '#555' }}>{p.hook || '—'}</td>
+                        <td style={{ padding: '5px 8px', color: '#c9a96e' }}>{eomViews > 0 ? eomViews.toLocaleString() : '—'}</td>
+                        <td style={{ padding: '5px 8px', color: decision === 'Double Down' ? '#39ff88' : decision === 'Kill' ? '#ff3b5f' : '#888', fontSize: 9 }}>{decision || '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={handleImport} style={{ flex: 1, background: 'rgba(201,169,110,.14)', border: '1px solid rgba(201,169,110,.35)', color: '#c9a96e', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '12px 20px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Import {newCount + overwrite.size} Posts →
+              </button>
+              <button onClick={() => { setStage('upload'); setRows([]); setPosts([]) }} style={{ background: 'transparent', border: '1px solid #1e1e1e', color: '#444', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '12px 20px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                ← Back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Importing stage */}
+        {stage === 'importing' && (
+          <div style={{ textAlign: 'center', padding: '48px 0' }}>
+            <p style={{ fontSize: 13, color: '#c9a96e', fontWeight: 300 }}>Importing…</p>
+            <p style={{ fontSize: 10, color: '#333', marginTop: 8 }}>This may take a moment.</p>
+          </div>
+        )}
+
+        {/* Done stage */}
+        {stage === 'done' && result && (
+          <div>
+            <div style={{ padding: '20px 24px', background: 'rgba(57,255,136,.04)', border: '1px solid rgba(57,255,136,.15)', marginBottom: 20 }}>
+              <p style={{ fontSize: 13, color: '#39ff88', fontWeight: 300, marginBottom: 8 }}>Import complete</p>
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Imported', val: result.imported, color: '#39ff88' },
+                  { label: 'Updated',  val: result.updated,  color: '#c9a96e' },
+                  { label: 'Failed',   val: result.failed,   color: '#ff3b5f' },
+                ].map(({ label, val, color }) => (
+                  <div key={label}>
+                    <p style={{ fontSize: 7, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 2 }}>{label}</p>
+                    <p style={{ fontSize: 18, fontWeight: 300, color }}>{val}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {result.errors.length > 0 && (
+              <div style={{ padding: '12px 16px', background: 'rgba(255,59,95,.06)', border: '1px solid rgba(255,59,95,.15)', marginBottom: 20 }}>
+                <p style={{ fontSize: 9, color: '#ff3b5f', marginBottom: 6, letterSpacing: '.1em', textTransform: 'uppercase' }}>Errors</p>
+                {result.errors.map((e, i) => (
+                  <p key={i} style={{ fontSize: 10, color: '#666', marginBottom: 3 }}>{e}</p>
+                ))}
+              </div>
+            )}
+            <button onClick={onClose} style={{ background: 'rgba(201,169,110,.14)', border: '1px solid rgba(201,169,110,.35)', color: '#c9a96e', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '12px 20px', cursor: 'pointer', fontFamily: 'inherit' }}>
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Resend Invite Row Action ──────────────────────────────────────────────────
+
+function ResendButton({ email }: { email: string }) {
+  const [state, formAction, isPending] = useActionState(resendClientInvite, null)
+
+  return (
+    <form action={formAction} style={{ display: 'inline' }}>
+      <input type="hidden" name="email" value={email} />
+      <button
+        type="submit" disabled={isPending} title="Resend invite email"
+        style={{
+          background: state?.success ? 'rgba(57,255,136,.08)' : 'transparent',
+          border: `1px solid ${state?.success ? 'rgba(57,255,136,.25)' : '#1e1e1e'}`,
+          color: state?.success ? '#39ff88' : state?.error ? '#ff3b5f' : '#555',
+          fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+          fontWeight: 500, padding: '6px 12px',
+          cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.6 : 1,
+          fontFamily: 'inherit', whiteSpace: 'nowrap',
+        }}
+      >
+        {isPending ? 'Sending…' : state?.success ? '✓ Sent' : state?.error ? 'Failed' : 'Resend'}
+      </button>
+    </form>
+  )
+}
+
+// ── Main exported component ───────────────────────────────────────────────────
+
+export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
+  const [showCreate,   setShowCreate  ] = useState(false)
+  const [editClient,   setEditClient  ] = useState<ClientRow | null>(null)
+  const [importClient, setImportClient] = useState<ClientRow | null>(null)
+  const [successMsg,   setSuccessMsg  ] = useState<string | null>(null)
+  const [,             startTransition] = useTransition()
+
+  function handleCreateSuccess(name: string) {
+    setShowCreate(false)
+    setSuccessMsg(`Client "${name}" created — invite sent.`)
+    setTimeout(() => setSuccessMsg(null), 5000)
+  }
+
+  return (
+    <div>
+      {/* Section header + Create button */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <p style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#c9a96e', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ display: 'block', width: 20, height: 1, background: '#c9a96e' }} />
+          Clients
+        </p>
+        <button
+          onClick={() => { startTransition(() => {}); setShowCreate(true) }}
+          style={{ background: 'rgba(201,169,110,.12)', border: '1px solid rgba(201,169,110,.3)', color: '#c9a96e', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '8px 16px', cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          + New Client
+        </button>
+      </div>
+
+      {/* Success banner */}
+      {successMsg && (
+        <div style={{ padding: '10px 16px', marginBottom: 12, background: 'rgba(57,255,136,.06)', border: '1px solid rgba(57,255,136,.2)', color: '#39ff88', fontSize: 11, fontWeight: 300 }}>
+          {successMsg}
+        </div>
+      )}
+
+      {/* Clients table */}
+      {clients.length === 0 ? (
+        <div style={{ padding: '40px 24px', textAlign: 'center', background: '#080808', border: '1px solid #141414', color: '#2a2a2a', fontSize: 11, fontWeight: 300 }}>
+          No clients yet — click "New Client" to get started.
+        </div>
+      ) : (
+        <div style={{ background: '#141414', display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {clients.map(client => {
+            const status = statusLabel(client)
+            return (
+              <div key={client.id} style={{ background: '#0a0a0a', padding: '18px 24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                  {/* Identity */}
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                      <p style={{ fontSize: 13, fontWeight: 300, color: '#f2ede4' }}>{client.name}</p>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 8, letterSpacing: '0.14em', textTransform: 'uppercase', color: status.color }}>
+                        <span style={{ display: 'inline-block', width: 4, height: 4, borderRadius: '50%', background: status.dot }} />
+                        {status.text}
+                      </span>
+                      {/* Platform badges */}
+                      <div style={{ display: 'flex', gap: 3 }}>
+                        {client.enabled_platforms.map(p => {
+                          const cfg = ALL_PLATFORMS.find(x => x.key === p)
+                          if (!cfg) return null
+                          return (
+                            <span key={p} style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase', color: cfg.color, background: `${cfg.color}18`, border: `1px solid ${cfg.color}30`, padding: '2px 6px' }}>
+                              {cfg.label}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <p style={{ fontSize: 10, color: '#444', fontWeight: 300 }}>{client.email}</p>
+                  </div>
+
+                  {/* Meta stats */}
+                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                    <div>
+                      <p style={{ fontSize: 7, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 2 }}>Slug</p>
+                      <p style={{ fontSize: 10, color: '#555', fontWeight: 300, fontFamily: 'monospace' }}>{client.slug}</p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 7, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 2 }}>Posts</p>
+                      <p style={{ fontSize: 10, color: '#f2ede4', fontWeight: 300 }}>{client.postCount}</p>
+                    </div>
+                    {client.lastActivity && (
+                      <div>
+                        <p style={{ fontSize: 7, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 2 }}>Last Post</p>
+                        <p style={{ fontSize: 10, color: '#555', fontWeight: 300 }}>{fmtDate(client.lastActivity)}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p style={{ fontSize: 7, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 2 }}>Since</p>
+                      <p style={{ fontSize: 10, color: '#555', fontWeight: 300 }}>{fmtDate(client.created_at)}</p>
+                    </div>
+                    {client.monthly_retainer && (
+                      <div>
+                        <p style={{ fontSize: 7, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 2 }}>Retainer</p>
+                        <p style={{ fontSize: 10, color: '#c9a96e', fontWeight: 300 }}>${client.monthly_retainer.toLocaleString()}/mo</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => setImportClient(client)}
+                      style={{ background: 'transparent', border: '1px solid #1e1e1e', color: '#555', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '6px 12px', cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      Import
+                    </button>
+                    <ResendButton email={client.email} />
+                    <button
+                      onClick={() => setEditClient(client)}
+                      style={{ background: 'transparent', border: '1px solid #1e1e1e', color: '#555', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '6px 12px', cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      Edit
+                    </button>
+                    <form action={impersonateClient}>
+                      <input type="hidden" name="clientId" value={client.id} />
+                      <button type="submit" style={{ background: 'rgba(201,169,110,.12)', border: '1px solid rgba(201,169,110,.25)', color: '#c9a96e', fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: 500, padding: '6px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        View Portal →
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Modals */}
+      {showCreate && (
+        <CreateClientModal onClose={() => setShowCreate(false)} onSuccess={handleCreateSuccess} />
+      )}
+      {editClient && (
+        <EditClientModal client={editClient} onClose={() => setEditClient(null)} />
+      )}
+      {importClient && (
+        <AdminImportModal client={importClient} onClose={() => setImportClient(null)} />
+      )}
+    </div>
+  )
+}

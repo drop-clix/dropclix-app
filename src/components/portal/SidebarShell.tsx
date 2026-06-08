@@ -90,21 +90,40 @@ function HamburgerIcon({ open }: { open: boolean }) {
 const COLLAPSED_W = 56
 const EXPANDED_W  = 220
 
+// Tab key → href mapping (must match PATH_TO_TAB in layout.tsx)
+const TAB_HREFS: Record<string, string> = {
+  dashboard: '/',
+  analytics: '/analytics',
+  angles:    '/angles',
+  pipeline:  '/pipeline',
+  studio:    '/studio',
+  ads:       '/ads',
+  calendar:  '/calendar',
+  goals:     '/goals',
+}
+
 export function SidebarShell({
   clientName,
   userEmail,
   isImpersonating,
+  enabledTabs,
   children,
 }: {
   clientName: string
   userEmail: string | null
   isImpersonating: boolean
+  enabledTabs: string[]
   children: React.ReactNode
 }) {
   const [pinned,  setPinned ] = useState(false)
   const [hovered, setHovered] = useState(false)
   const expanded = pinned || hovered
   const path = usePathname()
+
+  const visibleNavItems = NAV_ITEMS.filter(item => {
+    const tabKey = Object.entries(TAB_HREFS).find(([, href]) => href === item.href)?.[0]
+    return tabKey ? enabledTabs.includes(tabKey) : true
+  })
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#060606' }}>
@@ -251,7 +270,7 @@ export function SidebarShell({
             transition: 'padding 200ms ease',
           }}
         >
-          {NAV_ITEMS.map(item => {
+          {visibleNavItems.map(item => {
             const active = path === item.href
             return (
               <Link

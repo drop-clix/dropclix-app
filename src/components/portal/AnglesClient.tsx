@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
+import { EmptyState } from '@/components/portal/EmptyState'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -317,6 +318,16 @@ export function AnglesClient({ rawPosts }: { rawPosts: RawAnglesPost[] }) {
   )
   const unusedBestHookCount = hookStats[0]?.count ?? 0
   const bestPillarUsagePct  = Math.round((pillarStats[0]?.count ?? 0) / (totalWithViews || 1) * 100)
+
+  if (rawPosts.length === 0) {
+    return (
+      <EmptyState
+        icon="triangle"
+        headline="No content to analyse yet."
+        body="Once videos are imported, angle breakdowns by pillar, hook, and format will appear here."
+      />
+    )
+  }
 
   return (
     <div>

@@ -3,8 +3,22 @@ import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { SidebarShell } from '@/components/portal/SidebarShell'
 import { WelcomeOverlay } from '@/components/portal/WelcomeOverlay'
+import { ClientConfigProvider } from '@/lib/client-config-context'
 
 const IMPERSONATE_COOKIE = 'dropclix_impersonate_client_id'
+
+// Map URL segment → tab key used in enabled_tabs
+const PATH_TO_TAB: Record<string, string> = {
+  '/':            'dashboard',
+  '/analytics':   'analytics',
+  '/angles':      'angles',
+  '/pipeline':    'pipeline',
+  '/studio':      'studio',
+  '/ads':         'ads',
+  '/calendar':    'calendar',
+  '/goals':       'goals',
+  '/report-card': 'goals', // report-card is folded into goals
+}
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -29,27 +43,35 @@ export default async function DashboardLayout({ children }: { children: React.Re
     isImpersonating = true
   }
 
+  // Fetch client info + enabled config
   const { data: client } = clientId
     ? await supabase
         .from('clients')
-        .select('name, slug')
+        .select('name, slug, enabled_platforms, enabled_tabs')
         .eq('id', clientId)
         .single()
     : { data: null }
+
+  const enabledPlatforms: string[] = (client?.enabled_platforms as string[] | null)
+    ?? (profile?.role === 'admin' ? ['ig','tt','yt','lf'] : ['ig'])
+
+  const enabledTabs: string[] = (client?.enabled_tabs as string[] | null)
+    ?? ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals']
 
   const clientName = client?.name ?? profile?.email?.split('@')[0] ?? 'Portal'
   const userEmail  = profile?.email ?? user.email ?? null
 
   return (
-    <>
+    <ClientConfigProvider config={{ enabledPlatforms, enabledTabs, isAdmin: profile?.role === 'admin' }}>
       <WelcomeOverlay clientName={clientName} />
       <SidebarShell
         clientName={clientName}
         userEmail={userEmail}
         isImpersonating={isImpersonating}
+        enabledTabs={enabledTabs}
       >
         {children}
       </SidebarShell>
-    </>
+    </ClientConfigProvider>
   )
 }

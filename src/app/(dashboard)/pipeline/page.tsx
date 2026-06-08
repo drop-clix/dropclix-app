@@ -13,6 +13,7 @@ export type PipelineItem = {
   scheduledDate: string | null
   postedAt: string | null
   ytType: string | null
+  ytId: string | null
   scriptContent: string | null
   notes: string | null
 }
@@ -40,6 +41,38 @@ export default async function PipelinePage() {
   if (error) console.error('Pipeline fetch:', error.message)
   const rows = (data ?? []) as unknown as RawRow[]
 
+  // Fetch yt_id for each post: pipeline post_id (text) → posts.id (UUID) → post_analytics.yt_id
+  const postTextIds = [...new Set(rows.map(r => r.post_id).filter(Boolean))]
+  let ytIdByTextPostId: Record<string, string> = {}
+
+  if (postTextIds.length > 0) {
+    const { data: postRows } = await supabase
+      .from('posts')
+      .select('id, post_id')
+      .in('post_id', postTextIds)
+      .eq('client_id', clientId ?? fallback)
+
+    if (postRows && postRows.length > 0) {
+      const uuids = (postRows as unknown as { id: string; post_id: string }[])
+      const uuidList = uuids.map(p => p.id)
+
+      const { data: analyticsRows } = await supabase
+        .from('post_analytics')
+        .select('post_id, yt_id')
+        .in('post_id', uuidList)
+        .not('yt_id', 'is', null)
+
+      // Build map: text post_id → yt_id
+      const uuidToTextId: Record<string, string> = {}
+      for (const p of uuids) uuidToTextId[p.id] = p.post_id
+
+      for (const a of (analyticsRows ?? []) as unknown as { post_id: string; yt_id: string }[]) {
+        const textId = uuidToTextId[a.post_id]
+        if (textId && a.yt_id) ytIdByTextPostId[textId] = a.yt_id
+      }
+    }
+  }
+
   const items: PipelineItem[] = rows.map(r => ({
     id:            r.id,
     postId:        r.post_id,
@@ -52,6 +85,7 @@ export default async function PipelinePage() {
     scheduledDate: r.scheduled_date ?? null,
     postedAt:      r.posted_at      ?? null,
     ytType:        r.yt_type        ?? null,
+    ytId:          ytIdByTextPostId[r.post_id] ?? null,
     scriptContent: r.script_content ?? null,
     notes:         r.notes         ?? null,
   }))

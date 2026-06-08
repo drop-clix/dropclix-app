@@ -3,6 +3,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { StudioClient } from '@/components/portal/StudioClient'
 import type { StudioItem } from '@/components/portal/StudioClient'
 
+export type YTConnectionStatus = {
+  connected: boolean
+  channelName: string | null
+  lastSyncedAt: string | null
+}
+
 async function fetchNextPostId(clientId: string): Promise<string> {
   const admin = createAdminClient()
   const { data } = await admin
@@ -40,7 +46,8 @@ export default async function StudioPage() {
     week: string | null; script_content: string | null; notes: string | null
   }
 
-  const [pipelineRes, allStatusRes, nextPostId] = await Promise.all([
+  const adminClient = createAdminClient()
+  const [pipelineRes, allStatusRes, nextPostId, ytConnRes] = await Promise.all([
     supabase
       .from('pipeline_items')
       .select('id, post_id, title, platform, pillar, status, priority, week, script_content, notes')
@@ -52,6 +59,14 @@ export default async function StudioPage() {
       .select('status')
       .eq('client_id', cid),
     clientId ? fetchNextPostId(clientId) : Promise.resolve('#ig0001'),
+    clientId
+      ? adminClient
+          .from('platform_connections')
+          .select('channel_name, last_synced_at')
+          .eq('client_id', clientId)
+          .eq('platform', 'youtube')
+          .single()
+      : Promise.resolve({ data: null }),
   ])
 
   const items: StudioItem[] = ((pipelineRes.data ?? []) as unknown as RawRow[]).map(r => ({
@@ -68,6 +83,13 @@ export default async function StudioPage() {
   }))
 
   const allStatuses = (allStatusRes.data ?? []) as unknown as { status: string }[]
+  const ytConnData = (ytConnRes as { data: { channel_name: string | null; last_synced_at: string | null } | null }).data
+  const ytStatus: YTConnectionStatus = {
+    connected:    !!ytConnData,
+    channelName:  ytConnData?.channel_name ?? null,
+    lastSyncedAt: ytConnData?.last_synced_at ?? null,
+  }
+
   const pipelineStats: PipelineStats = {
     PLANNED:   allStatuses.filter(s => s.status === 'PLANNED').length,
     SCRIPTED:  allStatuses.filter(s => s.status === 'SCRIPTED').length,
@@ -97,7 +119,7 @@ export default async function StudioPage() {
         </p>
       </div>
 
-      <StudioClient items={items} nextPostId={nextPostId} pipelineStats={pipelineStats} />
+      <StudioClient items={items} nextPostId={nextPostId} pipelineStats={pipelineStats} ytStatus={ytStatus} />
     </div>
   )
 }
