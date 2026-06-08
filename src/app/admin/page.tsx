@@ -21,11 +21,7 @@ export default async function AdminPage() {
 
   const adm = createAdminClient()
 
-  const [clientsRes, connectionsRes, postsRes] = await Promise.all([
-    adm
-      .from('clients')
-      .select('id, name, email, slug, created_at, monthly_retainer, enabled_platforms, enabled_tabs')
-      .order('created_at', { ascending: false }),
+  const [connectionsRes, postsRes] = await Promise.all([
     adm
       .from('platform_connections')
       .select('client_id, channel_name, channel_id, subscriber_count, created_at, last_synced_at')
@@ -37,15 +33,25 @@ export default async function AdminPage() {
       .order('date', { ascending: false }),
   ])
 
-  const rawClients = (clientsRes.data ?? []) as unknown as {
+  // Try with Session 25 columns; fall back gracefully if migration not yet applied
+  const clientsRes = await adm
+    .from('clients')
+    .select('id, name, email, slug, created_at, monthly_retainer, enabled_platforms, enabled_tabs')
+    .order('created_at', { ascending: false })
+
+  const clientsData = clientsRes.error
+    ? (await adm.from('clients').select('id, name, email, slug, created_at, monthly_retainer').order('created_at', { ascending: false })).data ?? []
+    : clientsRes.data ?? []
+
+  const rawClients = clientsData as unknown as {
     id: string
     name: string
     email: string
     slug: string
     created_at: string
     monthly_retainer: number | null
-    enabled_platforms: string[] | null
-    enabled_tabs: string[] | null
+    enabled_platforms?: string[] | null
+    enabled_tabs?: string[] | null
   }[]
 
   const allPosts = (postsRes.data ?? []) as unknown as { client_id: string; date: string | null }[]
