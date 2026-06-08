@@ -184,7 +184,7 @@ Angles page converted from pure server component to server-fetch + client delega
 - **Production URL**: https://dropclix-app.vercel.app
 - **Custom domain**: https://portal.drop-clix.com
 - **Vercel project**: https://vercel.com/dropclix/dropclix-app
-- **GitHub auto-deploy**: Not yet connected — Vercel dashboard → Settings → Git → connect repo
+- **GitHub auto-deploy**: NOT connected. After every `git push`, you must also run `npx vercel --prod` from the project root to deploy. Otherwise production stays on the old build indefinitely.
 
 ## DNS (Cloudflare for portal.drop-clix.com)
 
