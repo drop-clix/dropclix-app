@@ -4,9 +4,14 @@
 -- ============================================================
 
 -- Helper function: get current user's role
+-- Checks public.users table first; falls back to JWT app_metadata (set by setup-admin script).
+-- The fallback lets the admin operate even if the public.users row is missing.
 create or replace function get_my_role()
 returns text as $$
-  select role from users where id = auth.uid();
+  select coalesce(
+    (select role from users where id = auth.uid()),
+    auth.jwt() -> 'app_metadata' ->> 'role'
+  );
 $$ language sql security definer stable;
 
 -- Helper function: get current user's client_id

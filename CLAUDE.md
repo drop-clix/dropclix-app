@@ -519,6 +519,27 @@ Your portal: https://portal.drop-clix.com
 - `AdminImportModal` parses CSV using the locked Drop CLIX column order (36 columns). `buildPostFromRow` maps CSV fields → `NewPostData` (field `hook`, not `hookType`; `watch_pct` not `watchPct`; `cta: ''`).
 - `OnboardingBanner` never shows to admin users (checked via `useClientConfig().isAdmin`), even when `postCount < 5`.
 
+### Bug Fix ✅ — Admin role resilience (post-Session 25)
+
+**Root cause diagnosis:**
+- `get_my_role()` was observed returning NULL in Supabase SQL Editor. This is normal — SQL Editor runs as the `postgres` superuser with no `auth.uid()` set, so the function always returns NULL there. It does NOT indicate a missing row.
+- `public.users` row for `chaserevans2003@gmail.com` existed all along with `role='admin'` — confirmed via `scripts/setup-admin.mjs` dry-run.
+- The `session_25_client_config.sql` migration was already run on production — both `enabled_platforms`/`enabled_tabs` queries return Nick's client correctly.
+- The **actual bug** was the Session 25 `admin/page.tsx` and `layout.tsx` queries requesting columns that didn't exist yet if run before the migration → Supabase returned `error + null data` → zero clients shown. Fixed in commit `a221e89` with fallback queries.
+
+**Additional hardening applied:**
+1. **`auth.users.app_metadata.role = 'admin'`** set via `scripts/setup-admin.mjs --run`. The proxy now checks this JWT claim first — no DB query needed for the admin gate. Fallback to `public.users` table remains.
+2. **`get_my_role()` updated** (`supabase/rls.sql` + `supabase/migrations/fix_admin_role.sql`): now uses `COALESCE(users table lookup, auth.jwt() -> 'app_metadata' ->> 'role')`. Even with a missing users row, RLS policies still work if app_metadata is set.
+3. **`src/proxy.ts` updated**: checks `user.app_metadata?.role` before falling back to the users table query.
+
+**Migration to run on any new environment:**
+`supabase/migrations/fix_admin_role.sql` — updates `get_my_role()`, upserts admin users row, and applies Session 25 columns. Single file covers all three.
+
+**Invariants:**
+- `get_my_role() returning NULL in SQL Editor` = expected (no auth.uid). Check the users table row directly: `SELECT role FROM public.users WHERE email = 'chaserevans2003@gmail.com'`.
+- After running `scripts/setup-admin.mjs --run`, `app_metadata.role` is set and the proxy gate requires no DB queries.
+- `scripts/setup-admin.mjs` (dry-run default, `--run` to apply) is safe to re-run — idempotent.
+
 ## Next sessions
 - Session 26: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
 - Session 27: Update Modal (cross-window edit overlay for Analytics/Angles rows)
@@ -564,3 +585,4 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 | `scripts/sync-pipeline-calendar.mjs` | **Standalone pipeline+calendar backfill.** `node scripts/sync-pipeline-calendar.mjs [#igXXXX ...] [--run]`. Dry-run by default. Creates missing pipeline_items (status=POSTED) and calendar_events for all (or specified) posts. Safe to re-run — idempotent. |
 | `scripts/ingest-may-analytics.mjs` | Month-specific May ingest (superseded by ingest-eom-csv.mjs — kept for reference). |
 | `scripts/ingest-yt-csv.mjs` | **YouTube video ingest.** `node scripts/ingest-yt-csv.mjs <path-to-csv> [--run]`. Dry-run by default. Maps YT tracker CSV columns → posts + post_analytics (platform=yt, yt_id stored, followers=subscribers_gained, saves=null). Auto-computes decision from YT ER% formula. Creates pipeline_items (yt_type=Short/Long-form) + calendar_events. Use for all future YouTube imports. |
+| `scripts/setup-admin.mjs` | **Admin bootstrap.** Dry-run by default, `--run` to apply. Sets `auth.users.app_metadata.role = 'admin'` for `chaserevans2003@gmail.com` and upserts the `public.users` admin row. Safe to re-run (idempotent). Run this once per environment / after any Supabase reset. |

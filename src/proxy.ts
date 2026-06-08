@@ -51,15 +51,19 @@ export async function proxy(request: NextRequest) {
   }
 
   // /admin requires admin role
+  // Check app_metadata first (set by setup-admin script, comes from JWT — no DB needed).
+  // Fall back to users table in case app_metadata isn't set yet.
   if (pathname.startsWith('/admin')) {
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'admin') {
-      return NextResponse.redirect(new URL('/', request.url))
+    const metaRole = (user.app_metadata as Record<string, string> | null)?.role
+    if (metaRole !== 'admin') {
+      const { data: profile } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      if (profile?.role !== 'admin') {
+        return NextResponse.redirect(new URL('/', request.url))
+      }
     }
   }
 
