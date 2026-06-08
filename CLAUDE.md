@@ -485,9 +485,43 @@ Your portal: https://portal.drop-clix.com
 - `monthly_retainer` column added to `clients` table — run migration before deploying.
 - `clients_update_own_goals` RLS policy required for goals targets to save — run migration.
 
+### Session 25 ✅ — Multi-client architecture, empty states, admin import
+
+**1. Per-client platform + tab configuration**
+- Migration `session_25_client_config.sql`: `clients.enabled_platforms text[]` (default `['ig']`) and `clients.enabled_tabs text[]` (default all 8 tabs).
+- `src/lib/client-config-context.tsx`: `ClientConfigProvider` wraps dashboard layout; `useClientConfig()` hook reads `{ enabledPlatforms, enabledTabs, isAdmin }` in any client component.
+- `(dashboard)/layout.tsx` fetches enabled_platforms/tabs from clients table and wraps entire layout in `ClientConfigProvider`.
+- `SidebarShell.tsx`: `enabledTabs` prop filters `NAV_ITEMS` to only show tabs the client has access to.
+- `FilterBar.tsx PlatformPills`: reads `useClientConfig().enabledPlatforms` to filter which platform pills are shown.
+
+**2. Empty states (all 8 tabs)**
+- `EmptyState.tsx`: shared dark card component, 8 SVG icon variants (chart, pipeline, triangle, video, ad, calendar, target, grid), optional action button. `min-height: 240px`, centered, `#080808` background.
+- Early return guards added to: `AnalyticsClient`, `AdsClient`, `PipelineClient`, `CalendarClient`, `AnglesClient`, `GoalsDashboard`, `DashboardClient`.
+- `StudioClient`: inline EmptyState per tab (scripts/production/planned), Import tab always accessible.
+
+**3. Admin config UI**
+- `AdminClientsSection.tsx` (full rewrite): `ClientRow` type now includes `enabled_platforms` and `enabled_tabs`.
+- `CreateClientModal` and `EditClientModal` include platform checkbox group + tab checkbox group (gold pill-style checkboxes). Sends `platforms[]` and `tabs[]` in FormData using `formData.getAll()`.
+- `updateClientInfo` and `createNewClient` in `admin/actions.ts` read `enabled_platforms`/`enabled_tabs` from FormData and include in DB upsert.
+- Platform color badges on each client row: gold=IG, blue=YT/LF, purple=TT.
+
+**4. Admin data import**
+- `studio/actions.ts`: `importPostsForClient(clientId, posts, options)` — same logic as `importPostsBatch` but takes explicit clientId instead of reading from impersonation cookie. `checkExistingPostIdsForClient(clientId, postIds)` same pattern.
+- `admin/actions.ts`: `adminImportPosts` and `adminCheckExistingPostIds` wrappers with admin guard.
+- `AdminImportModal.tsx` (inline in AdminClientsSection): full CSV import flow — drag/drop upload, CSV parsing, existing post detection, overwrite checkboxes per row, preview table (ID/title/platform/date/pillar/hook/EOM views/decision), import + result display.
+- Import button on every client row in the admin table.
+
+**5. Onboarding banner**
+- `OnboardingBanner.tsx`: shown when `postCount < 5` AND not admin. Gold left border, localStorage dismiss key `dropclix_onboarding_banner_dismissed`. Renders above dashboard KPIs in `DashboardClient`.
+
+**Invariants:**
+- `enabled_platforms` / `enabled_tabs` columns require the Session 25 migration to be run in Supabase SQL Editor for any new environment.
+- `AdminImportModal` parses CSV using the locked Drop CLIX column order (36 columns). `buildPostFromRow` maps CSV fields → `NewPostData` (field `hook`, not `hookType`; `watch_pct` not `watchPct`; `cta: ''`).
+- `OnboardingBanner` never shows to admin users (checked via `useClientConfig().isAdmin`), even when `postCount < 5`.
+
 ## Next sessions
-- Session 25: Update Modal (cross-window edit overlay for Analytics/Angles rows)
 - Session 26: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
+- Session 27: Update Modal (cross-window edit overlay for Analytics/Angles rows)
 
 ## CSV Import Standard
 
