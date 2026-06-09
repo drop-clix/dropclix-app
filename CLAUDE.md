@@ -519,26 +519,29 @@ Your portal: https://portal.drop-clix.com
 - `AdminImportModal` parses CSV using the locked Drop CLIX column order (36 columns). `buildPostFromRow` maps CSV fields → `NewPostData` (field `hook`, not `hookType`; `watch_pct` not `watchPct`; `cta: ''`).
 - `OnboardingBanner` never shows to admin users (checked via `useClientConfig().isAdmin`), even when `postCount < 5`.
 
-### Bug Fix ✅ — Admin role resilience (post-Session 25)
+### Bug Fix ✅ — Admin page showing "No clients" on production (post-Session 25)
 
-**Root cause diagnosis:**
-- `get_my_role()` was observed returning NULL in Supabase SQL Editor. This is normal — SQL Editor runs as the `postgres` superuser with no `auth.uid()` set, so the function always returns NULL there. It does NOT indicate a missing row.
-- `public.users` row for `chaserevans2003@gmail.com` existed all along with `role='admin'` — confirmed via `scripts/setup-admin.mjs` dry-run.
-- The `session_25_client_config.sql` migration was already run on production — both `enabled_platforms`/`enabled_tabs` queries return Nick's client correctly.
-- The **actual bug** was the Session 25 `admin/page.tsx` and `layout.tsx` queries requesting columns that didn't exist yet if run before the migration → Supabase returned `error + null data` → zero clients shown. Fixed in commit `a221e89` with fallback queries.
+**Root cause:** `SUPABASE_SECRET_KEY` in Vercel production was set to the wrong value (not the actual service role key). `createAdminClient()` was therefore NOT bypassing RLS. Queries against `clients`, `posts`, and `platform_connections` ran as unauthenticated → `get_my_role()` returned NULL → RLS blocked all rows → zero clients shown. This was never working on production; it only worked locally where `.env.local` had the correct key.
 
-**Additional hardening applied:**
-1. **`auth.users.app_metadata.role = 'admin'`** set via `scripts/setup-admin.mjs --run`. The proxy now checks this JWT claim first — no DB query needed for the admin gate. Fallback to `public.users` table remains.
-2. **`get_my_role()` updated** (`supabase/rls.sql` + `supabase/migrations/fix_admin_role.sql`): now uses `COALESCE(users table lookup, auth.jwt() -> 'app_metadata' ->> 'role')`. Even with a missing users row, RLS policies still work if app_metadata is set.
-3. **`src/proxy.ts` updated**: checks `user.app_metadata?.role` before falling back to the users table query.
+**Secondary finding:** `get_my_role() returning NULL in SQL Editor` is normal — SQL Editor runs as the postgres superuser with no `auth.uid()` set. It does NOT indicate a missing row.
 
-**Migration to run on any new environment:**
-`supabase/migrations/fix_admin_role.sql` — updates `get_my_role()`, upserts admin users row, and applies Session 25 columns. Single file covers all three.
+**Fixes applied:**
+1. **Vercel env vars synced** — all three Supabase vars (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`) were overwritten in Vercel production from the correct `.env.local` values via `npx vercel env rm / add`. `createAdminClient()` now uses the real service role key and bypasses RLS correctly.
+2. **`auth.users.app_metadata.role = 'admin'`** set via `scripts/setup-admin.mjs --run`. Proxy now checks this JWT claim first — no DB query needed for the admin gate. Fallback to `public.users` table remains.
+3. **`get_my_role()` updated** (`supabase/rls.sql` + `supabase/migrations/fix_admin_role.sql`): now uses `COALESCE(users table lookup, auth.jwt() -> 'app_metadata' ->> 'role')`.
+4. **`src/proxy.ts` updated**: checks `user.app_metadata?.role` before falling back to the users table query.
+5. **`admin/page.tsx` and `admin.ts`** restored exactly to Sessions 24+25 state (`b273891`).
+
+**If admin page ever shows "No clients" again, check in order:**
+1. `npx vercel env ls` — confirm all three Supabase vars are set for Production
+2. Run `node scripts/setup-admin.mjs` (dry-run) — verify admin users row and app_metadata
+3. Check that `supabase/migrations/fix_admin_role.sql` has been run on the Supabase project
+4. Never add fallback query logic to admin/page.tsx — it masks the real problem
 
 **Invariants:**
-- `get_my_role() returning NULL in SQL Editor` = expected (no auth.uid). Check the users table row directly: `SELECT role FROM public.users WHERE email = 'chaserevans2003@gmail.com'`.
-- After running `scripts/setup-admin.mjs --run`, `app_metadata.role` is set and the proxy gate requires no DB queries.
-- `scripts/setup-admin.mjs` (dry-run default, `--run` to apply) is safe to re-run — idempotent.
+- `SUPABASE_SECRET_KEY` must be the service role key, NOT the publishable/anon key. Verify prefixes: anon = `sb_publishable_*`, service role = `sb_secret_*`.
+- `scripts/setup-admin.mjs --run` is idempotent and safe to re-run any time.
+- `get_my_role() returning NULL in SQL Editor` = expected (no auth.uid). Not a bug.
 
 ## Next sessions
 - Session 26: Ads sub-views (Audience tab, Monthly Summary, charts, auto-suggestion banner, Add Campaign/Audience buttons)
