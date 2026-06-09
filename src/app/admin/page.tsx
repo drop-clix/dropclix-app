@@ -21,12 +21,8 @@ export default async function AdminPage() {
 
   const adm = createAdminClient()
 
-  // Use the authenticated SSR client (supabase) for clients + posts — the admin RLS policy
-  // "get_my_role() = 'admin'" passes because this session is authenticated as the admin user.
-  // This avoids a hard dependency on SUPABASE_SECRET_KEY holding the correct service-role value.
-  // platform_connections has RLS enabled with no user-facing policies, so it still needs adm.
   const [clientsRes, connectionsRes, postsRes] = await Promise.all([
-    supabase
+    adm
       .from('clients')
       .select('id, name, email, slug, created_at, monthly_retainer, enabled_platforms, enabled_tabs')
       .order('created_at', { ascending: false }),
@@ -35,7 +31,7 @@ export default async function AdminPage() {
       .select('client_id, channel_name, channel_id, subscriber_count, created_at, last_synced_at')
       .eq('platform', 'youtube'),
     // Fetch post counts + last activity date per client
-    supabase
+    adm
       .from('posts')
       .select('client_id, date')
       .order('date', { ascending: false }),
