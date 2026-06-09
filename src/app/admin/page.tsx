@@ -6,9 +6,9 @@ import { AdminYouTubeSection } from './AdminYouTubeSection'
 import { AdminClientsSection, type ClientRow } from './AdminClientsSection'
 
 export default async function AdminPage() {
+  // Auth check uses the regular (anon) client — only needs the user's session.
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
   if (!user) redirect('/login')
 
   const { data: profile } = await supabase
@@ -19,6 +19,7 @@ export default async function AdminPage() {
 
   if (profile?.role !== 'admin') redirect('/')
 
+  // All data queries use the service-role client — bypasses RLS entirely.
   const adm = createAdminClient()
 
   const [clientsRes, connectionsRes, postsRes] = await Promise.all([
@@ -30,7 +31,6 @@ export default async function AdminPage() {
       .from('platform_connections')
       .select('client_id, channel_name, channel_id, subscriber_count, created_at, last_synced_at')
       .eq('platform', 'youtube'),
-    // Fetch post counts + last activity date per client
     adm
       .from('posts')
       .select('client_id, date')
@@ -50,15 +50,12 @@ export default async function AdminPage() {
 
   const allPosts = (postsRes.data ?? []) as unknown as { client_id: string; date: string | null }[]
 
-  // Build post count + last activity maps
-  const postCountMap = new Map<string, number>()
+  const postCountMap    = new Map<string, number>()
   const lastActivityMap = new Map<string, string | null>()
   for (const post of allPosts) {
     const cid = post.client_id
     postCountMap.set(cid, (postCountMap.get(cid) ?? 0) + 1)
-    if (!lastActivityMap.has(cid)) {
-      lastActivityMap.set(cid, post.date ?? null)
-    }
+    if (!lastActivityMap.has(cid)) lastActivityMap.set(cid, post.date ?? null)
   }
 
   const clients: ClientRow[] = rawClients.map(c => ({
@@ -93,46 +90,31 @@ export default async function AdminPage() {
   }))
 
   return (
-    <div className="min-h-screen p-10" style={{ background: '#060606' }}>
-      <div className="max-w-3xl">
+    <div className="min-h-screen" style={{ background: '#060606', padding: '48px 40px' }}>
+      <div style={{ maxWidth: 760, margin: '0 auto' }}>
 
         {/* Header */}
-        <div
-          className="flex items-start justify-between mb-10"
-          style={{ borderBottom: '1px solid #141414', paddingBottom: 28 }}
-        >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 48, paddingBottom: 32, borderBottom: '1px solid #111' }}>
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span
-                className="font-jakarta font-light tracking-[.36em] uppercase text-[11px]"
-                style={{ color: '#f2ede4' }}
-              >
-                Drop
-              </span>
-              <div style={{ width: 1, height: 16, background: 'rgba(201,169,110,.35)' }} />
-              <span className="font-jakarta font-light tracking-[.36em] uppercase text-[11px] text-gold-gradient">
-                Clix
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span className="font-jakarta font-light tracking-[.36em] uppercase text-[10px]" style={{ color: '#f2ede4' }}>Drop</span>
+              <div style={{ width: 1, height: 14, background: 'rgba(201,169,110,.3)' }} />
+              <span className="font-jakarta font-light tracking-[.36em] uppercase text-[10px] text-gold-gradient">Clix</span>
             </div>
-            <h1
-              className="font-jakarta font-light"
-              style={{ fontSize: 36, color: '#f2ede4', lineHeight: 1.06 }}
-            >
+            <h1 className="font-jakarta font-light" style={{ fontSize: 32, color: '#f2ede4', lineHeight: 1.08, marginBottom: 6 }}>
               Admin
             </h1>
-            <p className="text-[11px] font-light mt-1" style={{ color: '#444' }}>
-              {profile.email}
-            </p>
+            <p style={{ fontSize: 11, color: '#333', fontWeight: 300 }}>{profile.email}</p>
           </div>
           <SignOutButton />
         </div>
 
-        {/* Clients section */}
+        {/* Clients */}
         <AdminClientsSection clients={clients} />
 
-        {/* YouTube connections */}
+        {/* YouTube */}
         {clients.length > 0 && (
-          <div style={{ marginTop: 48 }}>
+          <div style={{ marginTop: 56 }}>
             <AdminYouTubeSection
               clients={clients.map(c => ({ id: c.id, name: c.name }))}
               connections={ytSectionConnections}
