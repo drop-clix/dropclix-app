@@ -39,6 +39,7 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 - **Session 24**: Client onboarding — `AdminClientsSection` with create/edit/resend invite modals, goals UPDATE RLS + `monthly_retainer` column (`session_24_onboarding.sql`), `seed-new-client.mjs`. New clients get 9 seeded goals + 1 welcome pipeline item (`post_id='#new0001'`).
 - **Session 25**: Multi-client — `enabled_platforms`/`enabled_tabs` per client (`session_25_client_config.sql`), `ClientConfigProvider` + `useClientConfig()`, `EmptyState.tsx` for all 8 tabs, admin CSV import (`AdminImportModal`), `OnboardingBanner` (postCount < 5, not admin).
 - **Bug Fix (post-S25)**: Admin "No clients" — root cause: wrong `SUPABASE_SECRET_KEY` in Vercel (publishable key, not service role). Fix: synced correct env vars, set `app_metadata.role='admin'` via `setup-admin.mjs`, updated `get_my_role()` to use JWT claim, rewrote clients fetch to raw `fetch()` bypassing Supabase JS client entirely. **`SUPABASE_SECRET_KEY` prefix must be `sb_secret_*`, not `sb_publishable_*`.**
+- **Session 26**: Admin layer rebuilt correctly — `createAdminClient()` now uses `persistSession:false, autoRefreshToken:false`; `admin/page.tsx` uses it for all 3 queries (clients, connections, posts); `AdminClientsSection` rebuilt with premium card UI (hover border, breathing room, gold CTAs); `session_26_rls_fix.sql` drops redundant admin policy on `clients` (service role bypasses RLS automatically).
 
 ## Key decisions / gotchas
 
@@ -87,7 +88,7 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 - **Pipeline ID display**: Use `formatDisplayId(postId, platform[])` in PipelineClient — never render `item.postId` raw (45 legacy `#0XXX` items exist).
 - **Dashboard types**: `RawDashPost`, `RawDashPipeline`, `RawDashCalendar`, `RawDashGoal` all exported from `DashboardClient.tsx`.
 - **AI Suggestions API**: DashboardClient calls `/api/ai-suggestions` (NOT `/api/suggestions`). Body: `{ posts, platform, mode, projectionMetric?, goalsSummary? }`. Needs `ANTHROPIC_API_KEY`.
-- **Admin clients fetch**: Uses raw `fetch()` to Supabase REST API with `apikey` + `Authorization: Bearer <SUPABASE_SECRET_KEY>` headers — bypasses Supabase JS client and RLS entirely. `get_my_role() = NULL in SQL Editor` is expected (no auth.uid); not a bug.
+- **Admin clients fetch**: Uses `createAdminClient()` (service role, `persistSession:false, autoRefreshToken:false`) for ALL admin queries — clients, connections, posts. Service role bypasses RLS entirely. `get_my_role() = NULL in SQL Editor` is expected; not a bug.
 - **ClientConfigProvider**: `src/lib/client-config-context.tsx` wraps dashboard layout. `useClientConfig()` returns `{ enabledPlatforms, enabledTabs, isAdmin }`.
 - **OnboardingBanner**: Never shows to admin users even when `postCount < 5`.
 - **AdminImportModal CSV**: Parses using locked 36-column Drop CLIX format. `buildPostFromRow` maps `hook` (not `hookType`), `watch_pct` (not `watchPct`), `cta: ''`.
