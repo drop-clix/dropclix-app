@@ -44,36 +44,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   // Fetch client info + enabled config
-  // Try with Session 25 columns; fall back gracefully if migration not yet applied
-  type ClientInfo = { name?: string | null; slug?: string | null; enabled_platforms?: string[] | null; enabled_tabs?: string[] | null }
-  let clientData: ClientInfo | null = null
-  if (clientId) {
-    const res = await supabase
-      .from('clients')
-      .select('name, slug, enabled_platforms, enabled_tabs')
-      .eq('id', clientId)
-      .single()
-    if (res.error) {
-      // Columns may not exist yet — fall back to name/slug only
-      const fallback = await supabase
+  const { data: client } = clientId
+    ? await supabase
         .from('clients')
-        .select('name, slug')
+        .select('name, slug, enabled_platforms, enabled_tabs')
         .eq('id', clientId)
         .single()
-      clientData = (fallback.data as unknown as ClientInfo) ?? null
-    } else {
-      clientData = res.data as unknown as ClientInfo
-    }
-  }
+    : { data: null }
 
-  const enabledPlatforms: string[] = (clientData?.enabled_platforms as string[] | null)
+  const enabledPlatforms: string[] = (client?.enabled_platforms as string[] | null)
     ?? (profile?.role === 'admin' ? ['ig','tt','yt','lf'] : ['ig'])
 
-  const enabledTabs: string[] = (clientData?.enabled_tabs as string[] | null)
+  const enabledTabs: string[] = (client?.enabled_tabs as string[] | null)
     ?? ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals']
 
-  const clientName = clientData?.name ?? profile?.email?.split('@')[0] ?? 'Portal'
-  const userEmail = profile?.email ?? user.email ?? null
+  const clientName = client?.name ?? profile?.email?.split('@')[0] ?? 'Portal'
+  const userEmail  = profile?.email ?? user.email ?? null
 
   return (
     <ClientConfigProvider config={{ enabledPlatforms, enabledTabs, isAdmin: profile?.role === 'admin' }}>
