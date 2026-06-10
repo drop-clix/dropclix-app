@@ -9,15 +9,13 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { config } from 'dotenv'
-import { fileURLToPath } from 'url'
-import { dirname, resolve } from 'path'
+import { readFileSync } from 'fs'
 
-const __dir = dirname(fileURLToPath(import.meta.url))
-config({ path: resolve(__dir, '../.env.local') })
+const env = readFileSync('.env.local', 'utf8')
+const getEnv = key => env.match(new RegExp(`^${key}=(.+)$`, 'm'))?.[1]?.trim()
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SERVICE_KEY  = process.env.SUPABASE_SECRET_KEY
+const SUPABASE_URL = getEnv('NEXT_PUBLIC_SUPABASE_URL')
+const SERVICE_KEY  = getEnv('SUPABASE_SECRET_KEY')
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SECRET_KEY in .env.local')

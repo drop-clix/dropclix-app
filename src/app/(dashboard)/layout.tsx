@@ -54,7 +54,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     : { data: null }
 
   const enabledPlatforms: string[] = (client?.enabled_platforms as string[] | null)
-    ?? (profile?.role === 'admin' ? ['ig','tt','yt','lf'] : ['ig'])
+    ?? ['ig','tt','yt','lf']
 
   const enabledTabs: string[] = (client?.enabled_tabs as string[] | null)
     ?? ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals']
