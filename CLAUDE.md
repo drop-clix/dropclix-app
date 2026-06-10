@@ -62,6 +62,7 @@ Every session must be labeled with one of two scopes before any work begins:
 - **Bug Fix (post-S25)**: Admin "No clients" — root cause: wrong `SUPABASE_SECRET_KEY` in Vercel (publishable key, not service role). Fix: synced correct env vars, set `app_metadata.role='admin'` via `setup-admin.mjs`, updated `get_my_role()` to use JWT claim, rewrote clients fetch to raw `fetch()` bypassing Supabase JS client entirely. **`SUPABASE_SECRET_KEY` prefix must be `sb_secret_*`, not `sb_publishable_*`.**
 - **Session 26**: Admin layer rebuilt correctly — `createAdminClient()` now uses `persistSession:false, autoRefreshToken:false`; `admin/page.tsx` uses it for all 3 queries (clients, connections, posts); `AdminClientsSection` rebuilt with premium card UI (hover border, breathing room, gold CTAs); `session_26_rls_fix.sql` drops redundant admin policy on `clients` (service role bypasses RLS automatically).
 - **Session 27**: Pipeline Add Video modal (gold "+ Add Video" button, platform-aware ID auto-fill using `#ig|#tt|#yt` pipe-separated IDs, read-only ID field computed from next available per platform); AI command bar (floating gold sparkle button, slide-up chat panel, `/api/ai-command` route with Claude context — add pipeline/update analytics/bulk status via confirmation cards, voice-to-text via SpeechRecognition API); legibility pass across all components (table headers #2a2a2a→#555, label text-[7px]→text-[9px], secondary text #252525/#1e1e1e→#555/#444); `scripts/fix-week-format.mjs` for normalising week values to MonWk# format.
+- **Session 29 (GLOBAL)**: 10 global UI enhancements — Toast system (`Toast.tsx`, `ToastProvider` in layout), PostSlideOver panel (`PostSlideOver.tsx`, row clicks on Analytics/Angles open right slide-over with sparkline + decision badge), Cmd+K global shortcut + ⌘K hint label (AICommandBar), sticky thead on Pipeline/Analytics/Angles (`position:sticky`, `background:#060606` on every `<th>`), pillar color coding (`usePillarColors.ts`, 3px `<td>` stripe on all 3 tables), pipeline phase card gold border on active, pipeline hover preview popover (800ms debounce, fixed position), pipeline 6-week calendar mini-map (status dots, week filter, current week gold border), dashboard "This Week" strip (MonWk# label, priority-sorted status cards), contextual empty state in pipeline. TypeScript: 0 errors.
 - **Session 28 (GLOBAL + CLIENT: Nick)**:
   - *GLOBAL*: Platform visibility bug — `enabled_platforms` defaulted to `['ig']` for non-admin clients when null; changed fallback to `['ig','tt','yt','lf']` in `layout.tsx` so all platforms are visible by default.
   - *CLIENT: Nick*: `scripts/fix-nick-data.mjs` applied — 154 week format fixes (M2 WK4→FebWk4, Mar WK3→MarWk3, etc.); 5 ID renames (SL001–SL005 → #ig0118–#ig0122); `enabled_platforms` updated to `['ig','tt','yt','lf']`. Also fixed `scripts/fix-week-format.mjs` to use readFileSync (was using broken dotenv).
@@ -121,6 +122,11 @@ Every session must be labeled with one of two scopes before any work begins:
 - **Pipeline post_id multi-platform**: Items added via Add Video modal store pipe-separated IDs like `#ig0053 | #tt0048` in `post_id`. `formatDisplayId()` returns pipe-separated strings as-is (checks for `|` first). IDs computed server-side in `pipeline/page.tsx` from max across `posts` + `pipeline_items`.
 - **AI command bar**: Floating button at `position:fixed; bottom:28px; right:28px`. Mounted in dashboard layout. Calls `/api/ai-command` (server-auth'd). Returns `{type:'text'|'action', ...}`. Actions: `add_pipeline`, `update_analytics`, `bulk_update_status`. Executes via server actions + `router.refresh()`. SpeechRecognition uses `window.SpeechRecognition ?? window.webkitSpeechRecognition`.
 - **Week format**: Pipeline weeks should use MonWk# (e.g. JunWk1). Migration: `node scripts/fix-week-format.mjs [--run]`.
+- **Toast system**: `ToastProvider` wraps the dashboard layout. Any child calls `useToast()` → `toast(message, variant)`. Variant: `'success'` (gold), `'error'` (red), `'info'` (grey). Auto-dismiss 3s.
+- **PostSlideOver**: Right-side slide-over panel. Takes `SlideOverPost` shape with w24/w3/w7/eom windows. Used in Analytics, Angles (Top/Bottom 5). Use `e.stopPropagation()` on any `<td>` onClick inside the row to prevent bubbling to the slide-over handler.
+- **Pillar color stripe**: `usePillarColors(pillars)` returns `Map<string, string>`. Use `${color}cc` for stripe td background (80% alpha). Stripe td is `width:3, padding:0` — first column before data.
+- **Sticky thead with overflow-x**: Give every `<th>` an explicit `background:'#060606'` so content doesn't bleed through. The `<thead>` itself gets `position:'sticky', top:0, zIndex:10`.
+- **border-collapse + row borders**: `borderLeft` on `<tr>` with `borderCollapse:'collapse'` doesn't render. Use a narrow `<td>` for left-border stripe effect instead.
 
 ## Nick client
 
@@ -215,13 +221,10 @@ Same decision thresholds. Use `ingest-yt-csv.mjs` for all future YouTube imports
 
 ## Next sessions
 
-- **Session 28**: Ads sub-views
+- **Session 30**: Ads sub-views
   - Audience tab + Monthly Summary tab inside Ads
   - Charts (ROAS trend, spend breakdown), auto-suggestion banner
   - Add Campaign / Add Audience buttons
-- **Session 29**: Update Modal
-  - Cross-window edit overlay for Analytics/Angles rows
-  - Edit any metric across all 4 windows from a single modal
 
 ## CSV Import Standard
 
