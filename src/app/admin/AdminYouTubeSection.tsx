@@ -41,10 +41,7 @@ export function AdminYouTubeSection({
     try {
       const res = await fetch('/api/admin/sync-youtube', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_SERVICE_KEY ?? ''}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: clientId }),
       })
       const data = await res.json()

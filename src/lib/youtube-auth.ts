@@ -10,7 +10,8 @@ export type YouTubeConnection = {
   channel_name: string | null
   subscriber_count: number | null
   last_synced_at: string | null
-  connected_at: string
+  created_at: string
+  updated_at: string
 }
 
 export async function getYouTubeConnection(clientId: string): Promise<YouTubeConnection | null> {
@@ -38,6 +39,11 @@ export async function refreshYouTubeToken(
   clientId: string,
   refreshToken: string,
 ): Promise<YouTubeConnection | null> {
+  if (!refreshToken) {
+    console.error('refreshYouTubeToken: no refresh token stored for client', clientId)
+    return null
+  }
+
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

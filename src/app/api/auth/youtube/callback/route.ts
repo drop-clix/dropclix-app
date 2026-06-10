@@ -38,23 +38,27 @@ export async function GET(req: NextRequest) {
   const channel = await fetchChannelInfo(tokens.access_token)
 
   const admin = createAdminClient()
+
+  // Build upsert payload — only include refresh_token if Google returned one
+  // (avoids wiping the stored token on reconnects that don't issue a new one)
+  const upsertPayload: Record<string, unknown> = {
+    client_id:        clientId || null,
+    platform:         'youtube',
+    access_token:     tokens.access_token,
+    token_expires_at: expiry,
+    channel_id:       channel?.channelId ?? null,
+    channel_name:     channel?.channelName ?? null,
+    subscriber_count: channel?.subscriberCount ?? null,
+    updated_at:       new Date().toISOString(),
+  }
+  if (tokens.refresh_token) {
+    upsertPayload.refresh_token = tokens.refresh_token
+    upsertPayload.created_at    = new Date().toISOString()
+  }
+
   const { error: dbErr } = await admin
     .from('platform_connections')
-    .upsert(
-      {
-        client_id:        clientId || null,
-        platform:         'youtube',
-        access_token:     tokens.access_token,
-        refresh_token:    tokens.refresh_token,
-        token_expires_at:     expiry,
-        channel_id:       channel?.channelId ?? null,
-        channel_name:     channel?.channelName ?? null,
-        subscriber_count: channel?.subscriberCount ?? null,
-        created_at:     new Date().toISOString(),
-        updated_at:       new Date().toISOString(),
-      },
-      { onConflict: 'client_id,platform' },
-    )
+    .upsert(upsertPayload, { onConflict: 'client_id,platform' })
 
   if (dbErr) {
     console.error('Failed to save YouTube connection:', dbErr.message)
