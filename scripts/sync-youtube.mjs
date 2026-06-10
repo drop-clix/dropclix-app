@@ -181,39 +181,31 @@ async function run() {
   const { accessToken, channelId, channelName } = await getValidAccessToken()
   console.log(`Channel: ${channelName ?? channelId}\n`)
 
-  // Get all posts for Nick with a yt_id in post_analytics
-  const { data: analyticsRows } = await admin
-    .from('post_analytics')
-    .select('post_id, yt_id, metric_window')
+  // Get all posts for Nick that have yt_id set directly on the posts row.
+  // Requires posts.yt_id column — run: supabase/migrations/add_posts_yt_id.sql
+  const { data: posts, error: postsErr } = await admin
+    .from('posts')
+    .select('id, post_id, date, decision, yt_id')
+    .eq('client_id', NICK_CLIENT_ID)
     .not('yt_id', 'is', null)
 
-  // Build post UUID → yt_id map
-  const postYtMap = new Map()
-  for (const row of analyticsRows ?? []) {
-    if (row.yt_id && !postYtMap.has(row.post_id)) {
-      postYtMap.set(row.post_id, row.yt_id)
-    }
+  if (postsErr) {
+    console.error('Failed to fetch posts:', postsErr.message)
+    console.error('Hint: run supabase/migrations/add_posts_yt_id.sql in the Supabase SQL Editor first.')
+    process.exit(1)
   }
 
-  // Get those posts' publish dates
-  const postUuids = [...postYtMap.keys()]
-  if (postUuids.length === 0) {
-    console.log('No posts with yt_id found. Import YouTube data first via ingest-yt-csv.mjs.')
+  if (!posts || posts.length === 0) {
+    console.log('No posts with yt_id found. Run the YouTube CSV importer (ingest-yt-csv.mjs) first.')
     return
   }
 
-  const { data: posts } = await admin
-    .from('posts')
-    .select('id, post_id, date, decision')
-    .eq('client_id', NICK_CLIENT_ID)
-    .in('id', postUuids)
-
-  console.log(`Found ${posts?.length ?? 0} posts with YouTube video IDs\n`)
+  console.log(`Found ${posts.length} posts with YouTube video IDs\n`)
 
   let synced = 0, skipped = 0, errors = 0
 
-  for (const post of posts ?? []) {
-    const videoId = postYtMap.get(post.id)
+  for (const post of posts) {
+    const videoId = post.yt_id
     console.log(`\n▸ ${post.post_id} — ${videoId} (published ${post.date})`)
 
     // Which windows already have data?
@@ -263,6 +255,8 @@ async function run() {
         const { error: uErr } = await admin.from('post_analytics').upsert(
           {
             post_id:       post.id,
+            client_id:     NICK_CLIENT_ID,
+            platform:      'yt',
             metric_window: win,
             yt_id:         videoId,
             views:         m.views,
@@ -272,9 +266,8 @@ async function run() {
             saves:         null,
             watch_pct:     m.watchPct,
             followers:     m.subscribers,
-            er_pct:        Math.round(er * 100) / 100,
           },
-          { onConflict: 'post_id,metric_window' },
+          { onConflict: 'post_id,platform,metric_window' },
         )
         if (uErr) { console.error(`  ✗ DB error: ${uErr.message}`); errors++ }
         else synced++

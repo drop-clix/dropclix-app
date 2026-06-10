@@ -42,7 +42,6 @@ async function fetchYTAnalytics(
     endDate,
     metrics: 'views,likes,comments,shares,estimatedMinutesWatched,averageViewPercentage,subscribersGained',
     filters: `video==${videoId}`,
-    dimensions: '',
   })
 
   const res = await fetch(
@@ -111,44 +110,27 @@ export async function POST(req: NextRequest) {
   const admin  = createAdminClient()
   const result: SyncResult = { synced: 0, skipped: 0, errors: [], lastSyncedAt: '' }
 
-  // Fetch all posts for this client with a yt_id in post_analytics
-  type AnalyticsRow = { id: string; post_id: string; yt_id: string | null; metric_window: string }
-  type PostRow = { id: string; post_id: string; date: string; decision: string | null }
-
-  const { data: analyticsRows, error: aErr } = await admin
-    .from('post_analytics')
-    .select('id, post_id, yt_id, metric_window')
-    .not('yt_id', 'is', null)
-
-  if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 })
-
-  // Build map: post UUID → yt_id (first non-null)
-  const postYtMap = new Map<string, string>()
-  for (const row of (analyticsRows ?? []) as unknown as AnalyticsRow[]) {
-    if (row.yt_id && !postYtMap.has(row.post_id)) {
-      postYtMap.set(row.post_id, row.yt_id)
-    }
-  }
-
-  // Fetch matching posts (to get publish date + post_id text)
-  const postUuids = [...postYtMap.keys()]
-  if (postUuids.length === 0) {
-    return NextResponse.json({ ...result, message: 'No posts with yt_id found' })
-  }
+  // Fetch all posts for this client that have a YouTube video ID directly on the posts row.
+  // Requires posts.yt_id column (migration: add_posts_yt_id.sql).
+  type PostRow = { id: string; post_id: string; date: string; decision: string | null; yt_id: string }
 
   const { data: postsData, error: pErr } = await admin
     .from('posts')
-    .select('id, post_id, date, decision')
+    .select('id, post_id, date, decision, yt_id')
     .eq('client_id', clientId)
-    .in('id', postUuids)
+    .not('yt_id', 'is', null)
 
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
 
   const posts = (postsData ?? []) as unknown as PostRow[]
+
+  if (posts.length === 0) {
+    return NextResponse.json({ ...result, message: 'No posts with yt_id found. Run the YouTube CSV importer first.' })
+  }
   const WINDOWS: ('w24' | 'w3' | 'w7' | 'eom')[] = ['w24', 'w3', 'w7', 'eom']
 
   for (const post of posts) {
-    const videoId = postYtMap.get(post.id)!
+    const videoId = post.yt_id
     const publishDate = post.date
 
     // Check which windows already have data (to skip unless --force)
@@ -196,12 +178,15 @@ export async function POST(req: NextRequest) {
       const er = erPct(metrics)
       if (metrics.views > bestViews) { bestViews = metrics.views; bestEr = er }
 
-      // Upsert the analytics row
+      // Upsert the analytics row.
+      // onConflict must match the unique(post_id, platform, metric_window) constraint exactly.
       const { error: uErr } = await admin
         .from('post_analytics')
         .upsert(
           {
             post_id:        post.id,
+            client_id:      clientId,
+            platform:       'yt',
             metric_window:  win,
             yt_id:          videoId,
             views:          metrics.views,
@@ -211,9 +196,8 @@ export async function POST(req: NextRequest) {
             saves:          null,
             watch_pct:      metrics.averageViewPercentage,
             followers:      metrics.subscribersGained,
-            er_pct:         Math.round(er * 100) / 100,
           },
-          { onConflict: 'post_id,metric_window' },
+          { onConflict: 'post_id,platform,metric_window' },
         )
 
       if (uErr) {

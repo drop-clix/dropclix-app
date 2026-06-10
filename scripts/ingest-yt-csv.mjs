@@ -171,6 +171,7 @@ for (const row of csvRows) {
       pillar:    row.pillar || null,
       hook:      row.hook || null,
       format:    row.format || null,
+      yt_id:     row.yt_video_id || null,
       cta:       null,
       decision:  null,
       notes:     null,
@@ -358,7 +359,19 @@ const { error: insErr } = await sb.from('post_analytics').insert(analyticsToInse
 if (insErr) { console.error('Analytics insert failed:', insErr.message); process.exit(1) }
 console.log(`✓ Inserted ${analyticsToInsert.length} analytics rows`)
 
-// 4. Update Decision
+// 4. Set yt_id on existing posts that don't have it yet
+let ytIdUpdated = 0
+for (const row of csvRows) {
+  if (!row.yt_video_id) continue
+  const existing = postMap[row.post_id]
+  if (!existing) continue // new posts already have yt_id in stub
+  const { error } = await sb.from('posts').update({ yt_id: row.yt_video_id }).eq('id', existing.id)
+  if (error) console.error(`yt_id update failed for ${row.post_id}:`, error.message)
+  else ytIdUpdated++
+}
+if (ytIdUpdated > 0) console.log(`✓ Updated yt_id on ${ytIdUpdated} existing post(s)`)
+
+// 5. Update Decision
 let decisionUpdated = 0
 for (const { uuid, post_id, decision } of decisionUpdates) {
   const { error } = await sb.from('posts').update({ decision }).eq('id', uuid)
@@ -368,14 +381,14 @@ for (const { uuid, post_id, decision } of decisionUpdates) {
 if (decisionUpdated > 0)
   console.log(`✓ Updated Decision for ${decisionUpdated} post(s)`)
 
-// 5. Pipeline insert
+// 6. Pipeline insert
 if (pipeToInsert.length) {
   const { error } = await sb.from('pipeline_items').insert(pipeToInsert)
   if (error) { console.error('Pipeline insert failed:', error.message); process.exit(1) }
   console.log(`✓ Created ${pipeToInsert.length} pipeline item(s) with status=POSTED`)
 }
 
-// 6. Pipeline update
+// 7. Pipeline update
 let pipeUpdated = 0
 for (const { id, post_id } of pipeToUpdate) {
   const { error } = await sb.from('pipeline_items').update({ status: 'POSTED' }).eq('id', id)
@@ -384,7 +397,7 @@ for (const { id, post_id } of pipeToUpdate) {
 }
 if (pipeUpdated > 0) console.log(`✓ Updated ${pipeUpdated} pipeline item(s) → POSTED`)
 
-// 7. Calendar insert
+// 8. Calendar insert
 if (calToInsert.length) {
   const { error } = await sb.from('calendar_events').insert(calToInsert)
   if (error) { console.error('Calendar insert failed:', error.message); process.exit(1) }
@@ -394,6 +407,7 @@ if (calToInsert.length) {
 // ── Final report ──────────────────────────────────────────────────────────
 console.log('\n── Done ──────────────────────────────────────────────────────')
 console.log(`Posts inserted:      ${stubsToInsert.length}`)
+console.log(`YT IDs set:          ${ytIdUpdated + stubsToInsert.length}`)
 console.log(`Analytics rows:      ${analyticsToInsert.length}`)
 console.log(`Decisions updated:   ${decisionUpdated}`)
 console.log(`Pipeline created:    ${pipeToInsert.length}`)
