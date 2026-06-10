@@ -4,6 +4,27 @@
 
 Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*` → `src/*`.
 
+## Session Scope
+
+Every session must be labeled with one of two scopes before any work begins:
+
+**GLOBAL** — changes to codebase, UI, features, or backend
+- Affects ALL clients
+- Any code change = global by default
+- Examples: new feature, UI update, bug fix in shared component, schema migration
+
+**CLIENT: [Name]** — data only, no code changes
+- Affects ONE client's Supabase data only
+- Zero code changes allowed in client-specific sessions
+- Examples: import posts, fix data, update goals, correct pipeline items
+
+### Rules:
+- Every Claude Code prompt must declare scope in the first line: `SCOPE: GLOBAL` or `SCOPE: CLIENT: Nick`
+- If scope is CLIENT, Claude Code must not touch any .tsx, .ts, .js, or .css files
+- If scope is GLOBAL, changes apply to all clients — verify nothing breaks Nick's existing data
+- If unsure, default to GLOBAL and flag it
+- Bug fixes: if the bug affects only one client's data → CLIENT scope. If it affects the UI or logic → GLOBAL scope
+
 ## Sessions (completed)
 
 - **Sessions 1–3**: Scaffold, Supabase SSR auth, gold/black login + dashboard. Auth via `src/proxy.ts` (not middleware.ts). Tailwind 4 `@theme` tokens in `globals.css`.
