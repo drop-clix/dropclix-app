@@ -40,6 +40,7 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 - **Session 25**: Multi-client — `enabled_platforms`/`enabled_tabs` per client (`session_25_client_config.sql`), `ClientConfigProvider` + `useClientConfig()`, `EmptyState.tsx` for all 8 tabs, admin CSV import (`AdminImportModal`), `OnboardingBanner` (postCount < 5, not admin).
 - **Bug Fix (post-S25)**: Admin "No clients" — root cause: wrong `SUPABASE_SECRET_KEY` in Vercel (publishable key, not service role). Fix: synced correct env vars, set `app_metadata.role='admin'` via `setup-admin.mjs`, updated `get_my_role()` to use JWT claim, rewrote clients fetch to raw `fetch()` bypassing Supabase JS client entirely. **`SUPABASE_SECRET_KEY` prefix must be `sb_secret_*`, not `sb_publishable_*`.**
 - **Session 26**: Admin layer rebuilt correctly — `createAdminClient()` now uses `persistSession:false, autoRefreshToken:false`; `admin/page.tsx` uses it for all 3 queries (clients, connections, posts); `AdminClientsSection` rebuilt with premium card UI (hover border, breathing room, gold CTAs); `session_26_rls_fix.sql` drops redundant admin policy on `clients` (service role bypasses RLS automatically).
+- **Session 27**: Pipeline Add Video modal (gold "+ Add Video" button, platform-aware ID auto-fill using `#ig|#tt|#yt` pipe-separated IDs, read-only ID field computed from next available per platform); AI command bar (floating gold sparkle button, slide-up chat panel, `/api/ai-command` route with Claude context — add pipeline/update analytics/bulk status via confirmation cards, voice-to-text via SpeechRecognition API); legibility pass across all components (table headers #2a2a2a→#555, label text-[7px]→text-[9px], secondary text #252525/#1e1e1e→#555/#444); `scripts/fix-week-format.mjs` for normalising week values to MonWk# format.
 
 ## Key decisions / gotchas
 
@@ -92,6 +93,9 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 - **ClientConfigProvider**: `src/lib/client-config-context.tsx` wraps dashboard layout. `useClientConfig()` returns `{ enabledPlatforms, enabledTabs, isAdmin }`.
 - **OnboardingBanner**: Never shows to admin users even when `postCount < 5`.
 - **AdminImportModal CSV**: Parses using locked 36-column Drop CLIX format. `buildPostFromRow` maps `hook` (not `hookType`), `watch_pct` (not `watchPct`), `cta: ''`.
+- **Pipeline post_id multi-platform**: Items added via Add Video modal store pipe-separated IDs like `#ig0053 | #tt0048` in `post_id`. `formatDisplayId()` returns pipe-separated strings as-is (checks for `|` first). IDs computed server-side in `pipeline/page.tsx` from max across `posts` + `pipeline_items`.
+- **AI command bar**: Floating button at `position:fixed; bottom:28px; right:28px`. Mounted in dashboard layout. Calls `/api/ai-command` (server-auth'd). Returns `{type:'text'|'action', ...}`. Actions: `add_pipeline`, `update_analytics`, `bulk_update_status`. Executes via server actions + `router.refresh()`. SpeechRecognition uses `window.SpeechRecognition ?? window.webkitSpeechRecognition`.
+- **Week format**: Pipeline weeks should use MonWk# (e.g. JunWk1). Migration: `node scripts/fix-week-format.mjs [--run]`.
 
 ## Nick client
 
@@ -186,11 +190,11 @@ Same decision thresholds. Use `ingest-yt-csv.mjs` for all future YouTube imports
 
 ## Next sessions
 
-- **Session 26**: Ads sub-views
+- **Session 28**: Ads sub-views
   - Audience tab + Monthly Summary tab inside Ads
   - Charts (ROAS trend, spend breakdown), auto-suggestion banner
   - Add Campaign / Add Audience buttons
-- **Session 27**: Update Modal
+- **Session 29**: Update Modal
   - Cross-window edit overlay for Analytics/Angles rows
   - Edit any metric across all 4 windows from a single modal
 
@@ -236,3 +240,4 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 | `scripts/setup-admin.mjs` | **Admin bootstrap.** Sets `app_metadata.role='admin'` + upserts users row. Idempotent, `--run`. Run once per environment. |
 | `scripts/seed-new-client.mjs` | Seeds 9 default goals + welcome pipeline item. `<client_id> [--run]`. Use when client created manually. |
 | `scripts/sync-youtube.mjs` | CLI YouTube Analytics sync. Reads tokens from `platform_connections`, calls YT Analytics API, upserts `post_analytics`. `[--run] [--force]`. |
+| `scripts/fix-week-format.mjs` | Normalise `pipeline_items.week` to MonWk# format. Unrecognisable values → `MayWk2`. `[--run]` to apply. |
