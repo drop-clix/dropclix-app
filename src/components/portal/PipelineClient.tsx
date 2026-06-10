@@ -8,6 +8,8 @@ import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePo
 import { Paginator } from '@/components/portal/Paginator'
 import { PlatformPills, ScopeDropdown } from '@/components/portal/FilterBar'
 import { EmptyState } from '@/components/portal/EmptyState'
+import { useToast } from '@/components/portal/Toast'
+import { usePillarColors } from '@/hooks/usePillarColors'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -47,6 +49,35 @@ const ACTIVE_STATUSES = new Set(['SCRIPTED','PLANNED','FILMING','EDITING','REVIE
 type SortKey = 'priority' | 'status' | 'pillar' | 'week' | 'title'
 type FilterKey = 'ALL' | 'ACTIVE' | string
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+
+// Week label helpers for calendar mini-map
+function monWkLabel(d: Date): string {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${months[d.getMonth()]}Wk${Math.ceil(d.getDate() / 7)}`
+}
+
+function get6Weeks(today: Date): string[] {
+  const weeks: string[] = []
+  const seen = new Set<string>()
+  for (let i = -2; i <= 3; i++) {
+    const d = new Date(today)
+    d.setDate(d.getDate() + i * 7)
+    const label = monWkLabel(d)
+    if (!seen.has(label)) { seen.add(label); weeks.push(label) }
+  }
+  return weeks
+}
+
+const STATUS_DOT: Record<string, string> = {
+  SCRIPTED:  '#c9a96e',
+  PLANNED:   '#4cc9ff',
+  FILMING:   '#fbbf24',
+  EDITING:   '#a78bfa',
+  REVIEWING: '#ff3b5f',
+  SCHEDULED: '#4cc9ff',
+  POSTED:    '#39ff88',
+  CANCELLED: '#333',
+}
 
 // ── YT Link Modal ──────────────────────────────────────────────────────────
 
@@ -248,6 +279,7 @@ function ItemEditPanel({
   onDelete: (id: string) => void
   onClose: () => void
 }) {
+  const { toast } = useToast()
   const [title,       setTitle      ] = useState(item.title)
   const [status,      setStatus     ] = useState(item.status)
   const [priority,    setPriority   ] = useState(String(item.priority))
@@ -277,9 +309,11 @@ function ItemEditPanel({
       const result = await updatePipelineItem(item.id, { [dbField]: value })
       if (result.error) {
         setStates(s => ({ ...s, [dbField]: 'error' }))
+        toast(result.error, 'error')
       } else {
         onUpdate(item.id, uiPatch)
         setStates(s => ({ ...s, [dbField]: 'saved' }))
+        toast(`Saved · ${formatDisplayId(item.postId, item.platform)} updated`)
         setTimeout(() => setStates(s => ({ ...s, [dbField]: 'idle' })), 1500)
       }
     }, 2000)
@@ -292,9 +326,11 @@ function ItemEditPanel({
       const result = await updatePipelineItem(item.id, { [dbField]: value })
       if (result.error) {
         setStates(s => ({ ...s, [dbField]: 'error' }))
+        toast(result.error, 'error')
       } else {
         onUpdate(item.id, uiPatch)
         setStates(s => ({ ...s, [dbField]: 'saved' }))
+        toast(`Saved · ${formatDisplayId(item.postId, item.platform)} updated`)
         setTimeout(() => setStates(s => ({ ...s, [dbField]: 'idle' })), 1500)
       }
     }, 0)
@@ -747,6 +783,7 @@ function AddVideoModal({
   onClose: () => void
   onCreated: (item: PipelineItem) => void
 }) {
+  const { toast } = useToast()
   const [title,    setTitle   ] = useState('')
   const [platforms,setPlatforms] = useState<string[]>([])
   const [status,   setStatus  ] = useState('PLANNED')
@@ -786,7 +823,8 @@ function AddVideoModal({
       scriptContent: script.trim() || null,
     })
     setSaving(false)
-    if (result.error) { setErr(result.error); return }
+    if (result.error) { setErr(result.error); toast(result.error, 'error'); return }
+    toast(`Added to pipeline · ${computedId}`)
     onCreated({
       id:            result.id!,
       postId:        computedId,
@@ -971,21 +1009,31 @@ export function PipelineClient({
 }) {
   const searchParams = useSearchParams()
   const linkedItemId = searchParams.get('item')
+  const { toast } = useToast()
   const [items,        setItems       ] = useState<PipelineItem[]>(initialItems)
   const [filter,  setFilter ] = useState<FilterKey>(() => (searchParams.get('phase') as FilterKey) ?? 'ACTIVE')
   const [search,  setSearch ] = useState('')
+  const [weekFilter, setWeekFilter] = useState<string | null>(null)
   const [sortKey,      setSortKey     ] = useState<SortKey>('priority')
   const [sortDir,      setSortDir     ] = useState<'asc' | 'desc'>('asc')
   const [editingId,    setEditingId   ] = useState<string | null>(null)
   const [hoveredId,    setHoveredId   ] = useState<string | null>(null)
+  const [hoverPreviewId, setHoverPreviewId] = useState<string | null>(null)
+  const [hoverPos,       setHoverPos      ] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [saveError,    setSaveError   ] = useState<string | null>(null)
   const [page,         setPage        ] = useState(1)
   const [ytLinkItem,   setYtLinkItem  ] = useState<PipelineItem | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
 
   const { platform, scope, from, to, setFilters } = usePortalFilters()
+  const pillarColors = usePillarColors(useMemo(() => items.map(i => i.pillar ?? ''), [items]))
 
-  useEffect(() => { setPage(1) }, [platform, scope, from, to, filter, search])
+  const today = useMemo(() => new Date(), [])
+  const currentWeek = useMemo(() => monWkLabel(today), [today])
+  const weekLabels   = useMemo(() => get6Weeks(today), [today])
+
+  useEffect(() => { setPage(1) }, [platform, scope, from, to, filter, search, weekFilter])
 
   // Phase counts
   const counts = useMemo(() => {
@@ -1017,6 +1065,9 @@ export function PipelineClient({
         return original!
       })
     }
+    if (weekFilter) {
+      out = out.filter(i => i.week === weekFilter)
+    }
     const q = search.toLowerCase().trim()
     if (q) {
       out = out.filter(i =>
@@ -1034,7 +1085,7 @@ export function PipelineClient({
       return sortDir === 'asc' ? cmp : -cmp
     })
     return out
-  }, [items, filter, platform, scope, from, to, search, sortKey, sortDir])
+  }, [items, filter, platform, scope, from, to, search, weekFilter, sortKey, sortDir])
 
   const pagedRows = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [rows, page])
 
@@ -1059,8 +1110,10 @@ export function PipelineClient({
   }
 
   function handleDelete(id: string) {
+    const deleted = items.find(i => i.id === id)
     setItems(prev => prev.filter(i => i.id !== id))
     if (editingId === id) setEditingId(null)
+    if (deleted) toast(`Deleted · ${deleted.title}`, 'info')
   }
 
   function handleYtLinked(itemId: string, ytId: string) {
@@ -1149,7 +1202,7 @@ export function PipelineClient({
         </button>
       </div>
 
-      {/* ── Phase cards ──────────────────────────────────────────── */}
+      {/* ── Phase stat cards (Feature 5) ─────────────────────────── */}
       <div
         className="grid gap-px mb-8"
         style={{ gridTemplateColumns: `repeat(${phaseCards.length}, 1fr)`, background: '#141414' }}
@@ -1160,23 +1213,24 @@ export function PipelineClient({
           return (
             <button
               key={pc.key}
-              onClick={() => setFilter(pc.key)}
+              onClick={() => { setFilter(pc.key); setWeekFilter(null) }}
               className="flex flex-col items-center py-4 px-3 transition-colors"
               style={{
                 background: active ? 'rgba(201,169,110,.06)' : '#0a0a0a',
-                borderBottom: active ? `2px solid ${pc.color}` : '2px solid transparent',
+                border: active ? '1px solid rgba(201,169,110,.35)' : '1px solid transparent',
                 cursor: 'pointer',
+                position: 'relative',
               }}
             >
               <span
                 className="font-jakarta font-light mb-1"
-                style={{ fontSize: 26, color: active ? pc.color : '#2a2a2a', lineHeight: 1 }}
+                style={{ fontSize: 26, color: active ? '#c9a96e' : '#2a2a2a', lineHeight: 1 }}
               >
                 {count}
               </span>
               <span
                 className="text-[7px] font-medium tracking-[.14em] uppercase"
-                style={{ color: active ? pc.color : '#2a2a2a' }}
+                style={{ color: active ? '#c9a96e' : '#2a2a2a' }}
               >
                 {pc.label}
               </span>
@@ -1191,6 +1245,66 @@ export function PipelineClient({
           platform={platform}
           onChange={p => setFilters({ platform: p })}
         />
+      </div>
+
+      {/* ── Calendar mini-map (Feature 10) ───────────────────────── */}
+      <div className="mb-5" style={{ overflowX: 'auto' }}>
+        <div style={{ display: 'flex', gap: 6, minWidth: 480 }}>
+          {weekLabels.map(wk => {
+            const isCurrent = wk === currentWeek
+            const isActive  = weekFilter === wk
+            const weekItems = items.filter(i => i.week === wk)
+            const dotsByStatus = weekItems.slice(0, 8)
+            return (
+              <button
+                key={wk}
+                onClick={() => setWeekFilter(isActive ? null : wk)}
+                style={{
+                  flex: 1, minWidth: 72, padding: '8px 6px',
+                  background: isActive ? 'rgba(201,169,110,.08)' : '#0a0a0a',
+                  border: isCurrent
+                    ? '1px solid rgba(201,169,110,.4)'
+                    : isActive
+                      ? '1px solid rgba(201,169,110,.35)'
+                      : '1px solid #141414',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all .15s',
+                }}
+                onMouseEnter={e => { if (!isActive && !isCurrent) (e.currentTarget as HTMLButtonElement).style.borderColor = '#2a2a2a' }}
+                onMouseLeave={e => { if (!isActive && !isCurrent) (e.currentTarget as HTMLButtonElement).style.borderColor = '#141414' }}
+              >
+                <p style={{
+                  fontSize: 8, fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase',
+                  color: isCurrent ? '#c9a96e' : isActive ? '#c9a96e' : '#444',
+                  marginBottom: 6,
+                }}>
+                  {wk}
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', minHeight: 14 }}>
+                  {dotsByStatus.map((item, idx) => (
+                    <span
+                      key={idx}
+                      title={`${item.status}: ${item.title}`}
+                      style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: STATUS_DOT[item.status] ?? '#333',
+                        display: 'inline-block',
+                        opacity: 0.85,
+                      }}
+                    />
+                  ))}
+                  {weekItems.length === 0 && (
+                    <span style={{ fontSize: 8, color: '#1e1e1e' }}>—</span>
+                  )}
+                </div>
+                <p style={{ fontSize: 7, color: '#444', marginTop: 4 }}>
+                  {weekItems.length > 0 ? `${weekItems.length} item${weekItems.length !== 1 ? 's' : ''}` : ''}
+                </p>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* ── Search + scope ───────────────────────────────────────── */}
@@ -1224,52 +1338,119 @@ export function PipelineClient({
         </p>
       )}
 
+      {/* Hover preview popover (Feature 6) */}
+      {hoverPreviewId && (() => {
+        const item = items.find(i => i.id === hoverPreviewId)
+        if (!item) return null
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: Math.max(8, hoverPos.top - 10),
+              left: hoverPos.left,
+              zIndex: 7000,
+              background: '#0c0c0c',
+              border: '1px solid #1e1e1e',
+              borderLeft: `3px solid ${pillarColors.get(item.pillar ?? '') ?? '#333'}`,
+              padding: '12px 14px',
+              minWidth: 260,
+              maxWidth: 340,
+              pointerEvents: 'none',
+              boxShadow: '0 8px 32px rgba(0,0,0,.7)',
+              transform: 'translateY(-100%)',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+              {item.platform.map(p => {
+                const cfg = PLAT_CFG[p] ?? { label: p.toUpperCase(), color: '#555', bg: '#0d0d0d' }
+                return <span key={p} style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase', padding: '2px 6px', color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}30` }}>{cfg.label}</span>
+              })}
+            </div>
+            <p style={{ fontSize: 11, color: '#f2ede4', fontWeight: 300, marginBottom: 6 }}>{item.title}</p>
+            {item.scriptContent && (
+              <p style={{ fontSize: 10, color: '#555', lineHeight: 1.5, marginBottom: 6, borderTop: '1px solid #141414', paddingTop: 6 }}>
+                {item.scriptContent.slice(0, 100)}{item.scriptContent.length > 100 ? '…' : ''}
+              </p>
+            )}
+            {item.notes && (
+              <p style={{ fontSize: 9, color: '#444', fontStyle: 'italic' }}>
+                {String(item.notes).slice(0, 80)}{String(item.notes).length > 80 ? '…' : ''}
+              </p>
+            )}
+          </div>
+        )
+      })()}
+
       {/* ── Table ────────────────────────────────────────────────── */}
       <div style={{ border: '1px solid #141414', overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
-          <thead>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-              <th style={{ width: 4, padding: 0 }} />
+              <th style={{ width: 4, padding: 0, background: '#060606' }} />
               <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none"
-                  style={{ color: '#555', whiteSpace: 'nowrap', width: 76 }}>ID</th>
+                  style={{ color: '#555', whiteSpace: 'nowrap', width: 76, background: '#060606' }}>ID</th>
               <th onClick={() => toggleSort('title')}
                   className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'title' ? '#c9a96e' : '#555' }}>
+                  style={{ color: sortKey === 'title' ? '#c9a96e' : '#555', background: '#060606' }}>
                 Title{arrow('title')}
               </th>
               <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase"
-                  style={{ color: '#555', whiteSpace: 'nowrap', width: 90 }}>Platform</th>
+                  style={{ color: '#555', whiteSpace: 'nowrap', width: 90, background: '#060606' }}>Platform</th>
               <th onClick={() => toggleSort('pillar')}
                   className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'pillar' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 140 }}>
+                  style={{ color: sortKey === 'pillar' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 140, background: '#060606' }}>
                 Pillar{arrow('pillar')}
               </th>
               <th onClick={() => toggleSort('week')}
                   className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'week' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 110 }}>
+                  style={{ color: sortKey === 'week' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 110, background: '#060606' }}>
                 Week{arrow('week')}
               </th>
               <th onClick={() => toggleSort('priority')}
                   className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'priority' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 60 }}>
+                  style={{ color: sortKey === 'priority' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 60, background: '#060606' }}>
                 Pri{arrow('priority')}
               </th>
               <th onClick={() => toggleSort('status')}
                   className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'status' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 160 }}>
+                  style={{ color: sortKey === 'status' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 160, background: '#060606' }}>
                 Status{arrow('status')}
               </th>
               <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase"
-                  style={{ color: '#555', width: 40 }}>YT</th>
+                  style={{ color: '#555', width: 40, background: '#060606' }}>YT</th>
               <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase"
-                  style={{ color: '#555', width: 80 }}>Actions</th>
+                  style={{ color: '#555', width: 80, background: '#060606' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center py-16 text-[11px]" style={{ color: '#2a2a2a' }}>
-                  No pipeline items match this filter.
+                <td colSpan={10} className="text-center py-16" style={{ color: '#444' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 20, opacity: 0.4 }}>◇</span>
+                    <p style={{ fontSize: 12, fontWeight: 300, color: '#555' }}>
+                      {weekFilter
+                        ? `Nothing in ${weekFilter} — assign a week in the edit panel.`
+                        : search
+                          ? `No results for "${search}".`
+                          : filter !== 'ALL' && filter !== 'ACTIVE'
+                            ? `Nothing in ${filter.charAt(0) + filter.slice(1).toLowerCase()} yet — click + Add Video to start.`
+                            : 'No pipeline items match this filter.'}
+                    </p>
+                    {(weekFilter || (filter !== 'ALL' && filter !== 'ACTIVE' && !search)) && (
+                      <button
+                        onClick={() => setAddModalOpen(true)}
+                        style={{
+                          fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+                          padding: '6px 14px', marginTop: 4,
+                          background: 'rgba(201,169,110,.08)', border: '1px solid rgba(201,169,110,.3)',
+                          color: '#c9a96e', cursor: 'pointer',
+                        }}
+                      >
+                        + Add Video
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -1277,6 +1458,7 @@ export function PipelineClient({
                 const pCfg      = PRIORITY_CFG[item.priority] ?? PRIORITY_CFG[4]
                 const isEditing = editingId === item.id
                 const isHovered = hoveredId === item.id
+                const pillarColor = pillarColors.get(item.pillar ?? '') ?? '#2a2a2a'
 
                 return (
                   <Fragment key={item.id}>
@@ -1290,11 +1472,23 @@ export function PipelineClient({
                         cursor: 'pointer',
                       }}
                       onClick={() => setEditingId(isEditing ? null : item.id)}
-                      onMouseEnter={() => setHoveredId(item.id)}
-                      onMouseLeave={() => setHoveredId(null)}
+                      onMouseEnter={e => {
+                        setHoveredId(item.id)
+                        clearTimeout(hoverTimer.current)
+                        const rect = (e.currentTarget as HTMLTableRowElement).getBoundingClientRect()
+                        hoverTimer.current = setTimeout(() => {
+                          setHoverPreviewId(item.id)
+                          setHoverPos({ top: rect.top, left: rect.left + 100 })
+                        }, 800)
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredId(null)
+                        clearTimeout(hoverTimer.current)
+                        setHoverPreviewId(null)
+                      }}
                     >
-                      {/* Priority stripe */}
-                      <td style={{ width: 4, padding: 0, background: pCfg.stripe }} />
+                      {/* Pillar color stripe (Feature 9) */}
+                      <td style={{ width: 4, padding: 0, background: `${pillarColor}cc` }} />
 
                       {/* ID */}
                       <td className="px-4 py-4">

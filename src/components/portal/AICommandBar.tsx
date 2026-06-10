@@ -7,6 +7,7 @@ import {
   bulkUpdatePipelineStatus,
   updateAnalyticsByTextId,
 } from '@/app/(dashboard)/edit-actions'
+import { useToast } from '@/components/portal/Toast'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,7 @@ function ActionCard({
 
 export function AICommandBar() {
   const router = useRouter()
+  const { toast } = useToast()
   const [open,      setOpen     ] = useState(false)
   const [messages,  setMessages ] = useState<Message[]>([])
   const [input,     setInput    ] = useState('')
@@ -175,6 +177,18 @@ export function AICommandBar() {
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 50)
   }, [open])
+
+  // Global Cmd+K / Ctrl+K shortcut
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setOpen(v => !v)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
 
   // Init speech recognition (browser API — minimal typing)
   const hasSpeech = typeof window !== 'undefined' &&
@@ -282,16 +296,21 @@ export function AICommandBar() {
         ? { ...m, status: 'error', errorMsg: result.error }
         : m
       ))
+      toast(result.error, 'error')
     } else {
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'success' } : m))
       router.refresh()
-      // Add a follow-up success note if it's a bulk action
-      if (response.action === 'bulk_update_status' && result.count !== undefined) {
+      if (response.action === 'add_pipeline') {
+        toast(`Added to pipeline · ${String(response.data.title ?? '')}`, 'success')
+      } else if (response.action === 'bulk_update_status' && result.count !== undefined) {
+        toast(`${result.count} item${result.count === 1 ? '' : 's'} moved to ${String(response.data.toStatus ?? '')}`, 'success')
         setMessages(prev => [...prev, {
           id: crypto.randomUUID(),
           role: 'assistant',
           text: `Updated ${result.count} item${result.count === 1 ? '' : 's'}.`,
         }])
+      } else if (response.action === 'update_analytics') {
+        toast(`Saved · ${String(response.data.postTextId ?? '')} updated`, 'success')
       }
     }
   }
@@ -305,42 +324,62 @@ export function AICommandBar() {
 
   return (
     <>
-      {/* ── Floating button ──────────────────────────────────────────── */}
-      <button
-        onClick={() => setOpen(v => !v)}
-        aria-label="AI Command"
+      {/* ── Floating button + ⌘K hint ────────────────────────────────── */}
+      <div
         style={{
           position: 'fixed',
           bottom: 28,
           right: 28,
           zIndex: 9000,
-          width: 52,
-          height: 52,
-          borderRadius: '50%',
-          background: open
-            ? 'rgba(201,169,110,.25)'
-            : 'rgba(201,169,110,.15)',
-          border: '1px solid rgba(201,169,110,.55)',
-          color: '#c9a96e',
-          cursor: 'pointer',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: open
-            ? '0 0 24px rgba(201,169,110,.2)'
-            : '0 0 0 0 rgba(201,169,110,0)',
-          transition: 'all .25s ease',
-          animation: !open ? 'aiPulse 3s ease-in-out infinite' : 'none',
+          gap: 6,
         }}
       >
-        <SparkleIcon size={20} />
-      </button>
+        {!open && (
+          <span style={{
+            fontSize: 8, fontWeight: 600, letterSpacing: '.12em',
+            color: '#c9a96e', opacity: 0.55,
+            fontFamily: 'DM Sans, sans-serif',
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}>
+            ⌘K
+          </span>
+        )}
+        <button
+          onClick={() => setOpen(v => !v)}
+          aria-label="AI Command (⌘K)"
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: '50%',
+            background: open
+              ? 'rgba(201,169,110,.25)'
+              : 'rgba(201,169,110,.15)',
+            border: '1px solid rgba(201,169,110,.55)',
+            color: '#c9a96e',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: open
+              ? '0 0 24px rgba(201,169,110,.2)'
+              : '0 0 0 0 rgba(201,169,110,0)',
+            transition: 'all .25s ease',
+            animation: !open ? 'aiPulse 3s ease-in-out infinite' : 'none',
+          }}
+        >
+          <SparkleIcon size={20} />
+        </button>
+      </div>
 
       {/* ── Slide-up panel ───────────────────────────────────────────── */}
       <div
         style={{
           position: 'fixed',
-          bottom: 92,
+          bottom: 100,
           right: 28,
           zIndex: 8999,
           width: 420,

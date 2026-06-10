@@ -5,6 +5,7 @@ import { SidebarShell } from '@/components/portal/SidebarShell'
 import { WelcomeOverlay } from '@/components/portal/WelcomeOverlay'
 import { ClientConfigProvider } from '@/lib/client-config-context'
 import { AICommandBar } from '@/components/portal/AICommandBar'
+import { ToastProvider } from '@/components/portal/Toast'
 
 const IMPERSONATE_COOKIE = 'dropclix_impersonate_client_id'
 
@@ -64,16 +65,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <ClientConfigProvider config={{ enabledPlatforms, enabledTabs, isAdmin: profile?.role === 'admin' }}>
-      <WelcomeOverlay clientName={clientName} />
-      <SidebarShell
-        clientName={clientName}
-        userEmail={userEmail}
-        isImpersonating={isImpersonating}
-        enabledTabs={enabledTabs}
-      >
-        {children}
-      </SidebarShell>
-      <AICommandBar />
+      <ToastProvider>
+        <WelcomeOverlay clientName={clientName} />
+        <SidebarShell
+          clientName={clientName}
+          userEmail={userEmail}
+          isImpersonating={isImpersonating}
+          enabledTabs={enabledTabs}
+        >
+          {children}
+        </SidebarShell>
+        <AICommandBar />
+      </ToastProvider>
     </ClientConfigProvider>
   )
 }

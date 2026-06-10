@@ -1,8 +1,10 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { EmptyState } from '@/components/portal/EmptyState'
+import { PostSlideOver, type SlideOverPost, type SlideOverWindow } from '@/components/portal/PostSlideOver'
+import { usePillarColors } from '@/hooks/usePillarColors'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -23,6 +25,7 @@ export type RawAnglesPost = {
     shares: number
     saves: number
     watch_pct: number
+    followers?: number
   }[]
 }
 
@@ -151,7 +154,15 @@ function BreakdownBar({ row, max, rank }: { row: BreakdownRow; max: number; rank
   )
 }
 
-function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: string; color: string }) {
+function PostTable({
+  posts, title, color, pillarColors, onRowClick,
+}: {
+  posts: PostMetrics[]
+  title: string
+  color: string
+  pillarColors: Map<string, string>
+  onRowClick: (postId: string) => void
+}) {
   return (
     <div>
       <p
@@ -164,11 +175,12 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
       <div style={{ border: '1px solid #141414', overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
+            <tr style={{ borderBottom: '1px solid #141414' }}>
+              <th style={{ width: 3, padding: 0, background: '#060606' }} />
               {['ID', 'Title', 'Pillar', 'Hook', 'Format', 'ER %', 'Views', 'Decision'].map(h => (
                 <th key={h}
                     className="text-left px-5 py-4 text-[8px] font-medium tracking-[.14em] uppercase"
-                    style={{ color: '#555', whiteSpace: 'nowrap' }}>
+                    style={{ color: '#555', whiteSpace: 'nowrap', background: '#060606' }}>
                   {h}
                 </th>
               ))}
@@ -177,7 +189,7 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
           <tbody>
             {posts.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-[11px]" style={{ color: '#555' }}>
+                <td colSpan={9} className="text-center py-12 text-[11px]" style={{ color: '#555' }}>
                   No posts match current filters.
                 </td>
               </tr>
@@ -185,14 +197,18 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
               posts.map((p, i) => {
                 const t  = tier(p.er)
                 const ts = TIER_STYLE[t]
+                const pillarColor = pillarColors.get(p.pillar) ?? '#1a1a1a'
                 return (
                   <tr
                     key={p.postId}
+                    onClick={() => onRowClick(p.postId)}
                     style={{
                       borderBottom: i < posts.length - 1 ? '1px solid #0e0e0e' : 'none',
                       background: i % 2 === 0 ? '#060606' : '#070707',
+                      cursor: 'pointer',
                     }}
                   >
+                    <td style={{ width: 3, padding: 0, background: `${pillarColor}cc` }} />
                     <td className="px-5 py-4">
                       <span className="text-[10px] font-medium" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
                         {p.postId}
@@ -248,8 +264,38 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
+function buildWindow(pa: RawAnglesPost['post_analytics'][number] | undefined): SlideOverWindow {
+  return {
+    views:     pa?.views     ?? 0,
+    likes:     pa?.likes     ?? 0,
+    comments:  pa?.comments  ?? 0,
+    shares:    pa?.shares    ?? 0,
+    saves:     pa?.saves     ?? 0,
+    followers: pa?.followers ?? 0,
+    watch_pct: pa?.watch_pct ?? 0,
+  }
+}
+
+function buildSlideOverPost(raw: RawAnglesPost): SlideOverPost {
+  const find = (wk: string) => raw.post_analytics.find(a => a.metric_window === wk)
+  return {
+    postId:   raw.post_id,
+    title:    raw.title,
+    platform: raw.platform ?? [],
+    date:     raw.date ?? '',
+    pillar:   raw.pillar,
+    hook:     raw.hook,
+    decision: raw.decision,
+    w24: buildWindow(find('w24')),
+    w3:  buildWindow(find('w3')),
+    w7:  buildWindow(find('w7')),
+    eom: buildWindow(find('eom')),
+  }
+}
+
 export function AnglesClient({ rawPosts }: { rawPosts: RawAnglesPost[] }) {
   const { platform, win, scope, from, to } = usePortalFilters()
+  const [slidePost, setSlidePost] = useState<SlideOverPost | null>(null)
 
   const posts = useMemo<PostMetrics[]>(() => {
     const platformFiltered = filterByPlatform(
@@ -289,6 +335,18 @@ export function AnglesClient({ rawPosts }: { rawPosts: RawAnglesPost[] }) {
       }
     })
   }, [rawPosts, platform, win, scope, from, to])
+
+  const rawByPostId = useMemo(
+    () => new Map(rawPosts.map(p => [p.post_id, p])),
+    [rawPosts],
+  )
+
+  const pillarColors = usePillarColors(useMemo(() => posts.map(p => p.pillar), [posts]))
+
+  const handleRowClick = (postId: string) => {
+    const raw = rawByPostId.get(postId)
+    if (raw) setSlidePost(buildSlideOverPost(raw))
+  }
 
   const withViews = useMemo(() => posts.filter(p => p.views > 0), [posts])
 
@@ -331,6 +389,13 @@ export function AnglesClient({ rawPosts }: { rawPosts: RawAnglesPost[] }) {
 
   return (
     <div>
+      {slidePost && (
+        <PostSlideOver
+          post={slidePost}
+          onClose={() => setSlidePost(null)}
+        />
+      )}
+
       {/* Summary line */}
       <p className="text-[11px] font-light mb-8" style={{ color: '#444' }}>
         {totalWithViews} posts analysed · {overallAvgER.toFixed(1)}% overall avg ER
@@ -437,12 +502,12 @@ export function AnglesClient({ rawPosts }: { rawPosts: RawAnglesPost[] }) {
 
       {/* ── Top 5 ────────────────────────────────────────────────── */}
       <div className="mb-10">
-        <PostTable posts={top5} title="Top 5 — Double Down" color="#39ff88" />
+        <PostTable posts={top5} title="Top 5 — Double Down" color="#39ff88" pillarColors={pillarColors} onRowClick={handleRowClick} />
       </div>
 
       {/* ── Bottom 5 ─────────────────────────────────────────────── */}
       <div className="mb-6">
-        <PostTable posts={bottom5} title="Bottom 5 — Review or Cut" color="#ff3b5f" />
+        <PostTable posts={bottom5} title="Bottom 5 — Review or Cut" color="#ff3b5f" pillarColors={pillarColors} onRowClick={handleRowClick} />
       </div>
 
       {/* Tier legend */}

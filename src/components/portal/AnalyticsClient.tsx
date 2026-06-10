@@ -11,6 +11,9 @@ import { updateAnalyticsMetric } from '@/app/(dashboard)/edit-actions'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
 import { EmptyState } from '@/components/portal/EmptyState'
+import { PostSlideOver } from '@/components/portal/PostSlideOver'
+import { useToast } from '@/components/portal/Toast'
+import { usePillarColors } from '@/hooks/usePillarColors'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -138,7 +141,7 @@ function EditableCell({
     <td
       className="px-5 py-4 text-[12px] font-light text-right"
       style={{ color, cursor: 'text' }}
-      onClick={() => { setEditing(true); setLocal(String(isPercent ? value.toFixed(2) : Math.round(value))) }}
+      onClick={e => { e.stopPropagation(); setEditing(true); setLocal(String(isPercent ? value.toFixed(2) : Math.round(value))) }}
       title="Click to edit"
     >
       {displayValue}
@@ -589,8 +592,11 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page,    setPage   ] = useState(1)
   const [snapshotPost, setSnapshotPost] = useState<PostRow | null>(null)
+  const [slidePost, setSlidePost] = useState<PostRow | null>(null)
 
+  const { toast } = useToast()
   const { platform, win, scope, from, to, setFilters } = usePortalFilters()
+  const pillarColors = usePillarColors(useMemo(() => posts.map(p => p.pillar ?? ''), [posts]))
 
   // Reset page when filters change
   useEffect(() => { setPage(1) }, [platform, win, scope, from, to, pillar])
@@ -601,6 +607,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       const winData = { ...p[win as WindowKey], [field]: value } as WindowData
       const updated = { ...p, [win as WindowKey]: winData }
       if (decision !== undefined) updated.decision = decision
+      toast(`Saved · ${p.postId} updated`)
       return updated
     }))
   }
@@ -658,7 +665,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
     <th
       onClick={() => handleSort(col)}
       className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none"
-      style={{ color: sortKey === col ? '#c9a96e' : '#2a2a2a', cursor: 'pointer', whiteSpace: 'nowrap' }}
+      style={{ color: sortKey === col ? '#c9a96e' : '#2a2a2a', cursor: 'pointer', whiteSpace: 'nowrap', background: '#060606' }}
     >
       {label}<SortIcon col={col} sortKey={sortKey} dir={sortDir} />
     </th>
@@ -694,13 +701,33 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
         ))}
       </div>
 
+      {/* Slide-over for row click (Feature 3) */}
+      {slidePost && (
+        <PostSlideOver
+          post={{
+            postId:   slidePost.postId,
+            title:    slidePost.title,
+            platform: slidePost.platform,
+            date:     slidePost.date,
+            pillar:   slidePost.pillar,
+            hook:     slidePost.hook,
+            decision: slidePost.decision,
+            w24: slidePost.w24,
+            w3:  slidePost.w3,
+            w7:  slidePost.w7,
+            eom: slidePost.eom,
+          }}
+          onClose={() => setSlidePost(null)}
+        />
+      )}
+
       {/* ── Table ───────────────────────────────────────────────── */}
       <div style={{ border: '1px solid #141414', overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
-          <thead>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 920 }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
             {/* Window selector row */}
             <tr style={{ background: '#060606', borderBottom: '1px solid #111' }}>
-              <th colSpan={12} style={{ padding: '8px 12px' }}>
+              <th colSpan={13} style={{ padding: '8px 12px', background: '#060606' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 9, color: '#555', letterSpacing: '.12em' }}>
                     {rows.length} posts
@@ -741,10 +768,11 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
               </th>
             </tr>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap' }}>ID</th>
-              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', minWidth: 180 }}>Title</th>
+              <th style={{ width: 3, padding: 0, background: '#060606' }} />
+              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap', background: '#060606' }}>ID</th>
+              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', minWidth: 180, background: '#060606' }}>Title</th>
               <TH label="Date"    col="date"      />
-              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap' }}>Pillar</th>
+              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap', background: '#060606' }}>Pillar</th>
               <TH label="Views"   col="views"     />
               <TH label="Likes"   col="likes"     />
               <TH label="Cmts"    col="comments"  />
@@ -752,13 +780,13 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
               <TH label="Shares"  col="shares"    />
               <TH label="ER %"    col="er"        />
               <TH label="Watch %" col="watch_pct" />
-              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap' }}>Decision</th>
+              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap', background: '#060606' }}>Decision</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={12} className="text-center py-16 text-[11px]" style={{ color: '#444' }}>
+                <td colSpan={13} className="text-center py-16 text-[11px]" style={{ color: '#444' }}>
                   No posts found for this filter.
                 </td>
               </tr>
@@ -770,6 +798,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                 const ts      = TIER_STYLES[t]
                 const ds      = DECISION_STYLES[post.decision] ?? { color: '#444' }
                 const hasData = w.views > 0
+                const pillarColor = pillarColors.get(post.pillar ?? '') ?? '#1a1a1a'
 
                 return (
                   <tr
@@ -778,10 +807,14 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                       background:   i % 2 === 0 ? '#060606' : '#070707',
                       borderBottom: '1px solid #0e0e0e',
                       transition:   'background .15s',
+                      cursor: 'pointer',
                     }}
+                    onClick={() => setSlidePost(post)}
                     onMouseEnter={e => (e.currentTarget.style.background = '#0d0d0d')}
                     onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? '#060606' : '#070707')}
                   >
+                    {/* Pillar color stripe (Feature 9) */}
+                    <td style={{ width: 3, padding: 0, background: `${pillarColor}cc` }} />
                     {/* ID */}
                     <td className="px-5 py-4">
                       <span className="text-[10px] font-medium tracking-[.08em]" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>

@@ -37,8 +37,10 @@ export type RawDashPipeline = {
   title: string
   platform: string[]
   status: string
+  week: string | null
   scheduled_date: string | null
   posted_at: string | null
+  priority: number
 }
 
 export type RawDashCalendar = {
@@ -138,6 +140,13 @@ function parsePostId(notes: string | null): string | null {
     const match = notes.match(/#(?:ig|yt|tt|LF)?\d{4}/i)
     return match?.[0] ?? null
   }
+}
+
+const MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+function monWkLabel(d: Date): string {
+  const mon = MON_ABBR[d.getMonth()]
+  const wk  = Math.ceil(d.getDate() / 7)
+  return `${mon}Wk${wk}`
 }
 
 function startOfWeek(base: Date): Date {
@@ -383,6 +392,14 @@ export function DashboardClient({
       })
   }, [rawPipeline, platform, scope, from, to])
 
+  const currentWeekLabel = useMemo(() => monWkLabel(new Date()), [])
+
+  const thisWeekItems = useMemo(() => {
+    return rawPipeline
+      .filter(i => i.week === currentWeekLabel)
+      .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
+  }, [rawPipeline, currentWeekLabel])
+
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart)
     d.setDate(weekStart.getDate() + i)
@@ -488,6 +505,52 @@ export function DashboardClient({
         <div style={{ width: 1, height: 22, background: '#1a1a1a' }} />
         <ScopeDropdown scope={scope} onChange={s => setFilters({ scope: s })} />
       </div>
+
+      {thisWeekItems.length > 0 && (
+        <section className="mb-8">
+          <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3" style={{ color: '#c9a96e' }}>
+            <span style={{ width: 16, height: 1, background: '#c9a96e' }} />
+            This Week — {currentWeekLabel}
+          </p>
+          <div className="flex gap-3 flex-wrap">
+            {thisWeekItems.map((item, idx) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => router.push(`/pipeline?phase=${encodeURIComponent(item.status)}&item=${encodeURIComponent(item.id)}&platform=${platform}&scope=${scope}`)}
+                style={{
+                  background: '#0a0a0a',
+                  border: `1px solid ${(STATUS_COLORS[item.status] ?? '#555')}44`,
+                  borderLeft: `3px solid ${STATUS_COLORS[item.status] ?? '#555'}`,
+                  borderRadius: 5,
+                  padding: '10px 16px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  minWidth: 200,
+                  maxWidth: 260,
+                  transition: 'border-color .15s ease, background .15s ease',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#0d0d0d' }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#0a0a0a' }}
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[8px] font-medium tracking-[.1em] uppercase"
+                        style={{ color: STATUS_COLORS[item.status] ?? '#555', background: `${STATUS_COLORS[item.status] ?? '#555'}18`, border: `1px solid ${STATUS_COLORS[item.status] ?? '#555'}44`, padding: '1px 6px' }}>
+                    {item.status}
+                  </span>
+                  <span className="text-[9px] font-light" style={{ color: '#333' }}>#{idx + 1}</span>
+                </div>
+                <p className="text-[12px] font-light overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 228 }}>{item.title}</p>
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  {item.platform.slice(0, 2).map(pl => (
+                    <span key={pl} className="text-[8px] tracking-[.08em] uppercase" style={{ color: PLATFORM_COLORS[pl] ?? '#555' }}>{pl}</span>
+                  ))}
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-6 mb-8 dashboard-kpis" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
         <CardShell onClick={() => setKpiModes(m => ({ ...m, followers: m.followers ? 0 : 1 }))}>
