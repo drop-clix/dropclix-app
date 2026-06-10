@@ -40,7 +40,7 @@ export function Paginator({
 
       <span
         className="text-[11px] font-light tracking-[.06em]"
-        style={{ color: '#333', fontFamily: 'DM Sans, sans-serif' }}
+        style={{ color: '#666', fontFamily: 'DM Sans, sans-serif' }}
       >
         Page{' '}
         <span style={{ color: '#c9a96e' }}>{page}</span>

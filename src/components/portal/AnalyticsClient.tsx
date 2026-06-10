@@ -173,13 +173,13 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub: str
     >
       <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#333' }}>{label}</p>
       <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(26px,3vw,42px)', lineHeight: 1 }}>{value}</p>
-      <p className="text-[10px] font-light mt-2" style={{ color: '#2a2a2a' }}>{sub}</p>
+      <p className="text-[10px] font-light mt-2" style={{ color: '#555' }}>{sub}</p>
     </div>
   )
 }
 
 function SortIcon({ col, sortKey, dir }: { col: SortKey; sortKey: SortKey; dir: SortDir }) {
-  if (col !== sortKey) return <span style={{ color: '#252525', marginLeft: 4, fontSize: 9 }}>↕</span>
+  if (col !== sortKey) return <span style={{ color: '#444', marginLeft: 4, fontSize: 9 }}>↕</span>
   return <span style={{ color: '#c9a96e', marginLeft: 4, fontSize: 9 }}>{dir === 'desc' ? '↓' : '↑'}</span>
 }
 
@@ -676,7 +676,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
 
       {/* ── Pillar filter ────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-2 mb-6">
-        <span className="text-[8px] tracking-[.18em] uppercase self-center mr-1" style={{ color: '#252525' }}>Pillar</span>
+        <span className="text-[8px] tracking-[.18em] uppercase self-center mr-1" style={{ color: '#555' }}>Pillar</span>
         {PILLARS.map(p => (
           <button
             key={p}
@@ -702,7 +702,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
             <tr style={{ background: '#060606', borderBottom: '1px solid #111' }}>
               <th colSpan={12} style={{ padding: '8px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 9, color: '#252525', letterSpacing: '.12em' }}>
+                  <span style={{ fontSize: 9, color: '#555', letterSpacing: '.12em' }}>
                     {rows.length} posts
                   </span>
                   {/* Sliding window segmented control */}
@@ -741,10 +741,10 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
               </th>
             </tr>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>ID</th>
-              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', minWidth: 180 }}>Title</th>
+              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap' }}>ID</th>
+              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', minWidth: 180 }}>Title</th>
               <TH label="Date"    col="date"      />
-              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Pillar</th>
+              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap' }}>Pillar</th>
               <TH label="Views"   col="views"     />
               <TH label="Likes"   col="likes"     />
               <TH label="Cmts"    col="comments"  />
@@ -752,13 +752,13 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
               <TH label="Shares"  col="shares"    />
               <TH label="ER %"    col="er"        />
               <TH label="Watch %" col="watch_pct" />
-              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Decision</th>
+              <th className="text-left px-5 py-4 text-[9px] font-medium tracking-[.14em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap' }}>Decision</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={12} className="text-center py-16 text-[11px]" style={{ color: '#2a2a2a' }}>
+                <td colSpan={12} className="text-center py-16 text-[11px]" style={{ color: '#444' }}>
                   No posts found for this filter.
                 </td>
               </tr>
@@ -885,7 +885,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
         <AdvancedAnalyticsCharts rows={rows} win={activeWin} platform={platform} onOpen={setSnapshotPost} />
       )}
 
-      <p className="mt-3 text-[9px]" style={{ color: '#1e1e1e' }}>
+      <p className="mt-3 text-[9px]" style={{ color: '#444' }}>
         Click any metric cell to edit · IG ER uses saves · YT ER uses subscribers gained
       </p>
 

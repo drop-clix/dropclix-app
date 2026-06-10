@@ -116,7 +116,7 @@ function KpiCard({ label, value, sub, sub2 }: { label: string; value: string; su
         {value}
       </p>
       <p className="text-[10px] font-light mt-2" style={{ color: '#c9a96e' }}>{sub}</p>
-      {sub2 && <p className="text-[9px] font-light mt-0.5" style={{ color: '#2a2a2a' }}>{sub2}</p>}
+      {sub2 && <p className="text-[9px] font-light mt-0.5" style={{ color: '#555' }}>{sub2}</p>}
     </div>
   )
 }
@@ -127,7 +127,7 @@ function BreakdownBar({ row, max, rank }: { row: BreakdownRow; max: number; rank
   const ts = TIER_STYLE[t]
   return (
     <div className="flex items-center gap-4 py-4" style={{ borderBottom: '1px solid #0e0e0e' }}>
-      <span className="text-[10px] font-light" style={{ color: '#252525', minWidth: 14 }}>{rank}</span>
+      <span className="text-[10px] font-light" style={{ color: '#555', minWidth: 14 }}>{rank}</span>
       <span className="text-[11px] font-light" style={{ color: '#f2ede4', minWidth: 140 }}>{row.label}</span>
       <div style={{ flex: 1, height: 3, background: '#141414', borderRadius: 2, overflow: 'hidden' }}>
         <div style={{ width: `${barPct}%`, height: '100%', background: `linear-gradient(90deg, ${ts.color}88, ${ts.color})`, borderRadius: 2 }} />
@@ -168,7 +168,7 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
               {['ID', 'Title', 'Pillar', 'Hook', 'Format', 'ER %', 'Views', 'Decision'].map(h => (
                 <th key={h}
                     className="text-left px-5 py-4 text-[8px] font-medium tracking-[.14em] uppercase"
-                    style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>
+                    style={{ color: '#555', whiteSpace: 'nowrap' }}>
                   {h}
                 </th>
               ))}
@@ -177,7 +177,7 @@ function PostTable({ posts, title, color }: { posts: PostMetrics[]; title: strin
           <tbody>
             {posts.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-[11px]" style={{ color: '#2a2a2a' }}>
+                <td colSpan={8} className="text-center py-12 text-[11px]" style={{ color: '#555' }}>
                   No posts match current filters.
                 </td>
               </tr>
@@ -397,7 +397,7 @@ export function AnglesClient({ rawPosts }: { rawPosts: RawAnglesPost[] }) {
             {['Content Pillar', '', 'Avg ER', '', 'Posts', 'Views'].map((h, i) => (
               <span key={i} className="text-[7px] font-medium tracking-[.16em] uppercase"
                     style={{
-                      color: '#252525',
+                      color: '#555',
                       minWidth: i === 1 ? 'auto' : i === 0 ? 140 : i === 2 ? 52 : i === 4 ? 56 : 60,
                       flex: i === 1 ? 1 : undefined,
                       textAlign: i >= 2 ? 'right' : 'left',
@@ -407,7 +407,7 @@ export function AnglesClient({ rawPosts }: { rawPosts: RawAnglesPost[] }) {
             ))}
           </div>
           {pillarStats.length === 0
-            ? <p className="py-8 text-center text-[11px]" style={{ color: '#2a2a2a' }}>No data for current filters.</p>
+            ? <p className="py-8 text-center text-[11px]" style={{ color: '#555' }}>No data for current filters.</p>
             : pillarStats.map((row, i) => <BreakdownBar key={row.label} row={row} max={pillarMax} rank={i + 1} />)
           }
         </div>
@@ -452,7 +452,7 @@ export function AnglesClient({ rawPosts }: { rawPosts: RawAnglesPost[] }) {
           return (
             <div key={t} className="flex items-center gap-1.5">
               <span style={{ width: 6, height: 6, background: s.color, opacity: .8, display: 'block' }} />
-              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#252525' }}>
+              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#555' }}>
                 {s.label} {t === 'elite' ? '≥12%' : t === 'strong' ? '7–12%' : t === 'avg' ? '4–7%' : '<4%'}
               </span>
             </div>

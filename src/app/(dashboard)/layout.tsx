@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { SidebarShell } from '@/components/portal/SidebarShell'
 import { WelcomeOverlay } from '@/components/portal/WelcomeOverlay'
 import { ClientConfigProvider } from '@/lib/client-config-context'
+import { AICommandBar } from '@/components/portal/AICommandBar'
 
 const IMPERSONATE_COOKIE = 'dropclix_impersonate_client_id'
 
@@ -72,6 +73,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       >
         {children}
       </SidebarShell>
+      <AICommandBar />
     </ClientConfigProvider>
   )
 }

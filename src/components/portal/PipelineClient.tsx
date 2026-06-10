@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo } from '@/app/(dashboard)/edit-actions'
+import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
@@ -167,6 +167,8 @@ function YTLinkModal({
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDisplayId(postId: string, platform: string[]): string {
+  // Pipe-separated multi-platform ID — return as-is
+  if (postId.includes('|')) return postId
   if (/^#(ig|tt|yt|LF)\d+$/i.test(postId)) return postId
   const numMatch = postId.match(/^#?(\d+)$/)
   if (!numMatch) return postId
@@ -356,11 +358,11 @@ function ItemEditPanel({
   }
 
   const labelStyle = {
-    fontSize: 7,
+    fontSize: 9,
     fontWeight: 600,
-    letterSpacing: '.16em',
+    letterSpacing: '.14em',
     textTransform: 'uppercase' as const,
-    color: '#2a2a2a',
+    color: '#555',
     display: 'flex',
     alignItems: 'center',
     gap: 2,
@@ -732,11 +734,241 @@ function ItemEditPanel({
   )
 }
 
+// ── Add Video Modal ────────────────────────────────────────────────────────
+
+type NextIds = { ig: string; tt: string; yt: string; lf: string }
+
+function AddVideoModal({
+  nextIds,
+  onClose,
+  onCreated,
+}: {
+  nextIds: NextIds
+  onClose: () => void
+  onCreated: (item: PipelineItem) => void
+}) {
+  const [title,    setTitle   ] = useState('')
+  const [platforms,setPlatforms] = useState<string[]>([])
+  const [status,   setStatus  ] = useState('PLANNED')
+  const [priority, setPriority] = useState('3')
+  const [pillar,   setPillar  ] = useState('')
+  const [week,     setWeek    ] = useState('')
+  const [script,   setScript  ] = useState('')
+  const [saving,   setSaving  ] = useState(false)
+  const [err,      setErr     ] = useState('')
+
+  const computedId = useMemo(() => {
+    if (!platforms.length) return ''
+    const parts: string[] = []
+    if (platforms.includes('ig')) parts.push(nextIds.ig)
+    if (platforms.includes('tt')) parts.push(nextIds.tt)
+    if (platforms.includes('yt')) parts.push(nextIds.yt)
+    if (platforms.includes('lf')) parts.push(nextIds.lf)
+    return parts.join(' | ')
+  }, [platforms, nextIds])
+
+  function togglePlat(p: string) {
+    setPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
+  }
+
+  async function handleSave() {
+    if (!title.trim())    { setErr('Title is required'); return }
+    if (!platforms.length){ setErr('Select at least one platform'); return }
+    setSaving(true); setErr('')
+    const result = await createPipelineItem({
+      postId:        computedId,
+      title:         title.trim(),
+      platform:      platforms,
+      status,
+      priority:      parseInt(priority, 10) || 3,
+      pillar:        pillar.trim() || null,
+      week:          week.trim() || null,
+      scriptContent: script.trim() || null,
+    })
+    setSaving(false)
+    if (result.error) { setErr(result.error); return }
+    onCreated({
+      id:            result.id!,
+      postId:        computedId,
+      title:         title.trim(),
+      platform:      platforms,
+      pillar:        pillar.trim() || '—',
+      status,
+      priority:      parseInt(priority, 10) || 3,
+      week:          week.trim() || '—',
+      scheduledDate: null,
+      postedAt:      null,
+      ytType:        null,
+      ytId:          null,
+      scriptContent: script.trim() || null,
+      notes:         null,
+    })
+    onClose()
+  }
+
+  const inp = {
+    background: '#080808', border: '1px solid #1e1e1e',
+    color: '#f2ede4', padding: '7px 10px', fontSize: 12,
+    fontFamily: 'DM Sans, sans-serif', outline: 'none', width: '100%',
+  }
+  const lbl = {
+    fontSize: 9, fontWeight: 600 as const, letterSpacing: '.14em',
+    textTransform: 'uppercase' as const, color: '#555', marginBottom: 5, display: 'block',
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(0,0,0,.80)', backdropFilter: 'blur(8px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{
+        background: '#070707', border: '1px solid #1e1e1e',
+        borderTop: '2px solid #c9a96e', padding: '32px 36px',
+        width: 520, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto',
+      }}>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-7">
+          <div>
+            <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.22em', textTransform: 'uppercase', color: '#c9a96e', marginBottom: 4 }}>
+              New Video
+            </p>
+            <p style={{ fontSize: 18, color: '#f2ede4', fontWeight: 300 }}>Add to Pipeline</p>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ display: 'grid', gap: 18 }}>
+          {/* Platform */}
+          <div>
+            <label style={lbl}>Platform *</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['ig', 'tt', 'yt'] as const).map(p => {
+                const cfg = PLAT_CFG[p]; const on = platforms.includes(p)
+                return (
+                  <button key={p} type="button" onClick={() => togglePlat(p)} style={{
+                    padding: '7px 18px', cursor: 'pointer', fontSize: 10, fontWeight: 600,
+                    letterSpacing: '.1em', textTransform: 'uppercase',
+                    color: on ? cfg.color : '#444',
+                    background: on ? cfg.bg : 'transparent',
+                    border: `1px solid ${on ? cfg.color + '60' : '#1e1e1e'}`,
+                    transition: 'all .15s',
+                  }}>
+                    {cfg.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* ID (read-only) */}
+          <div>
+            <label style={lbl}>ID (auto-generated)</label>
+            <div style={{
+              ...inp, display: 'flex', alignItems: 'center', gap: 8,
+              color: computedId ? '#c9a96e' : '#333',
+              fontFamily: 'monospace', letterSpacing: computedId ? '.06em' : undefined,
+              cursor: 'default',
+            }}>
+              {computedId || <span style={{ color: '#2a2a2a', fontFamily: 'DM Sans, sans-serif', fontSize: 11 }}>Select a platform above</span>}
+            </div>
+          </div>
+
+          {/* Title */}
+          <div>
+            <label style={lbl}>Title *</label>
+            <input autoFocus style={inp} value={title} placeholder="Video title…"
+              onChange={e => setTitle(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
+              onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+              onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
+          </div>
+
+          {/* Status + Priority row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <label style={lbl}>Status</label>
+              <select style={{ ...inp, appearance: 'none', cursor: 'pointer' }} value={status}
+                onChange={e => setStatus(e.target.value)}>
+                {ALL_STATUSES.map(s => <option key={s} value={s} style={{ background: '#0a0a0a' }}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Priority (1–6)</label>
+              <input type="number" min={1} max={6} style={inp} value={priority}
+                onChange={e => setPriority(e.target.value)}
+                onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+                onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
+            </div>
+          </div>
+
+          {/* Pillar + Week row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <label style={lbl}>Pillar</label>
+              <input style={inp} value={pillar} placeholder="e.g. Sales Tips"
+                onChange={e => setPillar(e.target.value)}
+                onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+                onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
+            </div>
+            <div>
+              <label style={lbl}>Week</label>
+              <input style={inp} value={week} placeholder="e.g. JunWk2"
+                onChange={e => setWeek(e.target.value)}
+                onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+                onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
+            </div>
+          </div>
+
+          {/* Script */}
+          <div>
+            <label style={lbl}>Script (optional)</label>
+            <textarea style={{ ...inp, height: 100, resize: 'vertical', lineHeight: 1.6 }}
+              value={script} placeholder="Script content…"
+              onChange={e => setScript(e.target.value)}
+              onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+              onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
+          </div>
+        </div>
+
+        {err && <p style={{ fontSize: 11, color: '#ff3b5f', marginTop: 14 }}>{err}</p>}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
+          <button onClick={onClose} style={{
+            padding: '9px 20px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+            background: 'transparent', border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer',
+          }}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving} style={{
+            padding: '9px 24px', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase',
+            background: saving ? 'rgba(201,169,110,.06)' : 'rgba(201,169,110,.12)',
+            border: '1px solid rgba(201,169,110,.5)', color: '#c9a96e',
+            cursor: saving ? 'wait' : 'pointer',
+            opacity: saving ? 0.7 : 1, fontWeight: 600,
+          }}>
+            {saving ? 'Saving…' : '+ Add Video'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 10
 
-export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] }) {
+export function PipelineClient({
+  initialItems,
+  nextIds = { ig: '#ig0001', tt: '#tt0001', yt: '#yt0001', lf: '#LF0001' },
+}: {
+  initialItems: PipelineItem[]
+  nextIds?: NextIds
+}) {
   const searchParams = useSearchParams()
   const linkedItemId = searchParams.get('item')
   const [items,        setItems       ] = useState<PipelineItem[]>(initialItems)
@@ -749,6 +981,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
   const [saveError,    setSaveError   ] = useState<string | null>(null)
   const [page,         setPage        ] = useState(1)
   const [ytLinkItem,   setYtLinkItem  ] = useState<PipelineItem | null>(null)
+  const [addModalOpen, setAddModalOpen] = useState(false)
 
   const { platform, scope, from, to, setFilters } = usePortalFilters()
 
@@ -834,6 +1067,11 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
     setItems(prev => prev.map(i => i.id === itemId ? { ...i, ytId } : i))
   }
 
+  function handleCreated(item: PipelineItem) {
+    setItems(prev => [item, ...prev])
+    setFilter('ACTIVE')
+  }
+
   const arrow = (key: SortKey) =>
     sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
@@ -860,6 +1098,15 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
   return (
     <div>
 
+      {/* Add Video modal */}
+      {addModalOpen && (
+        <AddVideoModal
+          nextIds={nextIds}
+          onClose={() => setAddModalOpen(false)}
+          onCreated={handleCreated}
+        />
+      )}
+
       {/* YT Link modal */}
       {ytLinkItem && (
         <YTLinkModal
@@ -868,6 +1115,39 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
           onLinked={ytId => handleYtLinked(ytLinkItem.id, ytId)}
         />
       )}
+
+      {/* ── Add Video button ──────────────────────────────────────── */}
+      <div className="flex justify-end mb-5">
+        <button
+          onClick={() => setAddModalOpen(true)}
+          style={{
+            padding: '9px 20px',
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: '.14em',
+            textTransform: 'uppercase',
+            background: 'rgba(201,169,110,.10)',
+            border: '1px solid rgba(201,169,110,.45)',
+            color: '#c9a96e',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            transition: 'all .15s',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,169,110,.18)'
+            ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(201,169,110,.7)'
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(201,169,110,.10)'
+            ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(201,169,110,.45)'
+          }}
+        >
+          <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
+          Add Video
+        </button>
+      </div>
 
       {/* ── Phase cards ──────────────────────────────────────────── */}
       <div
@@ -950,39 +1230,39 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
           <thead>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
               <th style={{ width: 4, padding: 0 }} />
-              <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none"
-                  style={{ color: '#2a2a2a', whiteSpace: 'nowrap', width: 76 }}>ID</th>
+              <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none"
+                  style={{ color: '#555', whiteSpace: 'nowrap', width: 76 }}>ID</th>
               <th onClick={() => toggleSort('title')}
-                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'title' ? '#c9a96e' : '#2a2a2a' }}>
+                  className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'title' ? '#c9a96e' : '#555' }}>
                 Title{arrow('title')}
               </th>
-              <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
-                  style={{ color: '#2a2a2a', whiteSpace: 'nowrap', width: 90 }}>Platform</th>
+              <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase"
+                  style={{ color: '#555', whiteSpace: 'nowrap', width: 90 }}>Platform</th>
               <th onClick={() => toggleSort('pillar')}
-                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'pillar' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 140 }}>
+                  className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'pillar' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 140 }}>
                 Pillar{arrow('pillar')}
               </th>
               <th onClick={() => toggleSort('week')}
-                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'week' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 110 }}>
+                  className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'week' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 110 }}>
                 Week{arrow('week')}
               </th>
               <th onClick={() => toggleSort('priority')}
-                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'priority' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 60 }}>
+                  className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'priority' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 60 }}>
                 Pri{arrow('priority')}
               </th>
               <th onClick={() => toggleSort('status')}
-                  className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer"
-                  style={{ color: sortKey === 'status' ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap', width: 160 }}>
+                  className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none cursor-pointer"
+                  style={{ color: sortKey === 'status' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 160 }}>
                 Status{arrow('status')}
               </th>
-              <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
-                  style={{ color: '#2a2a2a', width: 40 }}>YT</th>
-              <th className="text-left px-4 py-4 text-[8px] font-medium tracking-[.16em] uppercase"
-                  style={{ color: '#2a2a2a', width: 80 }}>Actions</th>
+              <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase"
+                  style={{ color: '#555', width: 40 }}>YT</th>
+              <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase"
+                  style={{ color: '#555', width: 80 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1052,7 +1332,7 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
                       </td>
 
                       {/* Week */}
-                      <td className="px-4 py-4 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>
+                      <td className="px-4 py-4 text-[11px] font-light" style={{ color: '#777', whiteSpace: 'nowrap' }}>
                         {item.week}
                       </td>
 
@@ -1166,12 +1446,12 @@ export function PipelineClient({ initialItems }: { initialItems: PipelineItem[] 
         ].map(({ label, color }) => (
           <div key={label} className="flex items-center gap-1.5">
             <span style={{ width: 10, height: 10, background: color, opacity: .7, display: 'block', flexShrink: 0 }} />
-            <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#252525' }}>
+            <span className="text-[9px] tracking-[.12em] uppercase" style={{ color: '#444' }}>
               {label}
             </span>
           </div>
         ))}
-        <span className="text-[8px] tracking-[.12em] uppercase ml-2" style={{ color: '#1e1e1e' }}>
+        <span className="text-[9px] tracking-[.12em] uppercase ml-2" style={{ color: '#333' }}>
           Click any row to edit
         </span>
       </div>

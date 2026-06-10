@@ -73,6 +73,35 @@ export default async function PipelinePage() {
     }
   }
 
+  // Compute next available ID per platform
+  const { data: postIdRows } = await supabase
+    .from('posts')
+    .select('post_id')
+    .eq('client_id', clientId ?? fallback)
+
+  const allIds: string[] = [
+    ...rows.map(r => r.post_id ?? ''),
+    ...((postIdRows ?? []) as unknown as { post_id: string }[]).map(r => r.post_id ?? ''),
+  ]
+
+  function nextIdFor(prefix: string, padLen: number): string {
+    const re = new RegExp(`#${prefix}(\\d+)`, 'i')
+    const nums = allIds
+      .flatMap(id => id.split('|').map(s => s.trim()))
+      .map(id => re.exec(id)?.[1])
+      .filter((n): n is string => n != null)
+      .map(Number)
+    const max = nums.length ? Math.max(...nums) : 0
+    return `#${prefix}${String(max + 1).padStart(padLen, '0')}`
+  }
+
+  const nextIds = {
+    ig: nextIdFor('ig', 4),
+    tt: nextIdFor('tt', 4),
+    yt: nextIdFor('yt', 4),
+    lf: nextIdFor('LF', 4),
+  }
+
   const items: PipelineItem[] = rows.map(r => ({
     id:            r.id,
     postId:        r.post_id,
@@ -111,7 +140,7 @@ export default async function PipelinePage() {
         </p>
       </div>
 
-      <PipelineClient initialItems={items} />
+      <PipelineClient initialItems={items} nextIds={nextIds} />
     </div>
   )
 }

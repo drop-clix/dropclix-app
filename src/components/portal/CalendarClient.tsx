@@ -206,7 +206,7 @@ function EventEditPanel({
   }
   const labelStyle = {
     fontSize: 7, fontWeight: 600 as const, letterSpacing: '.16em', textTransform: 'uppercase' as const,
-    color: '#2a2a2a', display: 'flex', alignItems: 'center', gap: 2, marginBottom: 4,
+    color: '#555', display: 'flex', alignItems: 'center', gap: 2, marginBottom: 4,
   }
   const platCfg = PLAT[platform] ?? PLAT.ig
 
@@ -575,7 +575,7 @@ export function CalendarClient({
                 {ttCount > 0 && <span style={{ color: PLAT.tt.color }}>{ttCount} TT</span>}
               </>
             )}
-            {monthEvents.length === 0 && <span style={{ color: '#1e1e1e' }}>No events this month</span>}
+            {monthEvents.length === 0 && <span style={{ color: '#444' }}>No events this month</span>}
           </div>
           <div className="flex gap-1">
             {(['calendar', 'agenda'] as const).map(v => (
@@ -600,7 +600,7 @@ export function CalendarClient({
           <div style={{ border: '1px solid #141414' }}>
             <div className="grid" style={{ gridTemplateColumns: 'repeat(7,1fr)', borderBottom: '1px solid #141414' }}>
               {DAYS_SHORT.map(d => (
-                <div key={d} className="text-center py-2 text-[8px] font-medium tracking-[.18em] uppercase" style={{ color: '#2a2a2a' }}>{d}</div>
+                <div key={d} className="text-center py-2 text-[8px] font-medium tracking-[.18em] uppercase" style={{ color: '#555' }}>{d}</div>
               ))}
             </div>
             <div className="grid" style={{ gridTemplateColumns: 'repeat(7,1fr)' }}>
@@ -721,7 +721,7 @@ export function CalendarClient({
           )}
 
           {selDate && selEvents.length === 0 && !dragEventId && (
-            <div className="mt-4 px-5 py-4 text-[11px] font-light" style={{ color: '#2a2a2a', border: '1px solid #0e0e0e' }}>
+            <div className="mt-4 px-5 py-4 text-[11px] font-light" style={{ color: '#555', border: '1px solid #0e0e0e' }}>
               No events on {isoToDisplay(selDate)}.
             </div>
           )}
@@ -730,15 +730,15 @@ export function CalendarClient({
             {Object.entries(PLAT).map(([key, cfg]) => (
               <div key={key} className="flex items-center gap-1.5">
                 <span style={{ width: 8, height: 8, display: 'block', background: cfg.bg, border: `1px solid ${cfg.border}` }} />
-                <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#2a2a2a' }}>{cfg.label}</span>
+                <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#555' }}>{cfg.label}</span>
               </div>
             ))}
             <div className="flex items-center gap-1.5">
               <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#c9a96e', display: 'block' }} />
-              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#2a2a2a' }}>Today</span>
+              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#555' }}>Today</span>
             </div>
             <div className="flex items-center gap-1.5 ml-auto">
-              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#1e1e1e' }}>Drag events to reschedule</span>
+              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#444' }}>Drag events to reschedule</span>
             </div>
           </div>
         </>
@@ -751,7 +751,7 @@ export function CalendarClient({
             <div key={group.monthKey} className="mb-8">
               <div className="flex items-center gap-3 mb-3" style={{ borderBottom: '1px solid #141414', paddingBottom: 10 }}>
                 <p className="text-[9px] font-medium tracking-[.24em] uppercase" style={{ color: '#c9a96e' }}>{group.label}</p>
-                <span className="text-[9px]" style={{ color: '#252525' }}>{group.evs.length} posts</span>
+                <span className="text-[9px]" style={{ color: '#555' }}>{group.evs.length} posts</span>
               </div>
               <div style={{ border: '1px solid #141414' }}>
                 {group.evs.map((ev, i) => {
@@ -777,7 +777,7 @@ export function CalendarClient({
                           <p className="text-[10px] font-medium" style={{ color: '#c9a96e' }}>
                             {new Date(ev.eventDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </p>
-                          <p className="text-[9px]" style={{ color: '#252525' }}>{ev.postTime !== '—' ? ev.postTime : ''}</p>
+                          <p className="text-[9px]" style={{ color: '#555' }}>{ev.postTime !== '—' ? ev.postTime : ''}</p>
                         </div>
                         <PlatBadge platform={ev.platform} small />
                         <p className="flex-1 text-[12px] font-light overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }} title={ev.title}>
@@ -846,13 +846,13 @@ function EventDetailCard({ ev }: { ev: CalendarEvent }) {
       <div className="grid gap-x-6 gap-y-1" style={{ gridTemplateColumns: 'repeat(3, auto)', justifyContent: 'start' }}>
         {[['Post ID', ev.postId], ['Type', ev.contentType], ['Time', ev.postTime], ['Caption', ev.captionStatus], ['CTA', ev.cta]].map(([label, val]) => (
           <div key={label}>
-            <p className="text-[7px] font-medium tracking-[.14em] uppercase" style={{ color: '#2a2a2a' }}>{label}</p>
+            <p className="text-[7px] font-medium tracking-[.14em] uppercase" style={{ color: '#555' }}>{label}</p>
             <p className="text-[10px] font-light" style={{ color: '#555' }}>{val || '—'}</p>
           </div>
         ))}
         {ev.pipelineStatus && (
           <div>
-            <p className="text-[7px] font-medium tracking-[.14em] uppercase" style={{ color: '#2a2a2a' }}>Pipeline</p>
+            <p className="text-[7px] font-medium tracking-[.14em] uppercase" style={{ color: '#555' }}>Pipeline</p>
             <p className="text-[10px] font-medium tracking-[.1em] uppercase" style={{ color: statusColor }}>{ev.pipelineStatus}</p>
           </div>
         )}

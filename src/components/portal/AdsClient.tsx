@@ -55,7 +55,7 @@ function KpiCard({ label, value, sub, highlight = false }: { label: string; valu
     >
       <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#333' }}>{label}</p>
       <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(26px,3vw,42px)', lineHeight: 1 }}>{value}</p>
-      <p className="text-[10px] font-light mt-2" style={{ color: '#2a2a2a' }}>{sub}</p>
+      <p className="text-[10px] font-light mt-2" style={{ color: '#555' }}>{sub}</p>
     </div>
   )
 }
@@ -75,7 +75,7 @@ const inputStyle = {
 
 const labelStyle = {
   fontSize: 7, fontWeight: 600 as const, letterSpacing: '.16em',
-  textTransform: 'uppercase' as const, color: '#2a2a2a',
+  textTransform: 'uppercase' as const, color: '#555',
   display: 'flex', alignItems: 'center', gap: 2, marginBottom: 4,
 }
 
@@ -274,7 +274,7 @@ function CreativeRow({
               <span className="text-[9px]" style={{ color: '#444' }}>{fmtPct(creative.ctr)} CTR</span>
             </>
           )}
-          {creative.impressions === 0 && <span className="text-[9px]" style={{ color: '#252525' }}>No impression data</span>}
+          {creative.impressions === 0 && <span className="text-[9px]" style={{ color: '#555' }}>No impression data</span>}
 
           <div className="flex gap-1.5 ml-auto" style={{ opacity: hovered ? 1 : 0, transition: 'opacity .15s' }}>
             <button onClick={() => setEditing(true)}
@@ -485,9 +485,9 @@ export function AdsClient({
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
-              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', minWidth: 200 }}>Campaign</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#555', minWidth: 200 }}>Campaign</th>
               <TH label="Date"    col="date" />
-              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Platform</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap' }}>Platform</th>
               <TH label="Spend"   col="spend"            right />
               <TH label="Revenue" col="effectiveRevenue"  right />
               <TH label="ROAS"    col="roas"              right />
@@ -495,13 +495,13 @@ export function AdsClient({
               <TH label="Hires"   col="hires"             right />
               <TH label="CPL"     col="cpl"               right />
               <TH label="CPH"     col="cph"               right />
-              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', whiteSpace: 'nowrap' }}>Status</th>
-              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#2a2a2a', width: 70 }}>Actions</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#555', whiteSpace: 'nowrap' }}>Status</th>
+              <th className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase" style={{ color: '#555', width: 70 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={12} className="text-center py-12 text-[11px]" style={{ color: '#2a2a2a' }}>No campaigns match this filter.</td></tr>
+              <tr><td colSpan={12} className="text-center py-12 text-[11px]" style={{ color: '#555' }}>No campaigns match this filter.</td></tr>
             ) : pagedRows.map((c, i) => {
               const isWinner   = c.roas > 0
               const isEditing  = editingId === c.id
@@ -635,7 +635,7 @@ export function AdsClient({
                   { label: 'CPC',         value: c.cpc > 0 ? fmtMoney(c.cpc) : '—' },
                 ].map(({ label, value }) => (
                   <div key={label}>
-                    <p className="text-[7px] font-medium tracking-[.12em] uppercase mb-0.5" style={{ color: '#2a2a2a' }}>{label}</p>
+                    <p className="text-[7px] font-medium tracking-[.12em] uppercase mb-0.5" style={{ color: '#555' }}>{label}</p>
                     <p className="text-[11px] font-light" style={{ color: '#555' }}>{value}</p>
                   </div>
                 ))}
@@ -645,7 +645,7 @@ export function AdsClient({
         </div>
       </div>
 
-      <p className="mt-4 text-[9px]" style={{ color: '#1e1e1e' }}>
+      <p className="mt-4 text-[9px]" style={{ color: '#444' }}>
         Revenue estimated as ROAS × Spend. Click any campaign row to edit.
       </p>
     </div>

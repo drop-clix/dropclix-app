@@ -232,7 +232,7 @@ export function SidebarShell({
         >
           {expanded ? (
             <>
-              <p style={{ fontSize: 8, letterSpacing: '.2em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 6 }}>
+              <p style={{ fontSize: 8, letterSpacing: '.2em', textTransform: 'uppercase', color: '#555', marginBottom: 6 }}>
                 Client
               </p>
               <p style={{ fontSize: 13, fontWeight: 300, color: '#f2ede4', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -353,7 +353,7 @@ export function SidebarShell({
           ) : (
             <>
               {expanded && (
-                <p style={{ fontSize: 9, letterSpacing: '.1em', color: '#2a2a2a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>
+                <p style={{ fontSize: 9, letterSpacing: '.1em', color: '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>
                   {userEmail ?? ''}
                 </p>
               )}

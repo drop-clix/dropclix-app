@@ -338,6 +338,98 @@ export async function deleteCalendarEvent(eventId: string): Promise<{ error?: st
   return {}
 }
 
+// ── Create Pipeline Item ──────────────────────────────────────────────────────
+
+export async function createPipelineItem(data: {
+  postId: string
+  title: string
+  platform: string[]
+  status: string
+  priority: number
+  pillar?: string | null
+  week?: string | null
+  scriptContent?: string | null
+}): Promise<{ id?: string; error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (!data.title?.trim()) return { error: 'Title is required' }
+  if (!data.platform?.length) return { error: 'Select at least one platform' }
+  if (!VALID_STATUSES.has(data.status)) return { error: 'Invalid status' }
+
+  const { data: row, error } = await c.admin
+    .from('pipeline_items')
+    .insert({
+      client_id:      c.cid,
+      post_id:        data.postId,
+      title:          data.title.trim(),
+      platform:       data.platform,
+      status:         data.status,
+      priority:       data.priority,
+      pillar:         data.pillar?.trim() || null,
+      week:           data.week?.trim() || null,
+      script_content: data.scriptContent?.trim() || null,
+    })
+    .select('id')
+    .single()
+
+  if (error) return { error: error.message }
+  revalidatePath('/pipeline')
+  revalidatePath('/calendar')
+  return { id: (row as unknown as { id: string }).id }
+}
+
+// ── Bulk Update Pipeline Status ───────────────────────────────────────────────
+
+export async function bulkUpdatePipelineStatus(
+  fromStatus: string,
+  toStatus: string,
+): Promise<{ count?: number; error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (!VALID_STATUSES.has(fromStatus) || !VALID_STATUSES.has(toStatus)) return { error: 'Invalid status' }
+
+  const { data, error } = await c.admin
+    .from('pipeline_items')
+    .update({ status: toStatus })
+    .eq('client_id', c.cid)
+    .eq('status', fromStatus)
+    .select('id')
+
+  if (error) return { error: error.message }
+  revalidatePath('/pipeline')
+  return { count: (data ?? []).length }
+}
+
+// ── Update Analytics by Text Post ID ─────────────────────────────────────────
+
+export async function updateAnalyticsByTextId(
+  postTextId: string,
+  platform: string,
+  metricWindow: string,
+  field: string,
+  value: number,
+): Promise<{ error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (!VALID_ANALYTICS.has(field)) return { error: 'Invalid field' }
+
+  const { data: postRow } = await c.admin
+    .from('posts')
+    .select('id')
+    .eq('post_id', postTextId)
+    .eq('client_id', c.cid)
+    .single()
+
+  if (!postRow) return { error: `Post ${postTextId} not found` }
+  return updateAnalyticsMetric(
+    (postRow as unknown as { id: string }).id,
+    platform,
+    metricWindow,
+    field,
+    value,
+  )
+}
+
 // ── YouTube video linking ─────────────────────────────────────────────────────
 
 // Extracts a YouTube video ID from a URL or returns the string as-is if it's already an ID
