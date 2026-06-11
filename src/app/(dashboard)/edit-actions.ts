@@ -378,6 +378,42 @@ export async function createPipelineItem(data: {
   return { id: (row as unknown as { id: string }).id }
 }
 
+// ── Bulk Create Pipeline Items ────────────────────────────────────────────────
+
+export async function bulkCreatePipelineItems(items: {
+  postId: string
+  title: string
+  platform: string[]
+  pillar: string | null
+  week: string | null
+}[]): Promise<{ count?: number; error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (!items.length) return { count: 0 }
+  if (items.length > 200) return { error: 'Maximum 200 items per import' }
+
+  const rows = items.map(item => ({
+    client_id: c.cid as string,
+    post_id:   item.postId,
+    title:     item.title.trim(),
+    platform:  item.platform,
+    status:    'PLANNED',
+    priority:  3,
+    pillar:    item.pillar?.trim() || null,
+    week:      item.week?.trim() || null,
+  }))
+
+  const { data, error } = await c.admin
+    .from('pipeline_items')
+    .insert(rows)
+    .select('id')
+
+  if (error) return { error: error.message }
+  revalidatePath('/pipeline')
+  revalidatePath('/calendar')
+  return { count: (data ?? []).length }
+}
+
 // ── Bulk Update Pipeline Status ───────────────────────────────────────────────
 
 export async function bulkUpdatePipelineStatus(

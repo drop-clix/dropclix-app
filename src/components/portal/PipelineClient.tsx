@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
@@ -10,6 +10,7 @@ import { PlatformPills, ScopeDropdown } from '@/components/portal/FilterBar'
 import { EmptyState } from '@/components/portal/EmptyState'
 import { useToast } from '@/components/portal/Toast'
 import { usePillarColors } from '@/hooks/usePillarColors'
+import { PipelineBulkImportModal } from '@/components/portal/PipelineBulkImportModal'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1008,6 +1009,7 @@ export function PipelineClient({
   nextIds?: NextIds
 }) {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const linkedItemId = searchParams.get('item')
   const { toast } = useToast()
   const [items,        setItems       ] = useState<PipelineItem[]>(initialItems)
@@ -1025,6 +1027,7 @@ export function PipelineClient({
   const [page,         setPage        ] = useState(1)
   const [ytLinkItem,   setYtLinkItem  ] = useState<PipelineItem | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [bulkImportOpen, setBulkImportOpen] = useState(false)
 
   const { platform, scope, from, to, setFilters } = usePortalFilters()
   const pillarColors = usePillarColors(useMemo(() => items.map(i => i.pillar ?? ''), [items]))
@@ -1160,6 +1163,15 @@ export function PipelineClient({
         />
       )}
 
+      {/* Bulk Import modal */}
+      {bulkImportOpen && (
+        <PipelineBulkImportModal
+          nextIds={nextIds}
+          onClose={() => setBulkImportOpen(false)}
+          onImported={() => { setFilter('ACTIVE'); router.refresh() }}
+        />
+      )}
+
       {/* YT Link modal */}
       {ytLinkItem && (
         <YTLinkModal
@@ -1169,8 +1181,37 @@ export function PipelineClient({
         />
       )}
 
-      {/* ── Add Video button ──────────────────────────────────────── */}
-      <div className="flex justify-end mb-5">
+      {/* ── Action buttons ────────────────────────────────────────── */}
+      <div className="flex justify-end gap-3 mb-5">
+        <button
+          onClick={() => setBulkImportOpen(true)}
+          style={{
+            padding: '9px 18px',
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: '.14em',
+            textTransform: 'uppercase',
+            background: 'transparent',
+            border: '1px solid #1e1e1e',
+            color: '#555',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            transition: 'all .15s',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = '#333'
+            ;(e.currentTarget as HTMLButtonElement).style.color = '#888'
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = '#1e1e1e'
+            ;(e.currentTarget as HTMLButtonElement).style.color = '#555'
+          }}
+        >
+          <span style={{ fontSize: 12, lineHeight: 1 }}>⇪</span>
+          Bulk Import
+        </button>
         <button
           onClick={() => setAddModalOpen(true)}
           style={{
