@@ -1053,8 +1053,14 @@ export function PipelineClient({
     let out = items.slice()
     if (filter === 'ACTIVE') out = out.filter(i => ACTIVE_STATUSES.has(i.status))
     else if (filter !== 'ALL') out = out.filter(i => i.status === filter)
-    // Global platform filter
-    out = filterByPlatform(out, platform)
+    // Pipeline-specific platform filter — ytType distinguishes Short vs Long-form
+    if (platform === 'lf') {
+      out = out.filter(i => i.platform.includes('yt') && (i.ytType === 'Long-form' || i.ytType === 'LF'))
+    } else if (platform === 'yt') {
+      out = out.filter(i => i.platform.includes('yt') && i.ytType !== 'Long-form' && i.ytType !== 'LF')
+    } else if (platform !== 'all') {
+      out = out.filter(i => i.platform.includes(platform))
+    }
     // Global scope filter (by scheduledDate or postedAt or week derivation — use a helper date)
     if (scope !== 'all') {
       out = filterByScope(

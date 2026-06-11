@@ -324,7 +324,7 @@ export function AICommandBar() {
 
   return (
     <>
-      {/* ── Floating button + ⌘K hint ────────────────────────────────── */}
+      {/* ── Floating orb + ⌘K hint ───────────────────────────────────── */}
       <div
         style={{
           position: 'fixed',
@@ -334,13 +334,13 @@ export function AICommandBar() {
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 6,
+          gap: 8,
         }}
       >
         {!open && (
           <span style={{
             fontSize: 8, fontWeight: 600, letterSpacing: '.12em',
-            color: '#c9a96e', opacity: 0.55,
+            color: '#c9a96e', opacity: 0.4,
             fontFamily: 'DM Sans, sans-serif',
             pointerEvents: 'none',
             userSelect: 'none',
@@ -348,30 +348,90 @@ export function AICommandBar() {
             ⌘K
           </span>
         )}
+
+        {/* Orb button */}
         <button
           onClick={() => setOpen(v => !v)}
           aria-label="AI Command (⌘K)"
           style={{
+            position: 'relative',
             width: 52,
             height: 52,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 0,
+            outline: 'none',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          {/* 3-D perspective layer for orbiting rings */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: -16,
+              pointerEvents: 'none',
+              perspective: '220px',
+              perspectiveOrigin: 'center center',
+            }}
+          >
+            {/* Ring 1 — outermost, steepest tilt, slowest */}
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: '50%',
+              border: '1px solid rgba(201,169,110,.22)',
+              animationName: 'ring1',
+              animationDuration: open ? '5s' : '11s',
+              animationTimingFunction: 'linear',
+              animationIterationCount: 'infinite',
+            }} />
+            {/* Ring 2 — mid, medium tilt, medium speed */}
+            <div style={{
+              position: 'absolute',
+              inset: 7,
+              borderRadius: '50%',
+              border: '1px solid rgba(201,169,110,.16)',
+              animationName: 'ring2',
+              animationDuration: open ? '3.5s' : '7.5s',
+              animationTimingFunction: 'linear',
+              animationIterationCount: 'infinite',
+            }} />
+            {/* Ring 3 — innermost, shallowest tilt, fastest, counter-clockwise */}
+            <div style={{
+              position: 'absolute',
+              inset: 13,
+              borderRadius: '50%',
+              border: '0.5px solid rgba(201,169,110,.1)',
+              animationName: 'ring3',
+              animationDuration: open ? '2.5s' : '5.5s',
+              animationTimingFunction: 'linear',
+              animationIterationCount: 'infinite',
+              animationDirection: 'reverse',
+            }} />
+          </div>
+
+          {/* Core orb */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
             borderRadius: '50%',
             background: open
-              ? 'rgba(201,169,110,.25)'
-              : 'rgba(201,169,110,.15)',
-            border: '1px solid rgba(201,169,110,.55)',
-            color: '#c9a96e',
-            cursor: 'pointer',
+              ? 'radial-gradient(circle at 38% 32%, rgba(201,169,110,.22) 0%, rgba(201,169,110,.07) 55%, transparent 100%)'
+              : 'radial-gradient(circle at 38% 32%, rgba(201,169,110,.14) 0%, rgba(201,169,110,.04) 60%, transparent 100%)',
+            border: `1px solid rgba(201,169,110,${open ? '.58' : '.38'})`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: open
-              ? '0 0 24px rgba(201,169,110,.2)'
-              : '0 0 0 0 rgba(201,169,110,0)',
-            transition: 'all .25s ease',
-            animation: !open ? 'aiPulse 3s ease-in-out infinite' : 'none',
-          }}
-        >
-          <SparkleIcon size={20} />
+            color: '#c9a96e',
+            transition: 'border-color .35s ease, background .35s ease',
+            animationName: open ? 'orbActive' : 'orbIdle',
+            animationDuration: open ? '2s' : '4s',
+            animationTimingFunction: 'ease-in-out',
+            animationIterationCount: 'infinite',
+          }}>
+            <SparkleIcon size={18} />
+          </div>
         </button>
       </div>
 
@@ -379,7 +439,7 @@ export function AICommandBar() {
       <div
         style={{
           position: 'fixed',
-          bottom: 100,
+          bottom: 106,
           right: 28,
           zIndex: 8999,
           width: 420,
@@ -576,13 +636,29 @@ export function AICommandBar() {
 
       {/* ── CSS animations ───────────────────────────────────────────── */}
       <style>{`
-        @keyframes aiPulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(201,169,110,.0), 0 4px 20px rgba(0,0,0,.4); }
-          50% { box-shadow: 0 0 0 6px rgba(201,169,110,.10), 0 4px 20px rgba(0,0,0,.4); }
+        @keyframes ring1 {
+          from { transform: rotateX(72deg) rotateZ(0deg); }
+          to   { transform: rotateX(72deg) rotateZ(360deg); }
+        }
+        @keyframes ring2 {
+          from { transform: rotateX(46deg) rotateZ(120deg); }
+          to   { transform: rotateX(46deg) rotateZ(480deg); }
+        }
+        @keyframes ring3 {
+          from { transform: rotateX(22deg) rotateZ(240deg); }
+          to   { transform: rotateX(22deg) rotateZ(-120deg); }
+        }
+        @keyframes orbIdle {
+          0%, 100% { box-shadow: 0 0 10px rgba(201,169,110,.1), 0 2px 18px rgba(0,0,0,.55); }
+          50%       { box-shadow: 0 0 20px rgba(201,169,110,.2), 0 2px 18px rgba(0,0,0,.55); }
+        }
+        @keyframes orbActive {
+          0%, 100% { box-shadow: 0 0 22px rgba(201,169,110,.28), 0 0 8px rgba(201,169,110,.18), 0 2px 20px rgba(0,0,0,.6); }
+          50%       { box-shadow: 0 0 36px rgba(201,169,110,.45), 0 0 14px rgba(201,169,110,.3), 0 2px 20px rgba(0,0,0,.6); }
         }
         @keyframes dotPulse {
           0%, 100% { opacity: .3; }
-          50% { opacity: 1; }
+          50%       { opacity: 1; }
         }
       `}</style>
     </>
