@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { MeshDistortMaterial, Sphere, Torus } from '@react-three/drei'
-import { EffectComposer, Bloom } from '@react-three/postprocessing'
+import { Torus } from '@react-three/drei'
+import { EffectComposer, Bloom, ChromaticAberration } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import {
   createPipelineItem,
@@ -28,74 +28,236 @@ type Message = {
   errorMsg?: string
 }
 
-// ── R3F Orb Scene ──────────────────────────────────────────────────────────
+// ── R3F Orb Scene — Tier 3 ────────────────────────────────────────────────
 
-function OrbSphere({ active }: { active: boolean }) {
-  const meshRef = useRef<THREE.Mesh>(null!)
+type OrbState = 'idle' | 'active' | 'thinking' | 'error'
+
+// Custom GLSL vertex shader: icosahedron with simplex noise displacement
+const VERTEX_SHADER = `
+uniform float u_time;
+uniform float u_intensity;
+varying float vDisplacement;
+varying vec3 vNorm;
+
+vec3 mod289v3(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 mod289v4(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 permute(vec4 x){return mod289v4(((x*34.0)+1.0)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+
+float snoise(vec3 v){
+  const vec2 C=vec2(1.0/6.0,1.0/3.0);
+  const vec4 D=vec4(0.0,0.5,1.0,2.0);
+  vec3 i=floor(v+dot(v,C.yyy));
+  vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz);
+  vec3 l=1.0-g;
+  vec3 i1=min(g.xyz,l.zxy);
+  vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx;
+  vec3 x2=x0-i2+C.yyy;
+  vec3 x3=x0-D.yyy;
+  i=mod289v3(i);
+  vec4 p=permute(permute(permute(
+    i.z+vec4(0.0,i1.z,i2.z,1.0))
+    +i.y+vec4(0.0,i1.y,i2.y,1.0))
+    +i.x+vec4(0.0,i1.x,i2.x,1.0));
+  float n_=0.142857142857;
+  vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.0*floor(p*ns.z*ns.z);
+  vec4 x_=floor(j*ns.z);
+  vec4 y_=floor(j-7.0*x_);
+  vec4 x=x_*ns.x+ns.yyyy;
+  vec4 y=y_*ns.x+ns.yyyy;
+  vec4 h=1.0-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy);
+  vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.0+1.0;
+  vec4 s1=floor(b1)*2.0+1.0;
+  vec4 sh=-step(h,vec4(0.0));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;
+  vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x);
+  vec3 p1=vec3(a0.zw,h.y);
+  vec3 p2=vec3(a1.xy,h.z);
+  vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);
+  m=m*m;
+  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+
+void main(){
+  vNorm=normalMatrix*normal;
+  float n1=snoise(position*2.8+u_time*0.38)*u_intensity;
+  float n2=snoise(position*5.2-u_time*0.24)*u_intensity*0.42;
+  vDisplacement=n1+n2;
+  vec3 disp=position+normal*(n1+n2)*0.22;
+  gl_Position=projectionMatrix*modelViewMatrix*vec4(disp,1.0);
+}
+`
+
+const FRAGMENT_SHADER = `
+uniform float u_intensity;
+uniform float u_errorState;
+varying float vDisplacement;
+varying vec3 vNorm;
+
+void main(){
+  vec3 gold=vec3(0.788,0.663,0.431);
+  vec3 cream=vec3(0.95,0.93,0.89);
+  vec3 errorOrange=vec3(1.0,0.42,0.12);
+  vec3 n=normalize(vNorm);
+  float rim=1.0-abs(dot(n,vec3(0.0,0.0,1.0)));
+  rim=pow(rim,2.2);
+  float t=clamp(vDisplacement*1.8+0.5,0.0,1.0);
+  vec3 col=mix(gold,cream,t);
+  col=mix(col,errorOrange,u_errorState*0.65);
+  col+=vec3(0.32,0.22,0.08)*rim*u_intensity*1.2;
+  float alpha=0.72+rim*0.18;
+  gl_FragColor=vec4(col,alpha);
+}
+`
+
+function OrbCore({ state }: { state: OrbState }) {
+  const meshRef  = useRef<THREE.Mesh>(null!)
+  const glowRef  = useRef<THREE.Mesh>(null!)
+  const intRef   = useRef(0.18)
+  const spdRef   = useRef(0.32)
+  const errRef   = useRef(0.0)
+
+  const uniforms = useMemo(() => ({
+    u_time:       { value: 0 },
+    u_intensity:  { value: 0.18 },
+    u_errorState: { value: 0.0 },
+  }), [])
+
   useFrame((_, delta) => {
-    if (!meshRef.current) return
-    meshRef.current.rotation.y += delta * (active ? 0.9 : 0.35)
-    meshRef.current.rotation.x += delta * (active ? 0.4 : 0.12)
+    uniforms.u_time.value += delta
+
+    const tInt = state === 'idle' ? 0.18 : state === 'active' ? 0.52 : state === 'thinking' ? 0.76 : 0.44
+    const tSpd = state === 'idle' ? 0.32 : state === 'active' ? 0.78 : state === 'thinking' ? 1.4  : 0.9
+    const tErr = state === 'error' ? 1.0 : 0.0
+
+    const k = delta * 2.4
+    intRef.current = intRef.current + (tInt - intRef.current) * k
+    spdRef.current = spdRef.current + (tSpd - spdRef.current) * k
+    errRef.current = errRef.current + (tErr - errRef.current) * (delta * 4)
+
+    uniforms.u_intensity.value  = intRef.current
+    uniforms.u_errorState.value = errRef.current
+
+    if (meshRef.current) {
+      meshRef.current.rotation.y += delta * spdRef.current
+      meshRef.current.rotation.x += delta * spdRef.current * 0.38
+      meshRef.current.rotation.z += delta * spdRef.current * 0.14
+    }
+    if (glowRef.current) {
+      const breathe = Math.sin(uniforms.u_time.value * (state === 'idle' ? 0.85 : 2.6)) * 0.028
+      glowRef.current.scale.setScalar(1.22 + breathe)
+      const mat = glowRef.current.material as THREE.MeshBasicMaterial
+      mat.opacity = 0.06 + intRef.current * 0.2
+    }
   })
+
   return (
-    <Sphere ref={meshRef} args={[0.72, 64, 64]}>
-      <MeshDistortMaterial
-        color="#c9a96e"
-        emissive="#8b6b3e"
-        emissiveIntensity={active ? 0.6 : 0.2}
-        roughness={0.15}
-        metalness={0.4}
-        transparent
-        opacity={active ? 0.85 : 0.55}
-        distort={active ? 0.52 : 0.22}
-        speed={active ? 4 : 1.5}
-      />
-    </Sphere>
+    <>
+      {/* Core: displaced icosahedron with GLSL shader */}
+      <mesh ref={meshRef}>
+        <icosahedronGeometry args={[0.72, 20]} />
+        <shaderMaterial
+          uniforms={uniforms}
+          vertexShader={VERTEX_SHADER}
+          fragmentShader={FRAGMENT_SHADER}
+          transparent
+          depthWrite={false}
+          side={THREE.FrontSide}
+        />
+      </mesh>
+      {/* Glow shell: back-face mesh with additive blending */}
+      <mesh ref={glowRef}>
+        <icosahedronGeometry args={[0.72, 4]} />
+        <meshBasicMaterial
+          color="#c9a96e"
+          transparent
+          opacity={0.1}
+          side={THREE.BackSide}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+    </>
   )
 }
 
-function OrbRings({ active }: { active: boolean }) {
+function OrbRings({ state }: { state: OrbState }) {
   const r1 = useRef<THREE.Mesh>(null!)
   const r2 = useRef<THREE.Mesh>(null!)
   const r3 = useRef<THREE.Mesh>(null!)
+  const spdRef = useRef(0.55)
+  const opRef  = useRef(0.2)
+
   useFrame((_, delta) => {
-    const speed = active ? 2.2 : 0.7
-    r1.current.rotation.z += delta * speed
-    r2.current.rotation.z -= delta * speed * 0.7
-    r3.current.rotation.z += delta * speed * 0.5
+    const tSpd = state === 'idle' ? 0.55 : state === 'active' ? 1.7 : state === 'thinking' ? 2.9 : 1.1
+    const tOp  = state === 'idle' ? 0.2 : 0.48
+    const k = delta * 2.2
+    spdRef.current = spdRef.current + (tSpd - spdRef.current) * k
+    opRef.current  = opRef.current  + (tOp  - opRef.current)  * k
+
+    const s = spdRef.current; const op = opRef.current
+    if (r1.current) {
+      r1.current.rotation.z += delta * s
+      ;(r1.current.material as THREE.MeshBasicMaterial).opacity = op
+    }
+    if (r2.current) {
+      r2.current.rotation.z -= delta * s * 0.62
+      ;(r2.current.material as THREE.MeshBasicMaterial).opacity = op * 0.72
+    }
+    if (r3.current) {
+      r3.current.rotation.z += delta * s * 0.44
+      r3.current.rotation.x += delta * s * 0.28
+      ;(r3.current.material as THREE.MeshBasicMaterial).opacity = op * 0.52
+    }
   })
-  const ringMat = (opacity: number) => (
-    <meshBasicMaterial color="#c9a96e" transparent opacity={opacity} side={THREE.DoubleSide} />
-  )
+
   return (
     <>
-      <Torus ref={r1} args={[0.98, 0.012, 12, 80]} rotation={[1.25, 0, 0]}>
-        {ringMat(active ? 0.55 : 0.22)}
+      <Torus ref={r1} args={[1.02, 0.013, 12, 80]} rotation={[1.22, 0, 0]}>
+        <meshBasicMaterial color="#c9a96e" transparent opacity={0.2} side={THREE.DoubleSide} />
       </Torus>
-      <Torus ref={r2} args={[0.82, 0.009, 12, 80]} rotation={[0.8, 0.4, 0]}>
-        {ringMat(active ? 0.4 : 0.16)}
+      <Torus ref={r2} args={[0.84, 0.01, 12, 80]} rotation={[0.76, 0.44, 0]}>
+        <meshBasicMaterial color="#c9a96e" transparent opacity={0.15} side={THREE.DoubleSide} />
       </Torus>
-      <Torus ref={r3} args={[0.66, 0.007, 12, 80]} rotation={[0.4, 0.8, 0]}>
-        {ringMat(active ? 0.28 : 0.1)}
+      <Torus ref={r3} args={[0.64, 0.008, 12, 80]} rotation={[0.46, 0.82, 0]}>
+        <meshBasicMaterial color="#c9a96e" transparent opacity={0.11} side={THREE.DoubleSide} />
       </Torus>
     </>
   )
 }
 
-function OrbScene({ active }: { active: boolean }) {
+const CA_OFFSET_IDLE    = new THREE.Vector2(0.0008, 0.0008)
+const CA_OFFSET_ACTIVE  = new THREE.Vector2(0.002,  0.002)
+const CA_OFFSET_THINK   = new THREE.Vector2(0.0035, 0.0035)
+
+function OrbScene({ state }: { state: OrbState }) {
+  const caOffset = state === 'thinking' ? CA_OFFSET_THINK : state === 'active' ? CA_OFFSET_ACTIVE : CA_OFFSET_IDLE
+  const bloomInt = state === 'idle' ? 0.65 : state === 'active' ? 1.7 : state === 'thinking' ? 2.4 : 1.1
+  const bloomThr = state === 'idle' ? 0.62 : state === 'active' ? 0.32 : state === 'thinking' ? 0.2 : 0.45
+
   return (
     <>
-      <ambientLight intensity={0.4} />
-      <pointLight position={[2, 2, 2]} intensity={active ? 2.5 : 1} color="#c9a96e" />
-      <pointLight position={[-2, -1, -2]} intensity={0.3} color="#4cc9ff" />
-      <OrbSphere active={active} />
-      <OrbRings active={active} />
+      <ambientLight intensity={0.35} />
+      <pointLight position={[2, 2, 2]}   intensity={state === 'idle' ? 1 : 2.8}  color="#c9a96e" />
+      <pointLight position={[-2, -1, -2]} intensity={0.28} color="#4cc9ff" />
+      <OrbCore  state={state} />
+      <OrbRings state={state} />
       <EffectComposer>
         <Bloom
-          luminanceThreshold={active ? 0.3 : 0.6}
-          luminanceSmoothing={0.4}
-          intensity={active ? 1.8 : 0.7}
+          luminanceThreshold={bloomThr}
+          luminanceSmoothing={0.38}
+          intensity={bloomInt}
         />
+        <ChromaticAberration offset={caOffset} />
       </EffectComposer>
     </>
   )
@@ -240,10 +402,21 @@ export function AICommandBar() {
   const [input,     setInput    ] = useState('')
   const [loading,   setLoading  ] = useState(false)
   const [listening, setListening] = useState(false)
+  const [orbError,  setOrbError ] = useState(false)
   const bottomRef  = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLTextAreaElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recogRef   = useRef<any>(null)
+
+  // Orb state: error briefly overrides other states
+  const orbState: OrbState = orbError ? 'error' : loading ? 'thinking' : open ? 'active' : 'idle'
+
+  useEffect(() => {
+    if (orbError) {
+      const t = setTimeout(() => setOrbError(false), 1800)
+      return () => clearTimeout(t)
+    }
+  }, [orbError])
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -326,6 +499,7 @@ export function AICommandBar() {
       }
       setMessages(prev => [...prev, assistantMsg])
     } catch {
+      setOrbError(true)
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -369,6 +543,7 @@ export function AICommandBar() {
     }
 
     if (result.error) {
+      setOrbError(true)
       setMessages(prev => prev.map(m => m.id === msgId
         ? { ...m, status: 'error', errorMsg: result.error }
         : m
@@ -450,7 +625,7 @@ export function AICommandBar() {
             style={{ width: 52, height: 52, display: 'block', borderRadius: '50%' }}
             dpr={Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)}
           >
-            <OrbScene active={open} />
+            <OrbScene state={orbState} />
           </Canvas>
         </button>
       </div>

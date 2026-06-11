@@ -3,7 +3,8 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { CalendarEvent } from '@/app/(dashboard)/calendar/page'
-import { updateCalendarEvent, deleteCalendarEvent } from '@/app/(dashboard)/edit-actions'
+import { updateCalendarEvent, deleteCalendarEvent, getPostAnalyticsSnapshot } from '@/app/(dashboard)/edit-actions'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { EmptyState } from '@/components/portal/EmptyState'
 import { usePillarColors } from '@/hooks/usePillarColors'
 
@@ -322,6 +323,31 @@ export function CalendarClient({
   const [editingId,  setEditingId ] = useState<string | null>(null)
   const [hoveredId,  setHoveredId ] = useState<string | null>(null)
 
+  // ── Analytics snapshot state (for POSTED event slide-overs) ─────────────
+
+  type AnalyticsSnapshot = {
+    windows: { window: string; views: number; likes: number; comments: number; shares: number; saves: number; watchPct: number; er: number }[]
+    platform: string
+  }
+  const [analyticsData,    setAnalyticsData   ] = useState<AnalyticsSnapshot | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [showChart,        setShowChart        ] = useState(false)
+
+  useEffect(() => {
+    setAnalyticsData(null)
+    setShowChart(false)
+    if (!slideOverEv || slideOverEv.pipelineStatus !== 'POSTED' || !slideOverEv.postId) return
+    setAnalyticsLoading(true)
+    getPostAnalyticsSnapshot(slideOverEv.postId).then(result => {
+      setAnalyticsLoading(false)
+      if (result.windows && result.windows.length > 0) {
+        setAnalyticsData({ windows: result.windows, platform: result.platform ?? 'ig' })
+        setTimeout(() => setShowChart(true), 200)
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slideOverEv?.id])
+
   // ── Drag state ────────────────────────────────────────────────────────────
   const [dragEventId, setDragEventId] = useState<string | null>(null)
   const [dragOverDate, setDragOverDate] = useState<string | null>(null)
@@ -584,9 +610,83 @@ export function CalendarClient({
               </div>
 
               {slideOverEv.pipelineStatus === 'POSTED' && (
-                <div style={{ marginTop: 20, padding: '14px 16px', background: 'rgba(57,255,136,.04)', border: '1px solid rgba(57,255,136,.15)', borderLeft: '3px solid #39ff88' }}>
-                  <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#39ff88', marginBottom: 6 }}>Posted</p>
-                  <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>Open Analytics tab and search <span style={{ color: '#c9a96e', fontFamily: 'monospace' }}>{slideOverEv.postId}</span> to see metrics.</p>
+                <div style={{ marginTop: 20 }}>
+                  <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#39ff88', marginBottom: 12 }}>
+                    Performance Snapshot
+                  </p>
+
+                  {analyticsLoading && (
+                    <div style={{ display: 'flex', gap: 6, padding: '16px 0', alignItems: 'center' }}>
+                      {[0,1,2].map(i => (
+                        <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: '#39ff88', display: 'block', opacity: 0.5, animation: `dotPulse .8s ease-in-out ${i * 0.2}s infinite` }} />
+                      ))}
+                    </div>
+                  )}
+
+                  {!analyticsLoading && analyticsData && analyticsData.windows.length > 0 && (() => {
+                    const best = analyticsData.windows[analyticsData.windows.length - 1]
+                    const chartData = analyticsData.windows.map(w => ({
+                      name: w.window === 'w24' ? '24h' : w.window === 'w3' ? '3d' : w.window === 'w7' ? '7d' : 'EOM',
+                      views: w.views,
+                      er: w.er,
+                    }))
+
+                    return (
+                      <>
+                        {/* KPI row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
+                          {[
+                            { label: 'Views',    value: best.views >= 1000 ? `${(best.views/1000).toFixed(1)}K` : String(best.views) },
+                            { label: 'ER%',      value: `${best.er}%` },
+                            { label: 'Likes',    value: best.likes >= 1000 ? `${(best.likes/1000).toFixed(1)}K` : String(best.likes) },
+                            { label: 'Comments', value: String(best.comments) },
+                            { label: 'Shares',   value: String(best.shares) },
+                            { label: 'Watch%',   value: best.watchPct ? `${best.watchPct.toFixed(0)}%` : '—' },
+                          ].map(kpi => (
+                            <div key={kpi.label} style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '8px 10px' }}>
+                              <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 3 }}>{kpi.label}</p>
+                              <p style={{ fontSize: 13, color: '#f2ede4', fontWeight: 300 }}>{kpi.value}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Animated chart — draws itself on open */}
+                        {showChart && chartData.length >= 2 && (
+                          <div style={{ marginBottom: 8 }}>
+                            <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#333', marginBottom: 8 }}>Views over time</p>
+                            <ResponsiveContainer width="100%" height={80}>
+                              <BarChart data={chartData} barCategoryGap="30%">
+                                <XAxis dataKey="name" tick={{ fill: '#555', fontSize: 8 }} axisLine={false} tickLine={false} />
+                                <YAxis hide />
+                                <Tooltip
+                                  cursor={{ fill: 'rgba(57,255,136,.05)' }}
+                                  contentStyle={{ background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: 0, fontSize: 10 }}
+                                  labelStyle={{ color: '#39ff88' }}
+                                  itemStyle={{ color: '#aaa' }}
+                                  formatter={(v: unknown) => [Number(v).toLocaleString(), 'Views']}
+                                />
+                                <Bar
+                                  dataKey="views"
+                                  fill="#39ff88"
+                                  fillOpacity={0.7}
+                                  radius={[1,1,0,0]}
+                                  isAnimationActive
+                                  animationDuration={800}
+                                  animationEasing="ease-out"
+                                />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+
+                  {!analyticsLoading && (!analyticsData || analyticsData.windows.length === 0) && (
+                    <p style={{ fontSize: 11, color: '#333', fontWeight: 300 }}>
+                      No analytics data yet for <span style={{ color: '#c9a96e', fontFamily: 'monospace' }}>{slideOverEv.postId}</span>.
+                    </p>
+                  )}
                 </div>
               )}
 

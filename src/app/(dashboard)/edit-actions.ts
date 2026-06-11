@@ -466,6 +466,98 @@ export async function updateAnalyticsByTextId(
   )
 }
 
+// ── Bulk Delete Pipeline Items ────────────────────────────────────────────────
+
+export async function bulkDeletePipelineItems(
+  itemIds: string[],
+): Promise<{ count?: number; error?: string }> {
+  const c = await getCtx()
+  if (!c) return { error: 'Not authenticated' }
+  if (!itemIds.length) return { count: 0 }
+
+  const admin = c.admin
+  if (c.role !== 'admin' && c.cid) {
+    const { error } = await admin
+      .from('pipeline_items')
+      .delete()
+      .in('id', itemIds)
+      .eq('client_id', c.cid)
+    if (error) return { error: error.message }
+  } else {
+    const { error } = await admin
+      .from('pipeline_items')
+      .delete()
+      .in('id', itemIds)
+    if (error) return { error: error.message }
+  }
+
+  revalidatePath('/pipeline')
+  revalidatePath('/calendar')
+  return { count: itemIds.length }
+}
+
+// ── Post Analytics Snapshot (for Calendar slide-over) ─────────────────────────
+
+type AnalyticsWindow = {
+  window: string
+  views: number
+  likes: number
+  comments: number
+  shares: number
+  saves: number
+  watchPct: number
+  er: number
+}
+
+export async function getPostAnalyticsSnapshot(
+  postTextId: string,
+): Promise<{ windows?: AnalyticsWindow[]; platform?: string; error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (!postTextId) return { windows: [] }
+
+  const { data: postRow } = await c.admin
+    .from('posts')
+    .select('id, platform')
+    .eq('post_id', postTextId)
+    .eq('client_id', c.cid)
+    .single()
+
+  if (!postRow) return { windows: [] }
+  const { id: postUuid, platform } = postRow as unknown as { id: string; platform: string }
+
+  const { data: rows } = await c.admin
+    .from('post_analytics')
+    .select('metric_window, views, likes, comments, shares, saves, watch_pct, followers')
+    .eq('post_id', postUuid)
+    .in('metric_window', ['w24', 'w3', 'w7', 'eom'])
+
+  type RawRow = { metric_window: string; views: number; likes: number; comments: number; shares: number; saves: number | null; watch_pct: number | null; followers: number | null }
+  const ORDER: Record<string, number> = { w24: 0, w3: 1, w7: 2, eom: 3 }
+
+  const windows: AnalyticsWindow[] = ((rows ?? []) as unknown as RawRow[])
+    .filter(r => r.views > 0)
+    .sort((a, b) => (ORDER[a.metric_window] ?? 99) - (ORDER[b.metric_window] ?? 99))
+    .map(r => {
+      const saves = r.saves ?? 0
+      const followers = r.followers ?? 0
+      const isYt = platform === 'yt'
+      const er = ((r.likes + r.comments + r.shares + saves + (isYt ? followers : 0)) / r.views) * 100
+      return {
+        window: r.metric_window,
+        views: r.views,
+        likes: r.likes,
+        comments: r.comments,
+        shares: r.shares,
+        saves,
+        watchPct: r.watch_pct ?? 0,
+        er: parseFloat(er.toFixed(1)),
+      }
+    })
+
+  return { windows, platform }
+}
+
 // ── YouTube video linking ─────────────────────────────────────────────────────
 
 // Extracts a YouTube video ID from a URL or returns the string as-is if it's already an ID

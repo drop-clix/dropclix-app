@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem } from '@/app/(dashboard)/edit-actions'
+import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
@@ -46,6 +46,18 @@ const PLAT_CFG: Record<string, { label: string; color: string; bg: string }> = {
 }
 
 const ACTIVE_STATUSES = new Set(['SCRIPTED','PLANNED','FILMING','EDITING','REVIEWING','SCHEDULED'])
+
+// Auto-priority when status changes
+const STATUS_PRIORITY: Record<string, number> = {
+  REVIEWING: 1,
+  FILMING:   2,
+  SCRIPTED:  3,
+  PLANNED:   4,
+  EDITING:   5,
+  SCHEDULED: 5,
+  POSTED:    6,
+  CANCELLED: 6,
+}
 
 type SortKey = 'priority' | 'status' | 'pillar' | 'week' | 'title'
 type FilterKey = 'ALL' | 'ACTIVE' | string
@@ -479,8 +491,24 @@ function ItemEditPanel({
                 setModalDate(nowLocal())
                 setDateModal(true)
               } else {
+                const autoPri = STATUS_PRIORITY[next] ?? parseInt(priority, 10)
                 setStatus(next)
-                scheduleImmediate('status', next, { status: next })
+                setPriority(String(autoPri))
+                clearTimeout(timers.current['status'])
+                clearTimeout(timers.current['priority'])
+                setStates(s => ({ ...s, status: 'saving', priority: 'saving' }))
+                setTimeout(async () => {
+                  const result = await updatePipelineItem(item.id, { status: next, priority: autoPri })
+                  if (result.error) {
+                    setStates(s => ({ ...s, status: 'error', priority: 'error' }))
+                    toast(result.error, 'error')
+                  } else {
+                    onUpdate(item.id, { status: next, priority: autoPri })
+                    setStates(s => ({ ...s, status: 'saved', priority: 'saved' }))
+                    toast(`Saved · ${formatDisplayId(item.postId, item.platform)} updated`)
+                    setTimeout(() => setStates(s => ({ ...s, status: 'idle', priority: 'idle' })), 1500)
+                  }
+                }, 0)
               }
             }}
           >
@@ -727,9 +755,11 @@ function ItemEditPanel({
                   const finalStatus = pendingStatus === 'SCRIPTED'
                     ? 'SCRIPTED'
                     : new Date(modalDate) > new Date() ? 'SCHEDULED' : 'POSTED'
+                  const autoPri = STATUS_PRIORITY[finalStatus] ?? parseInt(priority, 10)
                   const update: Record<string, unknown> = {
                     status: finalStatus,
                     platform: modalPlatforms,
+                    priority: autoPri,
                   }
                   if (pendingStatus === 'SCRIPTED') {
                     update.scheduled_date = modalDate.slice(0, 10)
@@ -738,19 +768,21 @@ function ItemEditPanel({
                   }
                   setStatus(finalStatus)
                   setPlatform(modalPlatforms)
+                  setPriority(String(autoPri))
                   if (pendingStatus !== 'SCRIPTED') setPostedAtLocal(modalDate)
-                  setStates(s => ({ ...s, status: 'saving' }))
+                  setStates(s => ({ ...s, status: 'saving', priority: 'saving' }))
                   const result = await updatePipelineItem(item.id, update)
                   if (result.error) {
-                    setStates(s => ({ ...s, status: 'error' }))
+                    setStates(s => ({ ...s, status: 'error', priority: 'error' }))
                   } else {
                     onUpdate(item.id, {
                       status: finalStatus,
                       platform: modalPlatforms,
+                      priority: autoPri,
                       ...(pendingStatus !== 'SCRIPTED' ? { postedAt: iso } : { scheduledDate: modalDate.slice(0, 10) }),
                     })
-                    setStates(s => ({ ...s, status: 'saved' }))
-                    setTimeout(() => setStates(s => ({ ...s, status: 'idle' })), 1500)
+                    setStates(s => ({ ...s, status: 'saved', priority: 'saved' }))
+                    setTimeout(() => setStates(s => ({ ...s, status: 'idle', priority: 'idle' })), 1500)
                   }
                 }}
                 style={{
@@ -814,7 +846,7 @@ function MarkAsPostedModal({
   async function handleConfirm() {
     setSaving(true)
     const iso = new Date(dateVal).toISOString()
-    const update: Record<string, unknown> = { status: 'POSTED', posted_at: iso }
+    const update: Record<string, unknown> = { status: 'POSTED', posted_at: iso, priority: 6 }
     if (parsedId) update.video_url = urlVal.trim()
     await updatePipelineItem(item.id, update)
     setSaving(false)
@@ -866,6 +898,73 @@ function MarkAsPostedModal({
           </button>
           <button onClick={handleConfirm} disabled={saving} style={{ padding: '8px 22px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'rgba(57,255,136,.1)', border: '1px solid rgba(57,255,136,.4)', color: '#39ff88', cursor: saving ? 'wait' : 'pointer', fontWeight: 600 }}>
             {saving ? 'Saving…' : '✓ Mark Posted'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Delete Confirm Modal ───────────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  count,
+  onConfirm,
+  onCancel,
+  deleting,
+}: {
+  count: number
+  onConfirm: () => void
+  onCancel: () => void
+  deleting: boolean
+}) {
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(0,0,0,.85)', backdropFilter: 'blur(8px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+    >
+      <div style={{
+        background: '#070707', border: '1px solid #1e1e1e',
+        borderTop: '2px solid #ff3b5f',
+        padding: '32px 36px', width: 380, maxWidth: '94vw',
+      }}>
+        <div style={{ marginBottom: 20 }}>
+          <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.22em', textTransform: 'uppercase', color: '#ff3b5f', marginBottom: 8 }}>
+            Confirm Delete
+          </p>
+          <p style={{ fontSize: 16, color: '#f2ede4', fontWeight: 300, lineHeight: 1.4 }}>
+            Delete {count} video{count !== 1 ? 's' : ''}?
+          </p>
+          <p style={{ fontSize: 11, color: '#444', marginTop: 6, fontWeight: 300 }}>
+            This cannot be undone. IDs are never renumbered — gaps are permanent.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            style={{
+              padding: '8px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+              background: 'transparent', border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            style={{
+              padding: '8px 22px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+              background: 'rgba(255,59,95,.12)', border: '1px solid rgba(255,59,95,.4)',
+              color: '#ff3b5f', cursor: deleting ? 'wait' : 'pointer', fontWeight: 600,
+              opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            {deleting ? 'Deleting…' : `Delete ${count}`}
           </button>
         </div>
       </div>
@@ -1131,6 +1230,9 @@ export function PipelineClient({
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [bulkImportOpen, setBulkImportOpen] = useState(false)
   const [markPostedItem, setMarkPostedItem] = useState<PipelineItem | null>(null)
+  const [selectedIds,      setSelectedIds     ] = useState<Set<string>>(new Set())
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [bulkDeleting,      setBulkDeleting    ] = useState(false)
 
   const { platform, scope, from, to, setFilters } = usePortalFilters()
   const pillarColors = usePillarColors(useMemo(() => items.map(i => i.pillar ?? ''), [items]))
@@ -1242,6 +1344,33 @@ export function PipelineClient({
     setFilter('ACTIVE')
   }
 
+  async function handleBulkDelete() {
+    setBulkDeleting(true)
+    const ids = [...selectedIds]
+    const result = await bulkDeletePipelineItems(ids)
+    setBulkDeleting(false)
+    setDeleteConfirmOpen(false)
+    if (result.error) {
+      toast(result.error, 'error')
+    } else {
+      setItems(prev => prev.filter(i => !selectedIds.has(i.id)))
+      setSelectedIds(new Set())
+      if (editingId && selectedIds.has(editingId)) setEditingId(null)
+      toast(`Deleted ${ids.length} item${ids.length !== 1 ? 's' : ''}`, 'info')
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const allPageSelected = pagedRows.length > 0 && pagedRows.every(r => selectedIds.has(r.id))
+
   const arrow = (key: SortKey) =>
     sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕'
 
@@ -1295,6 +1424,16 @@ export function PipelineClient({
         />
       )}
 
+      {/* Bulk delete confirm modal */}
+      {deleteConfirmOpen && (
+        <DeleteConfirmModal
+          count={selectedIds.size}
+          onConfirm={handleBulkDelete}
+          onCancel={() => setDeleteConfirmOpen(false)}
+          deleting={bulkDeleting}
+        />
+      )}
+
       {/* Mark as Posted modal */}
       {markPostedItem && (
         <MarkAsPostedModal
@@ -1309,6 +1448,29 @@ export function PipelineClient({
 
       {/* ── Action buttons ────────────────────────────────────────── */}
       <div className="flex justify-end gap-3 mb-5">
+        {selectedIds.size > 0 && (
+          <button
+            onClick={() => setDeleteConfirmOpen(true)}
+            style={{
+              padding: '9px 18px', fontSize: 10, fontWeight: 600, letterSpacing: '.14em',
+              textTransform: 'uppercase', background: 'rgba(255,59,95,.1)',
+              border: '1px solid rgba(255,59,95,.4)', color: '#ff3b5f',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+              transition: 'all .15s',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,59,95,.18)'
+              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,59,95,.6)'
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,59,95,.1)'
+              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,59,95,.4)'
+            }}
+          >
+            <span style={{ fontSize: 12, lineHeight: 1 }}>×</span>
+            Delete {selectedIds.size} Selected
+          </button>
+        )}
         <button
           onClick={() => setBulkImportOpen(true)}
           style={{
@@ -1565,6 +1727,25 @@ export function PipelineClient({
           <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
             <tr style={{ borderBottom: '1px solid #141414', background: '#060606' }}>
               <th style={{ width: 4, padding: 0, background: '#060606' }} />
+              <th style={{ width: 36, padding: '0 10px', background: '#060606', textAlign: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={allPageSelected}
+                  onChange={e => {
+                    if (e.target.checked) {
+                      setSelectedIds(prev => new Set([...prev, ...pagedRows.map(r => r.id)]))
+                    } else {
+                      setSelectedIds(prev => {
+                        const next = new Set(prev)
+                        pagedRows.forEach(r => next.delete(r.id))
+                        return next
+                      })
+                    }
+                  }}
+                  style={{ cursor: 'pointer', accentColor: '#ff3b5f', width: 13, height: 13 }}
+                  title={allPageSelected ? 'Deselect all' : 'Select all on page'}
+                />
+              </th>
               <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase select-none"
                   style={{ color: '#555', whiteSpace: 'nowrap', width: 76, background: '#060606' }}>ID</th>
               <th onClick={() => toggleSort('title')}
@@ -1603,7 +1784,7 @@ export function PipelineClient({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center py-16" style={{ color: '#444' }}>
+                <td colSpan={11} className="text-center py-16" style={{ color: '#444' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 20, opacity: 0.4 }}>◇</span>
                     <p style={{ fontSize: 12, fontWeight: 300, color: '#555' }}>
@@ -1665,8 +1846,28 @@ export function PipelineClient({
                         setHoverPreviewId(null)
                       }}
                     >
-                      {/* Pillar color stripe (Feature 9) */}
+                      {/* Pillar color stripe */}
                       <td style={{ width: 4, padding: 0, background: `${pillarColor}cc` }} />
+
+                      {/* Checkbox */}
+                      <td
+                        style={{ width: 36, padding: '0 10px', textAlign: 'center' }}
+                        onClick={e => { e.stopPropagation(); toggleSelect(item.id) }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={() => toggleSelect(item.id)}
+                          onClick={e => e.stopPropagation()}
+                          style={{
+                            cursor: 'pointer',
+                            accentColor: '#ff3b5f',
+                            width: 13, height: 13,
+                            opacity: (isHovered || selectedIds.has(item.id)) ? 1 : 0.18,
+                            transition: 'opacity .15s',
+                          }}
+                        />
+                      </td>
 
                       {/* ID */}
                       <td className="px-4 py-4">
@@ -1803,7 +2004,7 @@ export function PipelineClient({
                     {/* Edit panel */}
                     {isEditing && (
                       <tr>
-                        <td colSpan={10} style={{ padding: 0 }}>
+                        <td colSpan={11} style={{ padding: 0 }}>
                           <ItemEditPanel
                             item={item}
                             onUpdate={handleUpdate}
