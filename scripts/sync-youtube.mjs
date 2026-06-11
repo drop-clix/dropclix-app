@@ -154,17 +154,17 @@ async function fetchMetrics(accessToken, channelId, videoId, startDate, endDate)
 
   if (!res.ok) {
     const body = await res.text()
-    if (res.status === 403 || body.includes('insufficient')) {
-      console.warn(`  ⚠ Insufficient permissions for ${videoId} — skipping`)
-    } else {
-      console.error(`  ✗ API error ${res.status} for ${videoId}:`, body.slice(0, 200))
-    }
+    // Surface the full error so the caller knows exactly why it failed
+    console.error(`  ✗ HTTP ${res.status} for ${videoId}: ${body.slice(0, 300)}`)
     return null
   }
 
   const json = await res.json()
   const row  = json.rows?.[0]
-  if (!row) return null  // video not found / no data available at all
+  if (!row) {
+    console.log(`  (API returned 200 but no rows for ${videoId} ${startDate}→${endDate})`)
+    return null  // video not found or genuinely no activity in window
+  }
 
   // Secondary call: impressions + CTR — requires dimensions=video; stored as 0 if unavailable
   let impressions = 0, ctr = 0
@@ -224,7 +224,7 @@ async function run() {
   console.log('─'.repeat(50))
 
   const { accessToken, channelId, channelName } = await getValidAccessToken()
-  console.log(`Channel: ${channelName ?? channelId}\n`)
+  console.log(`Channel: ${channelName ?? channelId} (${channelId ?? 'NULL — reconnect OAuth!'})\n`)
 
   const { data: posts, error: postsErr } = await admin
     .from('posts')
@@ -255,22 +255,6 @@ async function run() {
     let bestEr = 0, bestViews = 0
 
     for (const win of windows) {
-      // With --force, overwrite everything. Without it, skip windows that already have data.
-      if (!FORCE) {
-        const { data: existing } = await admin
-          .from('post_analytics')
-          .select('metric_window, views')
-          .eq('post_id', post.id)
-          .eq('platform', 'yt')
-          .eq('metric_window', win)
-          .single()
-        if (existing && (existing.views ?? 0) > 0) {
-          console.log(`  ${win}: has data (${(existing.views ?? 0).toLocaleString()} views) — pass --force to overwrite`)
-          skipped++
-          continue
-        }
-      }
-
       const endDate = windowEndDate(post.date, win)
       const m = await fetchMetrics(accessToken, channelId, videoId, post.date, endDate)
 

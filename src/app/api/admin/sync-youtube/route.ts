@@ -134,8 +134,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const clientId: string  = body.client_id
-  const force:    boolean = body.force ?? false
+  const clientId: string = body.client_id
 
   if (!clientId) return NextResponse.json({ error: 'client_id required' }, { status: 400 })
 
@@ -172,22 +171,6 @@ export async function POST(req: NextRequest) {
     let bestViews = 0
 
     for (const win of windows) {
-      // Without force, skip windows that already have real data
-      if (!force) {
-        type ExistingRow = { metric_window: string; views: number | null }
-        const { data: existing } = await admin
-          .from('post_analytics')
-          .select('metric_window, views')
-          .eq('post_id', post.id)
-          .eq('platform', 'yt')
-          .eq('metric_window', win)
-          .single()
-        if (existing && ((existing as unknown as ExistingRow).views ?? 0) > 0) {
-          result.skipped++
-          continue
-        }
-      }
-
       const endDate = windowEndDate(publishDate, win)
       const metrics = await fetchYTAnalytics(
         conn.access_token,
