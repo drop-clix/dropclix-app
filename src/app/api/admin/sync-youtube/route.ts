@@ -10,20 +10,29 @@ type SyncResult = {
   lastSyncedAt: string
 }
 
-// Compute the end date for each analytics window relative to publish date
+// Returns which metric windows to sync based on post age.
+// eom is always included so old posts always get their current totals written.
+function windowsForPost(publishDate: string): ('w24' | 'w3' | 'w7' | 'eom')[] {
+  const ageDays = (Date.now() - new Date(publishDate).getTime()) / 86400000
+  const wins: ('w24' | 'w3' | 'w7' | 'eom')[] = ['eom']
+  if (ageDays <= 6) wins.push('w7')
+  if (ageDays <= 3) wins.push('w3')
+  if (ageDays <= 2) wins.push('w24')
+  return wins
+}
+
+// End date for the Analytics API call.
+// eom uses today to capture all-time totals regardless of publish month.
+// w24/w3/w7 use publish date + N days, capped at today.
 function windowEndDate(publishDate: string, win: 'w24' | 'w3' | 'w7' | 'eom'): string {
+  const today = new Date().toISOString().slice(0, 10)
+  if (win === 'eom') return today
   const d = new Date(publishDate)
-  if (win === 'w24') { d.setDate(d.getDate() + 1) }
-  else if (win === 'w3') { d.setDate(d.getDate() + 3) }
-  else if (win === 'w7') { d.setDate(d.getDate() + 7) }
-  else {
-    // End of the publish month
-    d.setMonth(d.getMonth() + 1, 0)
-  }
-  // Cap at today so we don't request future data
-  const today = new Date()
-  if (d > today) return today.toISOString().slice(0, 10)
-  return d.toISOString().slice(0, 10)
+  if (win === 'w24') d.setDate(d.getDate() + 1)
+  else if (win === 'w3') d.setDate(d.getDate() + 3)
+  else if (win === 'w7') d.setDate(d.getDate() + 7)
+  const dStr = d.toISOString().slice(0, 10)
+  return dStr > today ? today : dStr
 }
 
 async function fetchYTAnalytics(
@@ -34,14 +43,16 @@ async function fetchYTAnalytics(
   endDate: string,
 ): Promise<{
   views: number; likes: number; comments: number; shares: number
-  estimatedMinutesWatched: number; averageViewPercentage: number; subscribersGained: number
+  estimatedMinutesWatched: number; averageViewPercentage: number
+  subscribersGained: number; impressions: number; ctr: number
 } | null> {
+  // Main call: per-video engagement metrics (always supported with yt-analytics.readonly)
   const params = new URLSearchParams({
-    ids: `channel==${channelId}`,
+    ids:      `channel==${channelId}`,
     startDate,
     endDate,
-    metrics: 'views,likes,comments,shares,estimatedMinutesWatched,averageViewPercentage,subscribersGained',
-    filters: `video==${videoId}`,
+    metrics:  'views,likes,comments,shares,estimatedMinutesWatched,averageViewPercentage,subscribersGained',
+    filters:  `video==${videoId}`,
   })
 
   const res = await fetch(
@@ -58,15 +69,42 @@ async function fetchYTAnalytics(
   const row = json.rows?.[0]
   if (!row) return null
 
-  // Column order matches metrics param order
+  // Secondary call: impressions + CTR — requires dimensions=video; stored as 0 if unavailable
+  let impressions = 0
+  let ctr = 0
+  try {
+    const iParams = new URLSearchParams({
+      ids:        `channel==${channelId}`,
+      startDate,
+      endDate,
+      dimensions: 'video',
+      metrics:    'impressions,impressionsClickThroughRate',
+      filters:    `video==${videoId}`,
+    })
+    const iRes = await fetch(
+      `https://youtubeanalytics.googleapis.com/v2/reports?${iParams.toString()}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+    if (iRes.ok) {
+      const iJson = await iRes.json()
+      const iRow = iJson.rows?.[0]  // columns: [videoId, impressions, ctr]
+      if (iRow) {
+        impressions = Math.round(iRow[1] ?? 0)
+        ctr         = Math.round((iRow[2] ?? 0) * 10000) / 100
+      }
+    }
+  } catch { /* impressions unavailable — stored as 0 */ }
+
   return {
-    views:                   row[0] ?? 0,
-    likes:                   row[1] ?? 0,
-    comments:                row[2] ?? 0,
-    shares:                  row[3] ?? 0,
-    estimatedMinutesWatched: row[4] ?? 0,
-    averageViewPercentage:   row[5] ?? 0,
-    subscribersGained:       row[6] ?? 0,
+    views:                   Math.round(row[0] ?? 0),
+    likes:                   Math.round(row[1] ?? 0),
+    comments:                Math.round(row[2] ?? 0),
+    shares:                  Math.round(row[3] ?? 0),
+    estimatedMinutesWatched: Math.round(row[4] ?? 0),
+    averageViewPercentage:   Math.round((row[5] ?? 0) * 100) / 100,
+    subscribersGained:       Math.round(row[6] ?? 0),
+    impressions,
+    ctr,
   }
 }
 
@@ -82,7 +120,6 @@ function decisionFromEr(er: number): string {
 }
 
 export async function POST(req: NextRequest) {
-  // Verify caller is an authenticated admin via session cookie
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -97,7 +134,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const clientId: string = body.client_id
+  const clientId: string  = body.client_id
   const force:    boolean = body.force ?? false
 
   if (!clientId) return NextResponse.json({ error: 'client_id required' }, { status: 400 })
@@ -110,8 +147,6 @@ export async function POST(req: NextRequest) {
   const admin  = createAdminClient()
   const result: SyncResult = { synced: 0, skipped: 0, errors: [], lastSyncedAt: '' }
 
-  // Fetch all posts for this client that have a YouTube video ID directly on the posts row.
-  // Requires posts.yt_id column (migration: add_posts_yt_id.sql).
   type PostRow = { id: string; post_id: string; date: string; decision: string | null; yt_id: string }
 
   const { data: postsData, error: pErr } = await admin
@@ -127,41 +162,33 @@ export async function POST(req: NextRequest) {
   if (posts.length === 0) {
     return NextResponse.json({ ...result, message: 'No posts with yt_id found. Run the YouTube CSV importer first.' })
   }
-  const WINDOWS: ('w24' | 'w3' | 'w7' | 'eom')[] = ['w24', 'w3', 'w7', 'eom']
 
   for (const post of posts) {
-    const videoId = post.yt_id
+    const videoId    = post.yt_id
     const publishDate = post.date
+    const windows    = windowsForPost(publishDate)
 
-    // Check which windows already have data (to skip unless --force)
-    type ExistingRow = { metric_window: string; views: number | null }
-    const { data: existing } = await admin
-      .from('post_analytics')
-      .select('metric_window, views')
-      .eq('post_id', post.id)
-      .in('metric_window', WINDOWS)
-
-    const existingWins = new Set(
-      ((existing ?? []) as unknown as ExistingRow[])
-        .filter(r => (r.views ?? 0) > 0)
-        .map(r => r.metric_window),
-    )
-
-    let bestEr  = 0
+    let bestEr    = 0
     let bestViews = 0
 
-    for (const win of WINDOWS) {
-      if (existingWins.has(win) && !force) {
-        result.skipped++
-        continue
+    for (const win of windows) {
+      // Without force, skip windows that already have real data
+      if (!force) {
+        type ExistingRow = { metric_window: string; views: number | null }
+        const { data: existing } = await admin
+          .from('post_analytics')
+          .select('metric_window, views')
+          .eq('post_id', post.id)
+          .eq('platform', 'yt')
+          .eq('metric_window', win)
+          .single()
+        if (existing && ((existing as unknown as ExistingRow).views ?? 0) > 0) {
+          result.skipped++
+          continue
+        }
       }
 
       const endDate = windowEndDate(publishDate, win)
-      if (endDate <= publishDate) {
-        result.skipped++
-        continue
-      }
-
       const metrics = await fetchYTAnalytics(
         conn.access_token,
         conn.channel_id,
@@ -170,7 +197,8 @@ export async function POST(req: NextRequest) {
         endDate,
       )
 
-      if (!metrics || metrics.views === 0) {
+      if (!metrics) {
+        // API returned no rows for this video — skip this window
         result.skipped++
         continue
       }
@@ -178,8 +206,6 @@ export async function POST(req: NextRequest) {
       const er = erPct(metrics)
       if (metrics.views > bestViews) { bestViews = metrics.views; bestEr = er }
 
-      // Upsert the analytics row.
-      // onConflict must match the unique(post_id, platform, metric_window) constraint exactly.
       const { error: uErr } = await admin
         .from('post_analytics')
         .upsert(
@@ -196,6 +222,8 @@ export async function POST(req: NextRequest) {
             saves:          null,
             watch_pct:      metrics.averageViewPercentage,
             followers:      metrics.subscribersGained,
+            impressions:    metrics.impressions,
+            ctr:            metrics.ctr,
           },
           { onConflict: 'post_id,platform,metric_window' },
         )
@@ -207,7 +235,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Update decision on the post from best window
     if (bestViews > 0) {
       await admin
         .from('posts')
@@ -219,7 +246,6 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString()
   result.lastSyncedAt = now
 
-  // Update last_synced_at on the connection record
   await admin
     .from('platform_connections')
     .update({ last_synced_at: now, updated_at: now })

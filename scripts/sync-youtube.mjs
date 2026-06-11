@@ -2,14 +2,20 @@
  * YouTube Analytics sync script.
  *
  * Reads OAuth tokens from platform_connections for Nick's client_id,
- * then pulls per-video metrics at 4 time windows and upserts into post_analytics.
+ * then pulls per-video metrics and upserts into post_analytics.
+ *
+ * Window selection is age-based:
+ *   post ≤ 2 days old → w24
+ *   post ≤ 3 days old → w3
+ *   post ≤ 6 days old → w7
+ *   any age           → eom (uses today as end date to capture current totals)
  *
  * Usage:
  *   node scripts/sync-youtube.mjs             # dry-run
  *   node scripts/sync-youtube.mjs --run       # apply
- *   node scripts/sync-youtube.mjs --run --force  # overwrite existing windows
+ *   node scripts/sync-youtube.mjs --run --force  # overwrite all existing data
  *
- * Requires .env.local to be readable (loaded manually below).
+ * Requires .env.local at the project root.
  */
 
 import { createClient } from '@supabase/supabase-js'
@@ -34,8 +40,8 @@ try {
   process.exit(1)
 }
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY
+const SUPABASE_URL  = process.env.NEXT_PUBLIC_SUPABASE_URL
+const SUPABASE_KEY  = process.env.SUPABASE_SECRET_KEY
 const YT_CLIENT_ID  = process.env.YOUTUBE_CLIENT_ID
 const YT_CLIENT_SEC = process.env.YOUTUBE_CLIENT_SECRET
 
@@ -44,9 +50,7 @@ if (!SUPABASE_URL || !SUPABASE_KEY || !YT_CLIENT_ID || !YT_CLIENT_SEC) {
   process.exit(1)
 }
 
-// Nick's client ID
 const NICK_CLIENT_ID = '913f1794-1506-4449-b56c-b683809cefc3'
-
 const admin = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 // ── Token refresh ─────────────────────────────────────────────────────────────
@@ -94,9 +98,9 @@ async function getValidAccessToken() {
 
   if (!DRY_RUN) {
     await admin.from('platform_connections').update({
-      access_token: json.access_token,
+      access_token:     json.access_token,
       token_expires_at: newExpiry,
-      updated_at:   new Date().toISOString(),
+      updated_at:       new Date().toISOString(),
     }).eq('client_id', NICK_CLIENT_ID).eq('platform', 'youtube')
   }
 
@@ -104,28 +108,43 @@ async function getValidAccessToken() {
   return { accessToken: json.access_token, channelId: data.channel_id, channelName: data.channel_name }
 }
 
-// ── Analytics fetch ───────────────────────────────────────────────────────────
+// ── Window logic ──────────────────────────────────────────────────────────────
 
+// Returns which metric windows to sync based on how old the post is.
+// eom is always included so old posts always get their current totals written.
+function windowsForPost(publishDate) {
+  const ageDays = (Date.now() - new Date(publishDate).getTime()) / 86400000
+  const wins = ['eom']
+  if (ageDays <= 6) wins.push('w7')
+  if (ageDays <= 3) wins.push('w3')
+  if (ageDays <= 2) wins.push('w24')
+  return wins
+}
+
+// End date for the Analytics API call for each window.
+// eom uses today so it captures all-time totals regardless of publish month.
+// w24/w3/w7 use publish date + N days, capped at today.
 function windowEndDate(publishDate, win) {
+  const today = new Date().toISOString().slice(0, 10)
+  if (win === 'eom') return today
   const d = new Date(publishDate)
   if (win === 'w24') d.setDate(d.getDate() + 1)
   else if (win === 'w3') d.setDate(d.getDate() + 3)
   else if (win === 'w7') d.setDate(d.getDate() + 7)
-  else {
-    // end of the publish month
-    d.setMonth(d.getMonth() + 1, 0)
-  }
-  const today = new Date()
-  return (d > today ? today : d).toISOString().slice(0, 10)
+  const dStr = d.toISOString().slice(0, 10)
+  return dStr > today ? today : dStr
 }
 
+// ── Analytics fetch ───────────────────────────────────────────────────────────
+
 async function fetchMetrics(accessToken, channelId, videoId, startDate, endDate) {
+  // Main call: per-video engagement metrics (always supported with yt-analytics.readonly)
   const params = new URLSearchParams({
-    ids:        `channel==${channelId}`,
+    ids:      `channel==${channelId}`,
     startDate,
     endDate,
-    metrics:    'views,likes,comments,shares,estimatedMinutesWatched,averageViewPercentage,subscribersGained',
-    filters:    `video==${videoId}`,
+    metrics:  'views,likes,comments,shares,estimatedMinutesWatched,averageViewPercentage,subscribersGained',
+    filters:  `video==${videoId}`,
   })
 
   const res = await fetch(
@@ -145,7 +164,32 @@ async function fetchMetrics(accessToken, channelId, videoId, startDate, endDate)
 
   const json = await res.json()
   const row  = json.rows?.[0]
-  if (!row) return null
+  if (!row) return null  // video not found / no data available at all
+
+  // Secondary call: impressions + CTR — requires dimensions=video; stored as 0 if unavailable
+  let impressions = 0, ctr = 0
+  try {
+    const iParams = new URLSearchParams({
+      ids:        `channel==${channelId}`,
+      startDate,
+      endDate,
+      dimensions: 'video',
+      metrics:    'impressions,impressionsClickThroughRate',
+      filters:    `video==${videoId}`,
+    })
+    const iRes = await fetch(
+      `https://youtubeanalytics.googleapis.com/v2/reports?${iParams}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+    if (iRes.ok) {
+      const iJson = await iRes.json()
+      const iRow  = iJson.rows?.[0]  // columns: [videoId, impressions, ctr]
+      if (iRow) {
+        impressions = Math.round(iRow[1] ?? 0)
+        ctr         = Math.round((iRow[2] ?? 0) * 10000) / 100
+      }
+    }
+  } catch { /* impressions unavailable — stored as 0 */ }
 
   return {
     views:       Math.round(row[0] ?? 0),
@@ -155,6 +199,9 @@ async function fetchMetrics(accessToken, channelId, videoId, startDate, endDate)
     watchMins:   Math.round(row[4] ?? 0),
     watchPct:    Math.round((row[5] ?? 0) * 100) / 100,
     subscribers: Math.round(row[6] ?? 0),
+    impressions,
+    // API returns a decimal (0.045 = 4.5%) — store as percentage
+    ctr,
   }
 }
 
@@ -171,8 +218,6 @@ function decision(er) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-const WINDOWS = ['w24', 'w3', 'w7', 'eom']
-
 async function run() {
   console.log(`\nDrop CLIX — YouTube Analytics Sync`)
   console.log(`Mode: ${DRY_RUN ? 'DRY RUN (pass --run to apply)' : 'LIVE'} ${FORCE ? '+ FORCE' : ''}`)
@@ -181,8 +226,6 @@ async function run() {
   const { accessToken, channelId, channelName } = await getValidAccessToken()
   console.log(`Channel: ${channelName ?? channelId}\n`)
 
-  // Get all posts for Nick that have yt_id set directly on the posts row.
-  // Requires posts.yt_id column — run: supabase/migrations/add_posts_yt_id.sql
   const { data: posts, error: postsErr } = await admin
     .from('posts')
     .select('id, post_id, date, decision, yt_id')
@@ -206,38 +249,34 @@ async function run() {
 
   for (const post of posts) {
     const videoId = post.yt_id
-    console.log(`\n▸ ${post.post_id} — ${videoId} (published ${post.date})`)
-
-    // Which windows already have data?
-    const { data: existingRows } = await admin
-      .from('post_analytics')
-      .select('metric_window, views')
-      .eq('post_id', post.id)
-      .in('metric_window', WINDOWS)
-
-    const existingWins = new Set(
-      (existingRows ?? []).filter(r => (r.views ?? 0) > 0).map(r => r.metric_window),
-    )
+    const windows = windowsForPost(post.date)
+    console.log(`\n▸ ${post.post_id} — ${videoId} (published ${post.date}) → [${windows.join(', ')}]`)
 
     let bestEr = 0, bestViews = 0
 
-    for (const win of WINDOWS) {
-      if (existingWins.has(win) && !FORCE) {
-        console.log(`  ${win}: already has data — skipping (use --force to overwrite)`)
-        skipped++
-        continue
+    for (const win of windows) {
+      // With --force, overwrite everything. Without it, skip windows that already have data.
+      if (!FORCE) {
+        const { data: existing } = await admin
+          .from('post_analytics')
+          .select('metric_window, views')
+          .eq('post_id', post.id)
+          .eq('platform', 'yt')
+          .eq('metric_window', win)
+          .single()
+        if (existing && (existing.views ?? 0) > 0) {
+          console.log(`  ${win}: has data (${(existing.views ?? 0).toLocaleString()} views) — pass --force to overwrite`)
+          skipped++
+          continue
+        }
       }
 
       const endDate = windowEndDate(post.date, win)
-      if (endDate <= post.date) {
-        console.log(`  ${win}: window hasn't passed yet — skipping`)
-        skipped++
-        continue
-      }
-
       const m = await fetchMetrics(accessToken, channelId, videoId, post.date, endDate)
-      if (!m || m.views === 0) {
-        console.log(`  ${win}: no data (${m ? 'zero views' : 'API returned null'})`)
+
+      if (!m) {
+        // API returned no rows at all for this video — skip this window
+        console.log(`  ${win}: no data from API — skipping`)
         skipped++
         continue
       }
@@ -248,7 +287,8 @@ async function run() {
       console.log(
         `  ${win}: ${m.views.toLocaleString()} views · ` +
         `${m.likes}L ${m.comments}C ${m.shares}S ${m.subscribers}SubsG · ` +
-        `${er.toFixed(2)}% ER · ${m.watchPct}% watch · ${decision(er)}`
+        `${er.toFixed(2)}% ER · ${m.watchPct}% watch · ` +
+        `${m.impressions.toLocaleString()} impr · ${m.ctr}% CTR · ${decision(er)}`
       )
 
       if (!DRY_RUN) {
@@ -266,23 +306,23 @@ async function run() {
             saves:         null,
             watch_pct:     m.watchPct,
             followers:     m.subscribers,
+            impressions:   m.impressions,
+            ctr:           m.ctr,
           },
           { onConflict: 'post_id,platform,metric_window' },
         )
         if (uErr) { console.error(`  ✗ DB error: ${uErr.message}`); errors++ }
         else synced++
       } else {
-        synced++ // count in dry-run too
+        synced++
       }
     }
 
-    // Update decision
     if (bestViews > 0 && !DRY_RUN) {
       await admin.from('posts').update({ decision: decision(bestEr) }).eq('id', post.id)
     }
   }
 
-  // Update last_synced_at
   if (!DRY_RUN) {
     await admin.from('platform_connections').update({
       last_synced_at: new Date().toISOString(),
