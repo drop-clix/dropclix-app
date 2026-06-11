@@ -131,7 +131,7 @@ export default async function PipelinePage() {
         </p>
         <h1
           className="font-jakarta font-light"
-          style={{ fontSize: 'clamp(28px,3vw,44px)', color: '#f2ede4', lineHeight: 1.06 }}
+          style={{ fontSize: 'clamp(28px,3vw,44px)', color: '#f2ede4', lineHeight: 1.06, textShadow: '0 0 32px rgba(255,255,255,0.22), 0 0 8px rgba(255,255,255,0.08)' }}
         >
           Pipeline
         </h1>

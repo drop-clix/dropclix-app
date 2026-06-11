@@ -80,7 +80,7 @@ const VALID_STATUSES = new Set([
 ])
 const VALID_PIPE = new Set([
   'status','priority','platform','pillar','week','script_content','title','notes',
-  'posted_at','scheduled_date',
+  'posted_at','scheduled_date','video_url',
 ])
 // Fields that need to be mirrored in the matching calendar event
 const PIPE_SYNC_FIELDS = new Set(['title', 'platform', 'posted_at', 'scheduled_date'])

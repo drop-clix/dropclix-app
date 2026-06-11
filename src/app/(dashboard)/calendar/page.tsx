@@ -14,6 +14,7 @@ export type CalendarEvent = {
   contentType: string
   cta: string
   pipelineStatus: string | null  // joined from pipeline_items via post_id
+  pillar: string | null          // joined from pipeline_items via post_id
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ export default async function CalendarPage() {
     id: string; title: string; platform: string
     event_date: string; notes: string | null
   }
-  type RawPipeline = { post_id: string; status: string }
+  type RawPipeline = { post_id: string; status: string; pillar: string | null }
 
   // Fetch events + all pipeline items in parallel
   const [evRes, pipeRes] = await Promise.all([
@@ -37,17 +38,21 @@ export default async function CalendarPage() {
       .order('event_date', { ascending: true }),
     supabase
       .from('pipeline_items')
-      .select('post_id, status')
+      .select('post_id, status, pillar')
       .eq('client_id', cid),
   ])
 
   const rawEvents   = (evRes.data   ?? []) as unknown as RawEvent[]
   const rawPipeline = (pipeRes.data ?? []) as unknown as RawPipeline[]
 
-  // Build post_id → pipeline status lookup
+  // Build post_id → pipeline status + pillar lookup
   const pipelineStatus: Record<string, string> = {}
+  const pipelinePillar: Record<string, string> = {}
   for (const p of rawPipeline) {
-    if (p.post_id) pipelineStatus[p.post_id] = p.status
+    if (p.post_id) {
+      pipelineStatus[p.post_id] = p.status
+      if (p.pillar) pipelinePillar[p.post_id] = p.pillar
+    }
   }
 
   // Parse notes JSON + join pipeline status
@@ -68,6 +73,7 @@ export default async function CalendarPage() {
       contentType:    notes.content_type    ?? '—',
       cta:            notes.cta             ?? '—',
       pipelineStatus: postId ? (pipelineStatus[postId] ?? null) : null,
+      pillar: postId ? (pipelinePillar[postId] ?? null) : null,
     }
   })
 

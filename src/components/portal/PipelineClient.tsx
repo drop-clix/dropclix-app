@@ -771,6 +771,108 @@ function ItemEditPanel({
   )
 }
 
+// ── Mark as Posted Modal ───────────────────────────────────────────────────
+
+function parseVideoUrl(url: string, platforms: string[]): string {
+  const s = url.trim()
+  if (!s) return ''
+  // YT: youtu.be/ID or ?v=ID
+  const ytShort = s.match(/youtu\.be\/([A-Za-z0-9_-]{10,12})/)
+  if (ytShort) return ytShort[1]
+  const ytFull = s.match(/[?&]v=([A-Za-z0-9_-]{10,12})/)
+  if (ytFull) return ytFull[1]
+  // IG: /reel/ID or /p/ID or /tv/ID
+  const ig = s.match(/instagram\.com\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/)
+  if (ig) return ig[1]
+  // TT: /video/ID
+  const tt = s.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/)
+  if (tt) return tt[1]
+  // If it doesn't look like a URL, treat as raw ID
+  if (!s.startsWith('http')) return s
+  return s
+}
+
+function MarkAsPostedModal({
+  item,
+  onClose,
+  onPosted,
+}: {
+  item: PipelineItem
+  onClose: () => void
+  onPosted: (iso: string, videoId: string) => void
+}) {
+  const [dateVal, setDateVal] = useState<string>(() => {
+    const d = new Date(); d.setSeconds(0, 0)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  })
+  const [urlVal,  setUrlVal ] = useState('')
+  const [saving,  setSaving ] = useState(false)
+
+  const parsedId = useMemo(() => parseVideoUrl(urlVal, item.platform), [urlVal, item.platform])
+
+  async function handleConfirm() {
+    setSaving(true)
+    const iso = new Date(dateVal).toISOString()
+    const update: Record<string, unknown> = { status: 'POSTED', posted_at: iso }
+    if (parsedId) update.video_url = urlVal.trim()
+    await updatePipelineItem(item.id, update)
+    setSaving(false)
+    onPosted(iso, parsedId)
+    onClose()
+  }
+
+  const inp = {
+    background: '#080808', border: '1px solid #1e1e1e',
+    color: '#f2ede4', padding: '8px 10px', fontSize: 12,
+    fontFamily: 'DM Sans, sans-serif', outline: 'none', width: '100%',
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,.82)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#070707', border: '1px solid #1e1e1e', borderTop: '2px solid #39ff88', padding: '32px 36px', width: 440, maxWidth: '94vw' }}>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.22em', textTransform: 'uppercase', color: '#39ff88', marginBottom: 4 }}>Mark as Posted</p>
+            <p style={{ fontSize: 14, color: '#f2ede4', fontWeight: 300, maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</p>
+            <p style={{ fontSize: 10, color: '#c9a96e', fontFamily: 'monospace', marginTop: 2 }}>{item.postId}</p>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div>
+            <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 6 }}>When was it posted?</p>
+            <input type="datetime-local" style={inp} value={dateVal} onChange={e => setDateVal(e.target.value)}
+              onFocus={e => (e.target.style.borderColor = '#39ff88')} onBlur={e => (e.target.style.borderColor = '#1e1e1e')} />
+          </div>
+          <div>
+            <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 6 }}>Video URL (optional)</p>
+            <input type="text" style={inp} value={urlVal} placeholder="https://youtu.be/… or instagram.com/reel/…"
+              onChange={e => setUrlVal(e.target.value)}
+              onFocus={e => (e.target.style.borderColor = '#39ff88')} onBlur={e => (e.target.style.borderColor = '#1e1e1e')} />
+            {parsedId && urlVal && (
+              <p style={{ fontSize: 9, color: '#39ff88', marginTop: 5 }}>Extracted ID: <span style={{ fontFamily: 'monospace' }}>{parsedId}</span></p>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
+          <button onClick={onClose} style={{ padding: '8px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={handleConfirm} disabled={saving} style={{ padding: '8px 22px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'rgba(57,255,136,.1)', border: '1px solid rgba(57,255,136,.4)', color: '#39ff88', cursor: saving ? 'wait' : 'pointer', fontWeight: 600 }}>
+            {saving ? 'Saving…' : '✓ Mark Posted'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Add Video Modal ────────────────────────────────────────────────────────
 
 type NextIds = { ig: string; tt: string; yt: string; lf: string }
@@ -1028,6 +1130,7 @@ export function PipelineClient({
   const [ytLinkItem,   setYtLinkItem  ] = useState<PipelineItem | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [bulkImportOpen, setBulkImportOpen] = useState(false)
+  const [markPostedItem, setMarkPostedItem] = useState<PipelineItem | null>(null)
 
   const { platform, scope, from, to, setFilters } = usePortalFilters()
   const pillarColors = usePillarColors(useMemo(() => items.map(i => i.pillar ?? ''), [items]))
@@ -1038,22 +1141,9 @@ export function PipelineClient({
 
   useEffect(() => { setPage(1) }, [platform, scope, from, to, filter, search, weekFilter])
 
-  // Phase counts
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { ALL: items.length, ACTIVE: 0 }
-    for (const item of items) {
-      c[item.status] = (c[item.status] ?? 0) + 1
-      if (ACTIVE_STATUSES.has(item.status)) c.ACTIVE++
-    }
-    return c
-  }, [items])
-
-  // Filtered + sorted rows
-  const rows = useMemo(() => {
+  // Platform-filtered base (used for both counts and rows)
+  const platFiltered = useMemo(() => {
     let out = items.slice()
-    if (filter === 'ACTIVE') out = out.filter(i => ACTIVE_STATUSES.has(i.status))
-    else if (filter !== 'ALL') out = out.filter(i => i.status === filter)
-    // Pipeline-specific platform filter — ytType distinguishes Short vs Long-form
     if (platform === 'lf') {
       out = out.filter(i => i.platform.includes('yt') && (i.ytType === 'Long-form' || i.ytType === 'LF'))
     } else if (platform === 'yt') {
@@ -1061,6 +1151,24 @@ export function PipelineClient({
     } else if (platform !== 'all') {
       out = out.filter(i => i.platform.includes(platform))
     }
+    return out
+  }, [items, platform])
+
+  // Phase counts — respect active platform pill
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { ALL: platFiltered.length, ACTIVE: 0 }
+    for (const item of platFiltered) {
+      c[item.status] = (c[item.status] ?? 0) + 1
+      if (ACTIVE_STATUSES.has(item.status)) c.ACTIVE++
+    }
+    return c
+  }, [platFiltered])
+
+  // Filtered + sorted rows (start from platFiltered — platform already applied)
+  const rows = useMemo(() => {
+    let out = platFiltered.slice()
+    if (filter === 'ACTIVE') out = out.filter(i => ACTIVE_STATUSES.has(i.status))
+    else if (filter !== 'ALL') out = out.filter(i => i.status === filter)
     // Global scope filter (by scheduledDate or postedAt or week derivation — use a helper date)
     if (scope !== 'all') {
       out = filterByScope(
@@ -1094,7 +1202,7 @@ export function PipelineClient({
       return sortDir === 'asc' ? cmp : -cmp
     })
     return out
-  }, [items, filter, platform, scope, from, to, search, weekFilter, sortKey, sortDir])
+  }, [platFiltered, filter, scope, from, to, search, weekFilter, sortKey, sortDir])
 
   const pagedRows = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [rows, page])
 
@@ -1187,6 +1295,18 @@ export function PipelineClient({
         />
       )}
 
+      {/* Mark as Posted modal */}
+      {markPostedItem && (
+        <MarkAsPostedModal
+          item={markPostedItem}
+          onClose={() => setMarkPostedItem(null)}
+          onPosted={(iso, _videoId) => {
+            handleUpdate(markPostedItem.id, { status: 'POSTED', postedAt: iso })
+            toast(`Marked as Posted · ${markPostedItem.title}`, 'success')
+          }}
+        />
+      )}
+
       {/* ── Action buttons ────────────────────────────────────────── */}
       <div className="flex justify-end gap-3 mb-5">
         <button
@@ -1271,13 +1391,23 @@ export function PipelineClient({
             >
               <span
                 className="font-jakarta font-light mb-1"
-                style={{ fontSize: 26, color: active ? '#c9a96e' : '#2a2a2a', lineHeight: 1 }}
+                style={{
+                  fontSize: 26,
+                  lineHeight: 1,
+                  color: active ? '#c9a96e' : 'rgba(255,255,255,0.52)',
+                  textShadow: active
+                    ? '0 0 14px rgba(201,169,110,0.45)'
+                    : '0 0 10px rgba(255,255,255,0.12)',
+                }}
               >
                 {count}
               </span>
               <span
                 className="text-[7px] font-medium tracking-[.14em] uppercase"
-                style={{ color: active ? '#c9a96e' : '#2a2a2a' }}
+                style={{
+                  color: active ? '#c9a96e' : 'rgba(255,255,255,0.3)',
+                  textShadow: active ? '0 0 8px rgba(201,169,110,0.3)' : 'none',
+                }}
               >
                 {pc.label}
               </span>
@@ -1323,7 +1453,8 @@ export function PipelineClient({
               >
                 <p style={{
                   fontSize: 8, fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase',
-                  color: isCurrent ? '#c9a96e' : isActive ? '#c9a96e' : '#444',
+                  color: isCurrent ? '#c9a96e' : isActive ? '#c9a96e' : 'rgba(255,255,255,0.32)',
+                  textShadow: (isCurrent || isActive) ? '0 0 8px rgba(201,169,110,0.3)' : '0 0 6px rgba(255,255,255,0.08)',
                   marginBottom: 6,
                 }}>
                   {wk}
@@ -1345,7 +1476,7 @@ export function PipelineClient({
                     <span style={{ fontSize: 8, color: '#1e1e1e' }}>—</span>
                   )}
                 </div>
-                <p style={{ fontSize: 7, color: '#444', marginTop: 4 }}>
+                <p style={{ fontSize: 7, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>
                   {weekItems.length > 0 ? `${weekItems.length} item${weekItems.length !== 1 ? 's' : ''}` : ''}
                 </p>
               </button>
@@ -1548,7 +1679,7 @@ export function PipelineClient({
                       <td className="px-4 py-4" style={{ maxWidth: 240 }}>
                         <span
                           className="text-[12px] font-light block overflow-hidden"
-                          style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 240 }}
+                          style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 240, textShadow: '0 0 6px rgba(255,255,255,0.06)' }}
                           title={item.title}
                         >
                           {item.title}
@@ -1623,6 +1754,20 @@ export function PipelineClient({
                           style={{ opacity: (isHovered || isEditing) ? 1 : 0, transition: 'opacity .15s' }}
                           onClick={e => e.stopPropagation()}
                         >
+                          {item.status !== 'POSTED' && item.status !== 'CANCELLED' && (
+                            <button
+                              onClick={e => { e.stopPropagation(); setMarkPostedItem(item) }}
+                              style={{
+                                fontSize: 9, padding: '2px 7px', cursor: 'pointer',
+                                color: '#39ff88', background: 'transparent',
+                                border: '1px solid rgba(57,255,136,.25)',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title="Mark as Posted"
+                            >
+                              ✓
+                            </button>
+                          )}
                           <button
                             onClick={e => { e.stopPropagation(); setEditingId(isEditing ? null : item.id) }}
                             style={{

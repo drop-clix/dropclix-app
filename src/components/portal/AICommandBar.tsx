@@ -2,6 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { Canvas, useFrame } from '@react-three/fiber'
+import { MeshDistortMaterial, Sphere, Torus } from '@react-three/drei'
+import { EffectComposer, Bloom } from '@react-three/postprocessing'
+import * as THREE from 'three'
 import {
   createPipelineItem,
   bulkUpdatePipelineStatus,
@@ -22,6 +26,79 @@ type Message = {
   response?: AIResponse
   status?: 'idle' | 'executing' | 'success' | 'error'
   errorMsg?: string
+}
+
+// ── R3F Orb Scene ──────────────────────────────────────────────────────────
+
+function OrbSphere({ active }: { active: boolean }) {
+  const meshRef = useRef<THREE.Mesh>(null!)
+  useFrame((_, delta) => {
+    if (!meshRef.current) return
+    meshRef.current.rotation.y += delta * (active ? 0.9 : 0.35)
+    meshRef.current.rotation.x += delta * (active ? 0.4 : 0.12)
+  })
+  return (
+    <Sphere ref={meshRef} args={[0.72, 64, 64]}>
+      <MeshDistortMaterial
+        color="#c9a96e"
+        emissive="#8b6b3e"
+        emissiveIntensity={active ? 0.6 : 0.2}
+        roughness={0.15}
+        metalness={0.4}
+        transparent
+        opacity={active ? 0.85 : 0.55}
+        distort={active ? 0.52 : 0.22}
+        speed={active ? 4 : 1.5}
+      />
+    </Sphere>
+  )
+}
+
+function OrbRings({ active }: { active: boolean }) {
+  const r1 = useRef<THREE.Mesh>(null!)
+  const r2 = useRef<THREE.Mesh>(null!)
+  const r3 = useRef<THREE.Mesh>(null!)
+  useFrame((_, delta) => {
+    const speed = active ? 2.2 : 0.7
+    r1.current.rotation.z += delta * speed
+    r2.current.rotation.z -= delta * speed * 0.7
+    r3.current.rotation.z += delta * speed * 0.5
+  })
+  const ringMat = (opacity: number) => (
+    <meshBasicMaterial color="#c9a96e" transparent opacity={opacity} side={THREE.DoubleSide} />
+  )
+  return (
+    <>
+      <Torus ref={r1} args={[0.98, 0.012, 12, 80]} rotation={[1.25, 0, 0]}>
+        {ringMat(active ? 0.55 : 0.22)}
+      </Torus>
+      <Torus ref={r2} args={[0.82, 0.009, 12, 80]} rotation={[0.8, 0.4, 0]}>
+        {ringMat(active ? 0.4 : 0.16)}
+      </Torus>
+      <Torus ref={r3} args={[0.66, 0.007, 12, 80]} rotation={[0.4, 0.8, 0]}>
+        {ringMat(active ? 0.28 : 0.1)}
+      </Torus>
+    </>
+  )
+}
+
+function OrbScene({ active }: { active: boolean }) {
+  return (
+    <>
+      <ambientLight intensity={0.4} />
+      <pointLight position={[2, 2, 2]} intensity={active ? 2.5 : 1} color="#c9a96e" />
+      <pointLight position={[-2, -1, -2]} intensity={0.3} color="#4cc9ff" />
+      <OrbSphere active={active} />
+      <OrbRings active={active} />
+      <EffectComposer>
+        <Bloom
+          luminanceThreshold={active ? 0.3 : 0.6}
+          luminanceSmoothing={0.4}
+          intensity={active ? 1.8 : 0.7}
+        />
+      </EffectComposer>
+    </>
+  )
 }
 
 // ── Sparkle icon ───────────────────────────────────────────────────────────
@@ -349,7 +426,7 @@ export function AICommandBar() {
           </span>
         )}
 
-        {/* Orb button */}
+        {/* R3F Orb button */}
         <button
           onClick={() => setOpen(v => !v)}
           aria-label="AI Command (⌘K)"
@@ -363,75 +440,18 @@ export function AICommandBar() {
             padding: 0,
             outline: 'none',
             WebkitTapHighlightColor: 'transparent',
+            borderRadius: '50%',
+            overflow: 'visible',
           }}
         >
-          {/* 3-D perspective layer for orbiting rings */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: -16,
-              pointerEvents: 'none',
-              perspective: '220px',
-              perspectiveOrigin: 'center center',
-            }}
+          <Canvas
+            camera={{ position: [0, 0, 2.6], fov: 38 }}
+            gl={{ antialias: true, alpha: true }}
+            style={{ width: 52, height: 52, display: 'block', borderRadius: '50%' }}
+            dpr={Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)}
           >
-            {/* Ring 1 — outermost, steepest tilt, slowest */}
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '50%',
-              border: '1px solid rgba(201,169,110,.22)',
-              animationName: 'ring1',
-              animationDuration: open ? '5s' : '11s',
-              animationTimingFunction: 'linear',
-              animationIterationCount: 'infinite',
-            }} />
-            {/* Ring 2 — mid, medium tilt, medium speed */}
-            <div style={{
-              position: 'absolute',
-              inset: 7,
-              borderRadius: '50%',
-              border: '1px solid rgba(201,169,110,.16)',
-              animationName: 'ring2',
-              animationDuration: open ? '3.5s' : '7.5s',
-              animationTimingFunction: 'linear',
-              animationIterationCount: 'infinite',
-            }} />
-            {/* Ring 3 — innermost, shallowest tilt, fastest, counter-clockwise */}
-            <div style={{
-              position: 'absolute',
-              inset: 13,
-              borderRadius: '50%',
-              border: '0.5px solid rgba(201,169,110,.1)',
-              animationName: 'ring3',
-              animationDuration: open ? '2.5s' : '5.5s',
-              animationTimingFunction: 'linear',
-              animationIterationCount: 'infinite',
-              animationDirection: 'reverse',
-            }} />
-          </div>
-
-          {/* Core orb */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            borderRadius: '50%',
-            background: open
-              ? 'radial-gradient(circle at 38% 32%, rgba(201,169,110,.22) 0%, rgba(201,169,110,.07) 55%, transparent 100%)'
-              : 'radial-gradient(circle at 38% 32%, rgba(201,169,110,.14) 0%, rgba(201,169,110,.04) 60%, transparent 100%)',
-            border: `1px solid rgba(201,169,110,${open ? '.58' : '.38'})`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#c9a96e',
-            transition: 'border-color .35s ease, background .35s ease',
-            animationName: open ? 'orbActive' : 'orbIdle',
-            animationDuration: open ? '2s' : '4s',
-            animationTimingFunction: 'ease-in-out',
-            animationIterationCount: 'infinite',
-          }}>
-            <SparkleIcon size={18} />
-          </div>
+            <OrbScene active={open} />
+          </Canvas>
         </button>
       </div>
 
@@ -636,26 +656,6 @@ export function AICommandBar() {
 
       {/* ── CSS animations ───────────────────────────────────────────── */}
       <style>{`
-        @keyframes ring1 {
-          from { transform: rotateX(72deg) rotateZ(0deg); }
-          to   { transform: rotateX(72deg) rotateZ(360deg); }
-        }
-        @keyframes ring2 {
-          from { transform: rotateX(46deg) rotateZ(120deg); }
-          to   { transform: rotateX(46deg) rotateZ(480deg); }
-        }
-        @keyframes ring3 {
-          from { transform: rotateX(22deg) rotateZ(240deg); }
-          to   { transform: rotateX(22deg) rotateZ(-120deg); }
-        }
-        @keyframes orbIdle {
-          0%, 100% { box-shadow: 0 0 10px rgba(201,169,110,.1), 0 2px 18px rgba(0,0,0,.55); }
-          50%       { box-shadow: 0 0 20px rgba(201,169,110,.2), 0 2px 18px rgba(0,0,0,.55); }
-        }
-        @keyframes orbActive {
-          0%, 100% { box-shadow: 0 0 22px rgba(201,169,110,.28), 0 0 8px rgba(201,169,110,.18), 0 2px 20px rgba(0,0,0,.6); }
-          50%       { box-shadow: 0 0 36px rgba(201,169,110,.45), 0 0 14px rgba(201,169,110,.3), 0 2px 20px rgba(0,0,0,.6); }
-        }
         @keyframes dotPulse {
           0%, 100% { opacity: .3; }
           50%       { opacity: 1; }

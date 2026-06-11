@@ -1,6 +1,10 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
+import {
+  ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid,
+  AreaChart, Area,
+} from 'recharts'
 import type { AdCampaign, AdCreative } from '@/app/(dashboard)/ads/page'
 import {
   updateAdCampaign, deleteAdCampaign,
@@ -457,6 +461,53 @@ export function AdsClient({
           value={liveTotalHires > 0 ? liveTotalHires.toString() : '—'}
           sub={liveTotalHires > 0 ? `$${(liveTotalSpend / liveTotalHires).toFixed(0)} per hire` : 'No hires tracked'} />
       </div>
+
+      {/* ── Charts ─────────────────────────────────────────────────── */}
+      {campaigns.length >= 2 && (() => {
+        const chartData = campaigns.map(c => ({
+          name: c.name.length > 18 ? c.name.slice(0, 16) + '…' : c.name,
+          spend: c.spend,
+          roas: c.roas,
+          ctr: c.ctr,
+          cpm: c.cpm,
+        }))
+        const tooltipStyle = { background: '#0d0d0d', border: '1px solid #1e1e1e', fontSize: 11, color: '#f2ede4' }
+        return (
+          <div className="grid gap-px mb-8" style={{ gridTemplateColumns: '1fr 1fr', background: '#141414' }}>
+            {/* Spend + ROAS */}
+            <div style={{ background: '#0a0a0a', padding: '24px 20px 16px' }}>
+              <p className="text-[8px] font-medium tracking-[.18em] uppercase mb-4" style={{ color: '#555' }}>Spend & ROAS by Campaign</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,.04)" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="spend" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v >= 1000 ? (v/1000).toFixed(0)+'K' : v}`} width={44} />
+                  <YAxis yAxisId="roas" orientation="right" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}x`} width={36} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [n === 'roas' ? `${Number(v).toFixed(2)}x` : `$${Number(v).toLocaleString()}`, n === 'roas' ? 'ROAS' : 'Spend']} />
+                  <Bar yAxisId="spend" dataKey="spend" fill="rgba(201,169,110,.35)" radius={[2,2,0,0]} />
+                  <Line yAxisId="roas" dataKey="roas" stroke="#c9a96e" strokeWidth={2} dot={{ r: 3, fill: '#c9a96e' }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* CTR + CPM */}
+            <div style={{ background: '#0a0a0a', padding: '24px 20px 16px' }}>
+              <p className="text-[8px] font-medium tracking-[.18em] uppercase mb-4" style={{ color: '#555' }}>CTR & CPM by Campaign</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,.04)" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="ctr" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={36} />
+                  <YAxis yAxisId="cpm" orientation="right" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(1)}`} width={36} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [n === 'ctr' ? `${Number(v).toFixed(2)}%` : `$${Number(v).toFixed(2)}`, n === 'ctr' ? 'CTR' : 'CPM']} />
+                  <Area yAxisId="cpm" dataKey="cpm" fill="rgba(76,201,255,.06)" stroke="rgba(76,201,255,.3)" strokeWidth={1} />
+                  <Line yAxisId="ctr" dataKey="ctr" stroke="#4cc9ff" strokeWidth={2} dot={{ r: 3, fill: '#4cc9ff' }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Status toggle ──────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-4">

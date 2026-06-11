@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import type { CalendarEvent } from '@/app/(dashboard)/calendar/page'
 import { updateCalendarEvent, deleteCalendarEvent } from '@/app/(dashboard)/edit-actions'
 import { EmptyState } from '@/components/portal/EmptyState'
+import { usePillarColors } from '@/hooks/usePillarColors'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -85,17 +86,20 @@ function PlatBadge({ platform, small = false }: { platform: string; small?: bool
 function EventPill({
   ev,
   isDragging,
+  pillarColor,
   onClick,
   onDragStart,
   onTouchStart,
 }: {
   ev: CalendarEvent
   isDragging: boolean
+  pillarColor: string
   onClick: () => void
   onDragStart: (e: React.DragEvent) => void
   onTouchStart: (e: React.TouchEvent) => void
 }) {
   const cfg = PLAT[ev.platform] ?? PLAT.ig
+  const leftBorderColor = pillarColor !== '#2a2a2a' ? pillarColor : cfg.color
   return (
     <button
       draggable
@@ -107,7 +111,7 @@ function EventPill({
         display: 'block', width: '100%', textAlign: 'left', padding: '2px 5px', marginBottom: 2,
         background: cfg.bg, color: cfg.color, fontSize: 9, overflow: 'hidden',
         textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'grab',
-        fontFamily: 'DM Sans, sans-serif', borderLeft: `2px solid ${cfg.color}`,
+        fontFamily: 'DM Sans, sans-serif', borderLeft: `2px solid ${leftBorderColor}`,
         opacity: isDragging ? 0.35 : 1,
         transition: 'opacity .15s',
         userSelect: 'none',
@@ -304,6 +308,8 @@ export function CalendarClient({
   const searchParams = useSearchParams()
   const linkedPost = searchParams.get('post')
   const [events, setEvents] = useState<CalendarEvent[]>(initialEvents)
+  const pillarColors = usePillarColors(useMemo(() => events.map(e => e.pillar ?? ''), [events]))
+  const [slideOverEv, setSlideOverEv] = useState<CalendarEvent | null>(null)
   const today = todayISO()
   const lastEvent = events[events.length - 1]
   const initParts = (lastEvent?.eventDate ?? today).split('-').map(Number)
@@ -525,6 +531,85 @@ export function CalendarClient({
   return (
     <div>
 
+      {/* ── Event slide-over ─────────────────────────────────────── */}
+      {slideOverEv && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 8000, background: 'rgba(0,0,0,.45)' }}
+            onClick={() => setSlideOverEv(null)}
+          />
+          <div style={{
+            position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 8001,
+            width: 380, maxWidth: '90vw',
+            background: '#070707', borderLeft: '1px solid #1a1a1a',
+            borderTop: `3px solid ${(PLAT[slideOverEv.platform] ?? PLAT.ig).color}`,
+            display: 'flex', flexDirection: 'column',
+            boxShadow: '-24px 0 60px rgba(0,0,0,.7)',
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #141414', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.18em', textTransform: 'uppercase', color: (PLAT[slideOverEv.platform] ?? PLAT.ig).color, marginBottom: 6 }}>
+                    {isoToDisplay(slideOverEv.eventDate)}
+                  </p>
+                  <p style={{ fontSize: 15, color: '#f2ede4', fontWeight: 300, lineHeight: 1.3 }}>
+                    {slideOverEv.title}
+                  </p>
+                  {slideOverEv.postId && (
+                    <p style={{ fontSize: 10, color: '#c9a96e', fontFamily: 'monospace', marginTop: 4 }}>{slideOverEv.postId}</p>
+                  )}
+                </div>
+                <button onClick={() => setSlideOverEv(null)} style={{ fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                {(() => { const cfg = PLAT[slideOverEv.platform] ?? PLAT.ig; return <span key="plat" style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}` }}>{cfg.label}</span> })()}
+                {slideOverEv.pipelineStatus && (() => { const c = PIPELINE_STATUS_COLOR[slideOverEv.pipelineStatus] ?? '#555'; return <span key="status" style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: c, background: `${c}18`, border: `1px solid ${c}40` }}>{slideOverEv.pipelineStatus}</span> })()}
+                {slideOverEv.pillar && (() => { const pc = pillarColors.get(slideOverEv.pillar!) ?? '#555'; return <span key="pillar" style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: pc, background: `${pc}18`, border: `1px solid ${pc}40` }}>{slideOverEv.pillar}</span> })()}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+              <div style={{ display: 'grid', gap: 14 }}>
+                {([
+                  ['Post Time',      slideOverEv.postTime !== '—' ? slideOverEv.postTime : null],
+                  ['Content Type',   slideOverEv.contentType !== '—' ? slideOverEv.contentType : null],
+                  ['Caption Status', slideOverEv.captionStatus !== '—' ? slideOverEv.captionStatus : null],
+                  ['CTA',            slideOverEv.cta !== '—' ? slideOverEv.cta : null],
+                ] as [string, string|null][]).filter(([, v]) => v != null).map(([label, val]) => (
+                  <div key={label}>
+                    <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 3 }}>{label}</p>
+                    <p style={{ fontSize: 12, color: '#ccc', fontWeight: 300 }}>{val}</p>
+                  </div>
+                ))}
+              </div>
+
+              {slideOverEv.pipelineStatus === 'POSTED' && (
+                <div style={{ marginTop: 20, padding: '14px 16px', background: 'rgba(57,255,136,.04)', border: '1px solid rgba(57,255,136,.15)', borderLeft: '3px solid #39ff88' }}>
+                  <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#39ff88', marginBottom: 6 }}>Posted</p>
+                  <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>Open Analytics tab and search <span style={{ color: '#c9a96e', fontFamily: 'monospace' }}>{slideOverEv.postId}</span> to see metrics.</p>
+                </div>
+              )}
+
+              {slideOverEv.pipelineStatus && ['SCRIPTED','PLANNED','FILMING','REVIEWING','EDITING','SCHEDULED'].includes(slideOverEv.pipelineStatus) && (
+                <div style={{ marginTop: 20, padding: '14px 16px', background: 'rgba(76,201,255,.04)', border: '1px solid rgba(76,201,255,.15)', borderLeft: '3px solid #4cc9ff' }}>
+                  <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#4cc9ff', marginBottom: 6 }}>In Production</p>
+                  <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>Open Pipeline tab to update status or edit details.</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #141414', flexShrink: 0 }}>
+              <button
+                onClick={() => { setSlideOverEv(null); setSelDate(slideOverEv.eventDate); setSelEvIdx(0); setEditingId(slideOverEv.id) }}
+                style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', padding: '7px 16px', background: 'rgba(201,169,110,.08)', border: '1px solid rgba(201,169,110,.3)', color: '#c9a96e', cursor: 'pointer', width: '100%' }}
+              >
+                Edit Event
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Touch drag ghost ─────────────────────────────────────── */}
       {touchGhost && (
         <div
@@ -653,7 +738,8 @@ export function CalendarClient({
                         key={ev.id}
                         ev={ev}
                         isDragging={dragEventId === ev.id}
-                        onClick={() => { setSelDate(cell.iso); setSelEvIdx(i); setEditingId(null) }}
+                        pillarColor={pillarColors.get(ev.pillar ?? '') ?? '#2a2a2a'}
+                        onClick={() => { setSelDate(cell.iso); setSelEvIdx(i); setEditingId(null); setSlideOverEv(ev) }}
                         onDragStart={e => onPillDragStart(e, ev)}
                         onTouchStart={e => onPillTouchStart(e, ev)}
                       />

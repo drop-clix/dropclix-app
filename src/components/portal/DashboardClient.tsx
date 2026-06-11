@@ -57,6 +57,17 @@ export type RawDashGoal = {
   period: string
 }
 
+export type RawDashCampaign = {
+  id: string
+  name: string
+  date: string
+  spend: number
+  roas: number
+  ctr: number
+  cpm: number
+  impressions: number
+}
+
 type WindowKey = 'w24' | 'w3' | 'w7' | 'eom'
 type MetricSet = {
   views: number
@@ -297,12 +308,14 @@ export function DashboardClient({
   rawPipeline,
   rawCalendar,
   rawGoals,
+  rawCampaigns = [],
   clientName,
 }: {
   rawPosts: RawDashPost[]
   rawPipeline: RawDashPipeline[]
   rawCalendar: RawDashCalendar[]
   rawGoals: RawDashGoal[]
+  rawCampaigns?: RawDashCampaign[]
   clientName: string
 }) {
   const router = useRouter()
@@ -605,6 +618,39 @@ export function DashboardClient({
           ))}
         </div>
       </section>
+
+      {rawCampaigns.length > 0 && (() => {
+        const totalSpend30 = rawCampaigns.reduce((s, c) => s + +c.spend, 0)
+        const avgRoas = rawCampaigns.filter(c => +c.roas > 0)
+        const topRoas = avgRoas.length ? Math.max(...avgRoas.map(c => +c.roas)) : 0
+        const topCtr  = rawCampaigns.filter(c => +c.ctr > 0)
+        const maxCtr  = topCtr.length ? Math.max(...topCtr.map(c => +c.ctr)) : 0
+        const avgCpm  = rawCampaigns.filter(c => +c.cpm > 0)
+        const cpmAvg  = avgCpm.length ? avgCpm.reduce((s, c) => s + +c.cpm, 0) / avgCpm.length : 0
+        const fmtMon  = (n: number) => n >= 1000 ? `$${(n/1000).toFixed(1)}K` : `$${n.toFixed(0)}`
+        return (
+          <section className="mb-8">
+            <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3" style={{ color: '#c9a96e' }}>
+              <span style={{ width: 16, height: 1, background: '#c9a96e' }} />
+              Paid Media · 30 Days
+            </p>
+            <div className="grid gap-px" style={{ gridTemplateColumns: 'repeat(4,1fr)', background: '#141414' }}>
+              {[
+                { label: 'Total Spend',   value: fmtMon(totalSpend30), sub: `${rawCampaigns.length} campaigns` },
+                { label: 'Top ROAS',      value: topRoas > 0 ? `${topRoas.toFixed(1)}x` : '—', sub: 'Best campaign' },
+                { label: 'Top CTR',       value: maxCtr > 0 ? `${maxCtr.toFixed(2)}%` : '—', sub: 'Click-through rate' },
+                { label: 'Avg CPM',       value: cpmAvg > 0 ? fmtMon(cpmAvg) : '—', sub: 'Cost per 1K impressions' },
+              ].map(({ label, value, sub }) => (
+                <div key={label} style={{ background: '#0a0a0a', padding: '22px 20px' }}>
+                  <p className="text-[8px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#333' }}>{label}</p>
+                  <p className="font-jakarta font-light" style={{ fontSize: 'clamp(22px,2.4vw,34px)', color: '#f2ede4', lineHeight: 1 }}>{value}</p>
+                  <p className="text-[10px] mt-2" style={{ color: '#444' }}>{sub}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )
+      })()}
 
       <section className="grid gap-6 mb-8 dashboard-snapshots" style={{ gridTemplateColumns: 'minmax(0, 1.35fr) minmax(320px, .65fr)' }}>
         <div style={{ background: '#0a0a0a', border: '1px solid #171717', borderRadius: 6, padding: 24 }}>
