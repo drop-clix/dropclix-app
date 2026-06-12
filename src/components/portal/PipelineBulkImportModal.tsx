@@ -211,7 +211,7 @@ export function PipelineBulkImportModal({
                 {step === 'upload' ? 'Import Video Ideas' : 'Preview & Confirm'}
               </p>
             </div>
-            <button onClick={onClose} style={{ fontSize: 20, color: '#444', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            <button onClick={onClose} style={{ fontSize: 20, color: '#666', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
           </div>
         </div>
 
@@ -226,7 +226,7 @@ export function PipelineBulkImportModal({
                 borderLeft: '3px solid rgba(201,169,110,.35)',
                 padding: '14px 16px', marginBottom: 20,
               }}>
-                <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#444', marginBottom: 8 }}>
+                <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#666', marginBottom: 8 }}>
                   CSV Format · 4 columns
                 </p>
                 <p style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', marginBottom: 10 }}>
@@ -423,7 +423,7 @@ export function PipelineBulkImportModal({
               style={{
                 fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
                 padding: '8px 16px', background: 'transparent',
-                border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer',
+                border: '1px solid #1e1e1e', color: '#666', cursor: 'pointer',
               }}
             >
               Cancel

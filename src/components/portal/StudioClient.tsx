@@ -186,7 +186,7 @@ function ScriptCard({ item }: { item: StudioItem }) {
               {item.title}
             </p>
             {item.pillar && (
-              <p style={{ fontSize: 9, color: '#444', margin: '4px 0 0', letterSpacing: '.08em' }}>{item.pillar}</p>
+              <p style={{ fontSize: 9, color: '#666', margin: '4px 0 0', letterSpacing: '.08em' }}>{item.pillar}</p>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -341,7 +341,7 @@ function NewPostForm({ nextPostId, onSuccess }: { nextPostId: string; onSuccess:
         borderLeft: '3px solid #39ff88',
       }}>
         <p style={{ fontSize: 14, color: '#39ff88', marginBottom: 6 }}>Post created</p>
-        <p style={{ fontSize: 11, color: '#444' }}>{postId} synced to pipeline and calendar.</p>
+        <p style={{ fontSize: 11, color: '#666' }}>{postId} synced to pipeline and calendar.</p>
       </div>
     )
   }
@@ -749,7 +749,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
               padding: '6px 14px', fontSize: 9,
               letterSpacing: '.12em', textTransform: 'uppercase',
               background: 'transparent', border: '1px solid #1e1e1e',
-              color: '#444', cursor: 'pointer', borderRadius: 3,
+              color: '#666', cursor: 'pointer', borderRadius: 3,
             }}
           >
             Download Template
@@ -773,7 +773,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
           }}
         >
           <p style={{ fontSize: 13, color: '#555', marginBottom: 8 }}>Drop CSV file here</p>
-          <p style={{ fontSize: 10, color: '#444' }}>or click to browse</p>
+          <p style={{ fontSize: 10, color: '#666' }}>or click to browse</p>
           <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) handleFileEvent(f) }} />
         </div>
@@ -784,10 +784,10 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
           <p style={{ fontSize: 8, color: '#555', letterSpacing: '.14em', textTransform: 'uppercase', marginBottom: 6 }}>
             Standard column format (pipe-separated platform)
           </p>
-          <p style={{ fontSize: 9, color: '#444', fontFamily: 'monospace', lineHeight: 1.9, wordBreak: 'break-all' }}>
+          <p style={{ fontSize: 9, color: '#666', fontFamily: 'monospace', lineHeight: 1.9, wordBreak: 'break-all' }}>
             post_id, title, platform (ig|tt|yt), date, pillar, hook_type, format, decision*, views_24h, likes_24h, comments_24h, shares_24h, saves_24h, watch_pct_24h, skip_rate_24h, followers_24h, views_3d … watch_pct_3d, views_7d … watch_pct_7d, eom_views … eom_followers
           </p>
-          <p style={{ fontSize: 8, color: '#444', marginTop: 6 }}>* decision column is always ignored — auto-calculated from ER%</p>
+          <p style={{ fontSize: 8, color: '#666', marginTop: 6 }}>* decision column is always ignored — auto-calculated from ER%</p>
         </div>
       </div>
     )
@@ -797,7 +797,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
   if (stage === 'checking') {
     return (
       <div style={{ padding: '48px 32px', textAlign: 'center' }}>
-        <p style={{ fontSize: 12, color: '#444' }}>Checking for duplicates…</p>
+        <p style={{ fontSize: 12, color: '#666' }}>Checking for duplicates…</p>
       </div>
     )
   }
@@ -876,7 +876,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
                     {pr.platforms.map(p => <PlatBadge key={p} platform={p} />)}
                   </div>
                   <span style={{ fontSize: 9, color: '#555', flexShrink: 0 }}>{pr.date}</span>
-                  {pr.pillar && <span style={{ fontSize: 9, color: '#444', flexShrink: 0 }}>{pr.pillar}</span>}
+                  {pr.pillar && <span style={{ fontSize: 9, color: '#666', flexShrink: 0 }}>{pr.pillar}</span>}
                   {pr.format && <span style={{ fontSize: 9, color: '#555', flexShrink: 0 }}>{pr.format}</span>}
 
                   {/* Window presence badges */}
@@ -980,7 +980,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
   if (stage === 'importing') {
     return (
       <div style={{ padding: '48px 32px', textAlign: 'center' }}>
-        <p style={{ fontSize: 12, color: '#444' }}>Importing…</p>
+        <p style={{ fontSize: 12, color: '#666' }}>Importing…</p>
       </div>
     )
   }
@@ -1006,7 +1006,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
         ].map(({ label, value, color }) => (
           <div key={label} style={{ textAlign: 'center' }}>
             <p style={{ fontSize: 22, color, fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 300, margin: 0 }}>{value}</p>
-            <p style={{ fontSize: 8, color: '#444', letterSpacing: '.14em', textTransform: 'uppercase', margin: '3px 0 0' }}>{label}</p>
+            <p style={{ fontSize: 8, color: '#666', letterSpacing: '.14em', textTransform: 'uppercase', margin: '3px 0 0' }}>{label}</p>
           </div>
         ))}
       </div>

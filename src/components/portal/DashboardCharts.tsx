@@ -104,7 +104,7 @@ function ChartCard({
 // ── Chart 1: Follower Growth by Month ─────────────────────────────────────
 
 function FollowerGrowthChart({ data }: { data: MonthlyPoint[] }) {
-  if (!data.length) return <p style={{ fontSize: 11, color: '#444', textAlign: 'center', paddingTop: 60 }}>No monthly data</p>
+  if (!data.length) return <p style={{ fontSize: 11, color: '#666', textAlign: 'center', paddingTop: 60 }}>No monthly data</p>
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
@@ -129,7 +129,7 @@ function FollowerGrowthChart({ data }: { data: MonthlyPoint[] }) {
 // ── Chart 2: Monthly Views ─────────────────────────────────────────────────
 
 function MonthlyViewsChart({ data }: { data: MonthlyPoint[] }) {
-  if (!data.length) return <p style={{ fontSize: 11, color: '#444', textAlign: 'center', paddingTop: 60 }}>No monthly data</p>
+  if (!data.length) return <p style={{ fontSize: 11, color: '#666', textAlign: 'center', paddingTop: 60 }}>No monthly data</p>
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
@@ -158,7 +158,7 @@ function MonthlyViewsChart({ data }: { data: MonthlyPoint[] }) {
 // ── Chart 3: Posts Volume + Followers Gained (dual axis) ──────────────────
 
 function PostsVolumeChart({ data }: { data: MonthlyPoint[] }) {
-  if (!data.length) return <p style={{ fontSize: 11, color: '#444', textAlign: 'center', paddingTop: 60 }}>No monthly data</p>
+  if (!data.length) return <p style={{ fontSize: 11, color: '#666', textAlign: 'center', paddingTop: 60 }}>No monthly data</p>
   return (
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
@@ -167,7 +167,7 @@ function PostsVolumeChart({ data }: { data: MonthlyPoint[] }) {
         <YAxis
           yAxisId="posts"
           tick={{ fill: TICK, fontSize: 9 }} tickLine={false} axisLine={false}
-          label={{ value: 'Posts', angle: -90, position: 'insideLeft', fill: '#252525', fontSize: 8 }}
+          label={{ value: 'Posts', angle: -90, position: 'insideLeft', fill: '#555', fontSize: 8 }}
         />
         <YAxis
           yAxisId="followers"
@@ -200,7 +200,7 @@ function PostsVolumeChart({ data }: { data: MonthlyPoint[] }) {
 // ── Chart 4: Avg ER% by Pillar (horizontal bar) ───────────────────────────
 
 function PillarERChart({ data }: { data: PillarPoint[] }) {
-  if (!data.length) return <p style={{ fontSize: 11, color: '#444', textAlign: 'center', paddingTop: 60 }}>No pillar data</p>
+  if (!data.length) return <p style={{ fontSize: 11, color: '#666', textAlign: 'center', paddingTop: 60 }}>No pillar data</p>
   const sorted = [...data].sort((a, b) => b.avgER - a.avgER)
   const chartH = Math.max(160, sorted.length * 36)
   return (

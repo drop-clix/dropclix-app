@@ -101,7 +101,7 @@ export function AISuggestionsModal({ isOpen, onClose, title, subtitle, suggestio
         {/* Body */}
         <div style={{ padding: '22px 26px 28px' }}>
           {subtitle && (
-            <p style={{ color: '#444', fontSize: 11, marginBottom: 20, lineHeight: 1.5 }}>{subtitle}</p>
+            <p style={{ color: '#666', fontSize: 11, marginBottom: 20, lineHeight: 1.5 }}>{subtitle}</p>
           )}
 
           {loading ? (

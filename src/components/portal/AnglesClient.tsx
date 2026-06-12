@@ -248,7 +248,7 @@ function PostTable({
                       {fmtViews(p.views)}
                     </td>
                     <td className="px-5 py-4 text-[9px] font-medium tracking-[.08em] uppercase"
-                        style={{ color: DECISION_COLOR[p.decision] ?? '#444' }}>
+                        style={{ color: DECISION_COLOR[p.decision] ?? '#666' }}>
                       {p.decision || '—'}
                     </td>
                   </tr>

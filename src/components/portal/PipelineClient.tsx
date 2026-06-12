@@ -27,7 +27,7 @@ const STATUS_CFG: Record<string, { color: string; bg: string; border: string }> 
   REVIEWING: { color: '#ff3b5f', bg: 'rgba(255,59,95,.10)',   border: 'rgba(255,59,95,.30)'   },
   SCHEDULED: { color: '#4cc9ff', bg: 'rgba(76,201,255,.10)',  border: 'rgba(76,201,255,.30)'  },
   POSTED:    { color: '#39ff88', bg: 'rgba(57,255,136,.10)',  border: 'rgba(57,255,136,.30)'  },
-  CANCELLED: { color: '#444',    bg: 'rgba(100,100,100,.08)', border: '#2a2a2a'                },
+  CANCELLED: { color: '#666',    bg: 'rgba(100,100,100,.08)', border: '#2a2a2a'                },
 }
 
 const PRIORITY_CFG: Record<number, { stripe: string; row: string }> = {
@@ -603,7 +603,7 @@ function ItemEditPanel({
             onClick={onClose}
             style={{
               fontSize: 9, padding: '3px 10px', cursor: 'pointer',
-              color: '#444', background: 'transparent', border: '1px solid #1e1e1e',
+              color: '#666', background: 'transparent', border: '1px solid #1e1e1e',
             }}
           >
             Close
@@ -1041,7 +1041,7 @@ function MarkAsPostedModal({
         </div>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
-          <button onClick={onClose} style={{ padding: '8px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer' }}>
+          <button onClick={onClose} style={{ padding: '8px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#666', cursor: 'pointer' }}>
             Cancel
           </button>
           <button onClick={handleConfirm} disabled={saving} style={{ padding: '8px 22px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'rgba(57,255,136,.1)', border: '1px solid rgba(57,255,136,.4)', color: '#39ff88', cursor: saving ? 'wait' : 'pointer', fontWeight: 600 }}>
@@ -1087,7 +1087,7 @@ function DeleteConfirmModal({
           <p style={{ fontSize: 16, color: '#f2ede4', fontWeight: 300, lineHeight: 1.4 }}>
             Delete {count} video{count !== 1 ? 's' : ''}?
           </p>
-          <p style={{ fontSize: 11, color: '#444', marginTop: 6, fontWeight: 300 }}>
+          <p style={{ fontSize: 11, color: '#666', marginTop: 6, fontWeight: 300 }}>
             This cannot be undone. IDs are never renumbered — gaps are permanent.
           </p>
         </div>
@@ -1097,7 +1097,7 @@ function DeleteConfirmModal({
             disabled={deleting}
             style={{
               padding: '8px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
-              background: 'transparent', border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer',
+              background: 'transparent', border: '1px solid #1e1e1e', color: '#666', cursor: 'pointer',
             }}
           >
             Cancel
@@ -1322,7 +1322,7 @@ function AddVideoModal({
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
           <button onClick={onClose} style={{
             padding: '9px 20px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
-            background: 'transparent', border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer',
+            background: 'transparent', border: '1px solid #1e1e1e', color: '#666', cursor: 'pointer',
           }}>
             Cancel
           </button>
@@ -1900,7 +1900,7 @@ export function PipelineClient({
               </p>
             )}
             {item.notes && (
-              <p style={{ fontSize: 9, color: '#444', fontStyle: 'italic' }}>
+              <p style={{ fontSize: 9, color: '#666', fontStyle: 'italic' }}>
                 {String(item.notes).slice(0, 80)}{String(item.notes).length > 80 ? '…' : ''}
               </p>
             )}
@@ -1981,7 +1981,7 @@ export function PipelineClient({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={colCount} className="text-center py-16" style={{ color: '#444' }}>
+                <td colSpan={colCount} className="text-center py-16" style={{ color: '#666' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 20, opacity: 0.4 }}>◇</span>
                     <p style={{ fontSize: 12, fontWeight: 300, color: '#555' }}>
@@ -2282,7 +2282,7 @@ export function PipelineClient({
         ].map(({ label, color }) => (
           <div key={label} className="flex items-center gap-1.5">
             <span style={{ width: 10, height: 10, background: color, opacity: .7, display: 'block', flexShrink: 0 }} />
-            <span className="text-[9px] tracking-[.12em] uppercase" style={{ color: '#444' }}>
+            <span className="text-[9px] tracking-[.12em] uppercase" style={{ color: '#666' }}>
               {label}
             </span>
           </div>

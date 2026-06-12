@@ -510,7 +510,7 @@ export function DashboardClient({
         <h1 className="font-jakarta font-light" style={{ fontSize: 'clamp(28px,3vw,44px)', color: '#f2ede4', lineHeight: 1.06 }}>
           Dashboard
         </h1>
-        <p className="text-[12px] font-light mt-1" style={{ color: '#444' }}>Welcome back, {clientName}.</p>
+        <p className="text-[12px] font-light mt-1" style={{ color: '#666' }}>Welcome back, {clientName}.</p>
       </div>
 
       <div className="mb-8 flex items-center gap-3 flex-wrap" style={{ minHeight: 52, borderBottom: '1px solid #141414', paddingBottom: 18 }}>
@@ -580,19 +580,19 @@ export function DashboardClient({
           <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(30px,3vw,48px)', lineHeight: 1 }}>
             {kpiModes.reach ? pct(kpis.watch) : fmt(kpis.totalReach)}
           </p>
-          <p className="text-[10px] mt-3" style={{ color: '#444' }}>{activeWin.toUpperCase()} window</p>
+          <p className="text-[10px] mt-3" style={{ color: '#666' }}>{activeWin.toUpperCase()} window</p>
         </CardShell>
         <CardShell onClick={() => setKpiModes(m => ({ ...m, er: m.er ? 0 : 1 }))}>
           <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#555' }}>{kpiModes.er ? 'Top Video' : 'Avg ER %'}</p>
           <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: kpiModes.er ? 'clamp(18px,1.6vw,25px)' : 'clamp(30px,3vw,48px)', lineHeight: 1.1 }}>
             {kpiModes.er ? (kpis.top?.title ?? '-') : pct(kpis.er)}
           </p>
-          <p className="text-[10px] mt-3" style={{ color: '#444' }}>{kpiModes.er ? `${pct(kpis.top?.er ?? 0)} ER` : `${posts.length} posts in view`}</p>
+          <p className="text-[10px] mt-3" style={{ color: '#666' }}>{kpiModes.er ? `${pct(kpis.top?.er ?? 0)} ER` : `${posts.length} posts in view`}</p>
         </CardShell>
         <CardShell>
           <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#555' }}>Posts</p>
           <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(30px,3vw,48px)', lineHeight: 1 }}>{fmt(kpis.posts)}</p>
-          <p className="text-[10px] mt-3" style={{ color: '#444' }}>Published this period</p>
+          <p className="text-[10px] mt-3" style={{ color: '#666' }}>Published this period</p>
         </CardShell>
       </section>
 
@@ -613,7 +613,7 @@ export function DashboardClient({
                 <SparkIcon />
               </div>
               <p className="font-jakarta font-light" style={{ color: '#f2ede4', fontSize: 'clamp(26px,2.8vw,42px)', lineHeight: 1 }}>{value}</p>
-              <p className="text-[10px] mt-3" style={{ color: '#444' }}>Last {projections.sample} posts average</p>
+              <p className="text-[10px] mt-3" style={{ color: '#666' }}>Last {projections.sample} posts average</p>
             </CardShell>
           ))}
         </div>
@@ -644,7 +644,7 @@ export function DashboardClient({
                 <div key={label} style={{ background: '#0a0a0a', padding: '22px 20px' }}>
                   <p className="text-[8px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#555' }}>{label}</p>
                   <p className="font-jakarta font-light" style={{ fontSize: 'clamp(22px,2.4vw,34px)', color: '#f2ede4', lineHeight: 1 }}>{value}</p>
-                  <p className="text-[10px] mt-2" style={{ color: '#444' }}>{sub}</p>
+                  <p className="text-[10px] mt-2" style={{ color: '#666' }}>{sub}</p>
                 </div>
               ))}
             </div>
@@ -706,7 +706,7 @@ export function DashboardClient({
         <div style={{ background: '#0a0a0a', border: '1px solid #171717', borderRadius: 6, padding: 24 }}>
           <div className="flex items-center justify-between mb-5">
             <p className="text-[9px] font-medium tracking-[.22em] uppercase" style={{ color: '#c9a96e' }}>Pipeline Snapshot</p>
-            <span className="text-[10px]" style={{ color: '#444' }}>{filteredPipeline.length} items</span>
+            <span className="text-[10px]" style={{ color: '#666' }}>{filteredPipeline.length} items</span>
           </div>
           <div style={{ maxHeight: 384, overflowY: 'auto', paddingRight: 4 }}>
             {filteredPipeline.slice(0, 18).map(item => (
@@ -765,7 +765,7 @@ export function DashboardClient({
             View Insights
           </button>
         </div>
-        <p className="text-[11px]" style={{ color: '#444', lineHeight: 1.5 }}>
+        <p className="text-[11px]" style={{ color: '#666', lineHeight: 1.5 }}>
           AI-powered analysis of your top content pillars, hook performance, and engagement trends.
           Click a projection card above to drill into metric-specific insights.
         </p>
