@@ -77,10 +77,11 @@ async function syncToPipeline(
 
 const VALID_STATUSES = new Set([
   'SCRIPTED','PLANNED','FILMING','EDITING','REVIEWING','SCHEDULED','POSTED','CANCELLED',
+  'PENDING_APPROVAL','APPROVED','CHANGES_REQUESTED',
 ])
 const VALID_PIPE = new Set([
   'status','priority','platform','pillar','week','script_content','title','notes',
-  'posted_at','scheduled_date','video_url',
+  'posted_at','scheduled_date','video_url','drive_file_id','approval_comment',
 ])
 // Fields that need to be mirrored in the matching calendar event
 const PIPE_SYNC_FIELDS = new Set(['title', 'platform', 'posted_at', 'scheduled_date'])
@@ -345,6 +346,7 @@ export async function updatePipelineByPostId(
     update.priority = {
       REVIEWING: 1, FILMING: 2, SCRIPTED: 3, PLANNED: 4,
       EDITING: 5, SCHEDULED: 5, POSTED: 6, CANCELLED: 6,
+      PENDING_APPROVAL: 1, APPROVED: 2, CHANGES_REQUESTED: 1,
     }[fields.status] ?? 4
   }
   if (fields.pillar !== undefined)    update.pillar    = fields.pillar
@@ -649,4 +651,166 @@ export async function linkYouTubeVideo(
   revalidatePath('/pipeline')
   revalidatePath('/analytics')
   return { ytId }
+}
+
+// ── Content Approval Workflow ────────────────────────────────────────────────
+
+export async function submitApproval(
+  itemId: string,
+  action: 'approve' | 'request_changes',
+  comment?: string,
+): Promise<{ error?: string }> {
+  const c = await getCtx()
+  if (!c) return { error: 'Not authenticated' }
+
+  const newStatus = action === 'approve' ? 'APPROVED' : 'CHANGES_REQUESTED'
+  const priority = action === 'approve' ? 2 : 1
+
+  const update: Record<string, unknown> = {
+    status: newStatus,
+    priority,
+  }
+  if (comment?.trim()) update.approval_comment = comment.trim()
+
+  const filter: Record<string, unknown> = { id: itemId }
+  if (c.role !== 'admin' && c.cid) filter.client_id = c.cid
+
+  const { error } = await c.admin.from('pipeline_items').update(update).match(filter)
+  if (error) return { error: error.message }
+
+  revalidatePath('/pipeline')
+  revalidatePath('/')
+  return {}
+}
+
+export async function deleteDriveFile(
+  driveFileId: string,
+  clientId: string,
+): Promise<{ error?: string }> {
+  const c = await getCtx()
+  if (!c) return { error: 'Not authenticated' }
+
+  const { data: conn } = await c.admin
+    .from('platform_connections')
+    .select('access_token, refresh_token')
+    .eq('client_id', clientId)
+    .eq('platform', 'google_drive')
+    .single()
+
+  if (!conn) return { error: 'No Google Drive connection found' }
+
+  try {
+    const token = (conn as unknown as { access_token: string }).access_token
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok && res.status !== 404) {
+      return { error: `Drive API error: ${res.status}` }
+    }
+  } catch {
+    return { error: 'Failed to connect to Google Drive API' }
+  }
+
+  return {}
+}
+
+// ── Client Notes ─────────────────────────────────────────────────────────────
+
+export async function getClientNotes(clientId?: string): Promise<{
+  content?: string
+  shared?: boolean
+  error?: string
+}> {
+  const c = await getCtx()
+  if (!c) return { error: 'Not authenticated' }
+  const cid = clientId ?? c.cid
+  if (!cid) return { error: 'No client' }
+
+  const { data } = await c.admin
+    .from('client_notes')
+    .select('content, shared_with_client')
+    .eq('client_id', cid)
+    .single()
+
+  if (!data) return { content: '', shared: false }
+  const row = data as unknown as { content: string; shared_with_client: boolean }
+  return { content: row.content, shared: row.shared_with_client }
+}
+
+export async function saveClientNotes(
+  content: string,
+  shared: boolean,
+  clientId?: string,
+): Promise<{ error?: string }> {
+  const c = await getCtx()
+  if (!c) return { error: 'Not authenticated' }
+  const cid = clientId ?? c.cid
+  if (!cid) return { error: 'No client' }
+
+  const { error } = await c.admin
+    .from('client_notes')
+    .upsert({
+      client_id: cid,
+      content,
+      shared_with_client: shared,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'client_id' })
+
+  if (error) return { error: error.message }
+  return {}
+}
+
+// ── Agency Docs ──────────────────────────────────────────────────────────────
+
+export async function getAgencyDocs(): Promise<{
+  docs?: { id: string; title: string; content: string; updated_at: string }[]
+  error?: string
+}> {
+  const c = await getCtx()
+  if (!c) return { error: 'Not authenticated' }
+
+  const { data, error } = await c.admin
+    .from('agency_docs')
+    .select('id, title, content, updated_at')
+    .order('updated_at', { ascending: false })
+
+  if (error) return { error: error.message }
+  return { docs: (data ?? []) as unknown as { id: string; title: string; content: string; updated_at: string }[] }
+}
+
+export async function saveAgencyDoc(
+  doc: { id?: string; title: string; content: string },
+): Promise<{ id?: string; error?: string }> {
+  const c = await getCtx()
+  if (!c) return { error: 'Not authenticated' }
+  if (c.role !== 'admin') return { error: 'Admin only' }
+
+  if (doc.id) {
+    const { error } = await c.admin
+      .from('agency_docs')
+      .update({ title: doc.title, content: doc.content, updated_at: new Date().toISOString() })
+      .eq('id', doc.id)
+    if (error) return { error: error.message }
+    return { id: doc.id }
+  }
+
+  const { data, error } = await c.admin
+    .from('agency_docs')
+    .insert({ title: doc.title, content: doc.content })
+    .select('id')
+    .single()
+
+  if (error) return { error: error.message }
+  return { id: (data as unknown as { id: string }).id }
+}
+
+export async function deleteAgencyDoc(docId: string): Promise<{ error?: string }> {
+  const c = await getCtx()
+  if (!c) return { error: 'Not authenticated' }
+  if (c.role !== 'admin') return { error: 'Admin only' }
+
+  const { error } = await c.admin.from('agency_docs').delete().eq('id', docId)
+  if (error) return { error: error.message }
+  return {}
 }

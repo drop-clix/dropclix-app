@@ -7,6 +7,8 @@ import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePo
 import { EmptyState } from '@/components/portal/EmptyState'
 import { OnboardingBanner } from '@/components/portal/OnboardingBanner'
 import { AISuggestionsModal } from '@/components/portal/AISuggestionsModal'
+import { submitApproval } from '@/app/(dashboard)/edit-actions'
+import { useToast } from '@/components/portal/Toast'
 import type { AISuggestion } from '@/components/portal/AISuggestionsModal'
 import type { PlatformFilter } from '@/hooks/usePortalFilters'
 
@@ -43,6 +45,9 @@ export type RawDashPipeline = {
   scheduled_date: string | null
   posted_at: string | null
   priority: number
+  drive_file_id: string | null
+  approval_comment: string | null
+  pillar: string | null
 }
 
 export type RawDashCalendar = {
@@ -97,6 +102,9 @@ const STATUS_COLORS: Record<string, string> = {
   FILMING: '#fbbf24',
   EDITING: '#a78bfa',
   REVIEWING: '#ff3b5f',
+  PENDING_APPROVAL: '#f97316',
+  APPROVED: '#4ade80',
+  CHANGES_REQUESTED: '#fb923c',
   SCHEDULED: '#4cc9ff',
   POSTED: '#39ff88',
   CANCELLED: '#555',
@@ -330,6 +338,26 @@ export function DashboardClient({
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [aiModalTitle, setAiModalTitle] = useState('Content Performance')
   const [loadingAi, setLoadingAi] = useState(false)
+  const [approvalComment, setApprovalComment] = useState('')
+  const [approvalItemId, setApprovalItemId] = useState<string | null>(null)
+  const { toast } = useToast()
+
+  const pendingApprovals = useMemo(
+    () => rawPipeline.filter(i => i.status === 'PENDING_APPROVAL'),
+    [rawPipeline],
+  )
+
+  async function handleApproval(itemId: string, action: 'approve' | 'request_changes') {
+    const { error } = await submitApproval(itemId, action, action === 'request_changes' ? approvalComment : undefined)
+    if (error) {
+      toast(error, 'error')
+    } else {
+      toast(action === 'approve' ? 'Content approved!' : 'Changes requested', 'success')
+      setApprovalItemId(null)
+      setApprovalComment('')
+      router.refresh()
+    }
+  }
 
   const datedPosts = useMemo(
     () => rawPosts.filter((p): p is RawDashPost & { date: string } => Boolean(p.date)),
@@ -560,6 +588,101 @@ export function DashboardClient({
                   ))}
                 </div>
               </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {pendingApprovals.length > 0 && (
+        <section className="mb-8">
+          <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3" style={{ color: '#f97316' }}>
+            <span style={{ width: 16, height: 1, background: '#f97316' }} />
+            Pending Approval ({pendingApprovals.length})
+          </p>
+          <div className="flex flex-col gap-3">
+            {pendingApprovals.map(item => (
+              <div key={item.id} style={{
+                background: '#0a0a0a',
+                border: '1px solid rgba(249,115,22,.25)',
+                borderLeft: '3px solid #f97316',
+                borderRadius: 5,
+                padding: '16px 20px',
+              }}>
+                <div className="flex items-start justify-between gap-4">
+                  <div style={{ flex: 1 }}>
+                    <p className="text-[13px] font-light" style={{ color: '#f2ede4' }}>{item.title}</p>
+                    <div className="flex items-center gap-3 mt-2" style={{ fontSize: 9, color: '#555' }}>
+                      {item.platform?.slice(0, 2).map(pl => (
+                        <span key={pl} className="tracking-[.08em] uppercase" style={{ color: PLATFORM_COLORS[pl] ?? '#555' }}>{pl}</span>
+                      ))}
+                      {item.pillar && <span>{item.pillar}</span>}
+                      {item.scheduled_date && <span>Planned: {item.scheduled_date}</span>}
+                    </div>
+                    {item.drive_file_id && (
+                      <a
+                        href={`https://drive.google.com/file/d/${item.drive_file_id}/view`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] mt-2 inline-flex items-center gap-1"
+                        style={{ color: '#4cc9ff' }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1v-3M10 2h4v4M7 9l7-7"/></svg>
+                        View in Google Drive
+                      </a>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleApproval(item.id, 'approve')}
+                      style={{
+                        padding: '5px 12px', fontSize: 9, fontWeight: 500,
+                        letterSpacing: '.1em', textTransform: 'uppercase',
+                        color: '#060606', background: '#4ade80',
+                        border: 'none', borderRadius: 3,
+                      }}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => setApprovalItemId(approvalItemId === item.id ? null : item.id)}
+                      style={{
+                        padding: '5px 12px', fontSize: 9, fontWeight: 500,
+                        letterSpacing: '.1em', textTransform: 'uppercase',
+                        color: '#fb923c', background: 'rgba(251,146,60,.1)',
+                        border: '1px solid rgba(251,146,60,.3)', borderRadius: 3,
+                      }}
+                    >
+                      Request Changes
+                    </button>
+                  </div>
+                </div>
+                {approvalItemId === item.id && (
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Add a comment..."
+                      value={approvalComment}
+                      onChange={e => setApprovalComment(e.target.value)}
+                      style={{
+                        flex: 1, background: '#111', border: '1px solid #1e1e1e',
+                        borderRadius: 3, padding: '6px 10px', fontSize: 11,
+                        color: '#f2ede4',
+                      }}
+                    />
+                    <button
+                      onClick={() => handleApproval(item.id, 'request_changes')}
+                      style={{
+                        padding: '6px 14px', fontSize: 9, fontWeight: 500,
+                        color: '#fb923c', background: 'rgba(251,146,60,.1)',
+                        border: '1px solid rgba(251,146,60,.3)', borderRadius: 3,
+                      }}
+                    >
+                      Submit
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </section>

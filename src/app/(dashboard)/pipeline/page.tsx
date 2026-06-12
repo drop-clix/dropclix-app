@@ -17,6 +17,8 @@ export type PipelineItem = {
   videoUrl: string | null
   scriptContent: string | null
   notes: string | null
+  driveFileId: string | null
+  approvalComment: string | null
 }
 
 export default async function PipelinePage() {
@@ -28,13 +30,15 @@ export default async function PipelinePage() {
     pillar: string | null; status: string; priority: number | null;
     week: string | null; scheduled_date: string | null; posted_at: string | null;
     yt_type: string | null; video_url: string | null; script_content: string | null; notes: string | null;
+    drive_file_id: string | null; approval_comment: string | null;
   }
 
   const { data, error } = await supabase
     .from('pipeline_items')
     .select(
       'id, post_id, title, platform, pillar, status, priority, week, ' +
-      'scheduled_date, posted_at, yt_type, video_url, script_content, notes',
+      'scheduled_date, posted_at, yt_type, video_url, script_content, notes, ' +
+      'drive_file_id, approval_comment',
     )
     .eq('client_id', clientId ?? fallback)
     .order('priority', { ascending: true })
@@ -116,9 +120,11 @@ export default async function PipelinePage() {
     postedAt:      r.posted_at      ?? null,
     ytType:        r.yt_type        ?? null,
     ytId:          ytIdByTextPostId[r.post_id] ?? null,
-    videoUrl:      r.video_url      ?? null,
-    scriptContent: r.script_content ?? null,
-    notes:         r.notes         ?? null,
+    videoUrl:        r.video_url        ?? null,
+    scriptContent:   r.script_content   ?? null,
+    notes:           r.notes            ?? null,
+    driveFileId:     r.drive_file_id    ?? null,
+    approvalComment: r.approval_comment ?? null,
   }))
 
   return (

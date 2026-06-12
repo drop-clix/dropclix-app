@@ -16,18 +16,22 @@ import { PipelineBulkImportModal } from '@/components/portal/PipelineBulkImportM
 
 const ALL_STATUSES = [
   'SCRIPTED', 'PLANNED', 'FILMING', 'EDITING',
-  'REVIEWING', 'SCHEDULED', 'POSTED', 'CANCELLED',
+  'REVIEWING', 'PENDING_APPROVAL', 'APPROVED', 'CHANGES_REQUESTED',
+  'SCHEDULED', 'POSTED', 'CANCELLED',
 ] as const
 
 const STATUS_CFG: Record<string, { color: string; bg: string; border: string }> = {
-  SCRIPTED:  { color: '#c9a96e', bg: 'rgba(201,169,110,.12)', border: 'rgba(201,169,110,.35)' },
-  PLANNED:   { color: '#4cc9ff', bg: 'rgba(76,201,255,.10)',  border: 'rgba(76,201,255,.30)'  },
-  FILMING:   { color: '#fbbf24', bg: 'rgba(251,191,36,.10)',  border: 'rgba(251,191,36,.30)'  },
-  EDITING:   { color: '#a78bfa', bg: 'rgba(167,139,250,.10)', border: 'rgba(167,139,250,.30)' },
-  REVIEWING: { color: '#ff3b5f', bg: 'rgba(255,59,95,.10)',   border: 'rgba(255,59,95,.30)'   },
-  SCHEDULED: { color: '#4cc9ff', bg: 'rgba(76,201,255,.10)',  border: 'rgba(76,201,255,.30)'  },
-  POSTED:    { color: '#39ff88', bg: 'rgba(57,255,136,.10)',  border: 'rgba(57,255,136,.30)'  },
-  CANCELLED: { color: '#666',    bg: 'rgba(100,100,100,.08)', border: '#2a2a2a'                },
+  SCRIPTED:           { color: '#c9a96e', bg: 'rgba(201,169,110,.12)', border: 'rgba(201,169,110,.35)' },
+  PLANNED:            { color: '#4cc9ff', bg: 'rgba(76,201,255,.10)',  border: 'rgba(76,201,255,.30)'  },
+  FILMING:            { color: '#fbbf24', bg: 'rgba(251,191,36,.10)',  border: 'rgba(251,191,36,.30)'  },
+  EDITING:            { color: '#a78bfa', bg: 'rgba(167,139,250,.10)', border: 'rgba(167,139,250,.30)' },
+  REVIEWING:          { color: '#ff3b5f', bg: 'rgba(255,59,95,.10)',   border: 'rgba(255,59,95,.30)'   },
+  PENDING_APPROVAL:   { color: '#f97316', bg: 'rgba(249,115,22,.10)', border: 'rgba(249,115,22,.30)' },
+  APPROVED:           { color: '#4ade80', bg: 'rgba(74,222,128,.10)', border: 'rgba(74,222,128,.30)' },
+  CHANGES_REQUESTED:  { color: '#fb923c', bg: 'rgba(251,146,60,.10)', border: 'rgba(251,146,60,.30)' },
+  SCHEDULED:          { color: '#4cc9ff', bg: 'rgba(76,201,255,.10)',  border: 'rgba(76,201,255,.30)'  },
+  POSTED:             { color: '#39ff88', bg: 'rgba(57,255,136,.10)',  border: 'rgba(57,255,136,.30)'  },
+  CANCELLED:          { color: '#666',    bg: 'rgba(100,100,100,.08)', border: '#2a2a2a'                },
 }
 
 const PRIORITY_CFG: Record<number, { stripe: string; row: string }> = {
@@ -47,24 +51,30 @@ const PLAT_CFG: Record<string, { label: string; color: string; bg: string }> = {
 
 // Phase card color coding — per-status colors for active/hover states
 const PHASE_CARD_COLORS: Record<string, { text: string; bg: string; border: string }> = {
-  ACTIVE:    { text: '#c9a96e', bg: 'rgba(201,169,110,0.07)', border: 'rgba(201,169,110,0.40)' },
-  SCRIPTED:  { text: '#c9a96e', bg: 'rgba(201,169,110,0.07)', border: 'rgba(201,169,110,0.40)' },
-  PLANNED:   { text: '#4cc9ff', bg: 'rgba(76,201,255,0.07)',  border: 'rgba(76,201,255,0.40)'  },
-  FILMING:   { text: '#fbbf24', bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.40)'  },
-  EDITING:   { text: '#fbbf24', bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.40)'  },
-  REVIEWING: { text: '#ff3b5f', bg: 'rgba(255,59,95,0.07)',   border: 'rgba(255,59,95,0.40)'   },
-  SCHEDULED: { text: '#4cc9ff', bg: 'rgba(76,201,255,0.07)',  border: 'rgba(76,201,255,0.40)'  },
-  POSTED:    { text: '#39ff88', bg: 'rgba(57,255,136,0.07)',  border: 'rgba(57,255,136,0.40)'  },
-  CANCELLED: { text: '#555555', bg: 'rgba(100,100,100,0.07)', border: 'rgba(100,100,100,0.30)' },
-  ALL:       { text: '#888888', bg: 'rgba(136,136,136,0.07)', border: 'rgba(136,136,136,0.30)' },
+  ACTIVE:             { text: '#c9a96e', bg: 'rgba(201,169,110,0.07)', border: 'rgba(201,169,110,0.40)' },
+  SCRIPTED:           { text: '#c9a96e', bg: 'rgba(201,169,110,0.07)', border: 'rgba(201,169,110,0.40)' },
+  PLANNED:            { text: '#4cc9ff', bg: 'rgba(76,201,255,0.07)',  border: 'rgba(76,201,255,0.40)'  },
+  FILMING:            { text: '#fbbf24', bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.40)'  },
+  EDITING:            { text: '#fbbf24', bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.40)'  },
+  REVIEWING:          { text: '#ff3b5f', bg: 'rgba(255,59,95,0.07)',   border: 'rgba(255,59,95,0.40)'   },
+  PENDING_APPROVAL:   { text: '#f97316', bg: 'rgba(249,115,22,0.07)', border: 'rgba(249,115,22,0.40)' },
+  APPROVED:           { text: '#4ade80', bg: 'rgba(74,222,128,0.07)', border: 'rgba(74,222,128,0.40)' },
+  CHANGES_REQUESTED:  { text: '#fb923c', bg: 'rgba(251,146,60,0.07)', border: 'rgba(251,146,60,0.40)' },
+  SCHEDULED:          { text: '#4cc9ff', bg: 'rgba(76,201,255,0.07)',  border: 'rgba(76,201,255,0.40)'  },
+  POSTED:             { text: '#39ff88', bg: 'rgba(57,255,136,0.07)',  border: 'rgba(57,255,136,0.40)'  },
+  CANCELLED:          { text: '#555555', bg: 'rgba(100,100,100,0.07)', border: 'rgba(100,100,100,0.30)' },
+  ALL:                { text: '#888888', bg: 'rgba(136,136,136,0.07)', border: 'rgba(136,136,136,0.30)' },
 }
 
-const ACTIVE_STATUSES = new Set(['SCRIPTED','PLANNED','FILMING','EDITING','REVIEWING','SCHEDULED'])
+const ACTIVE_STATUSES = new Set(['SCRIPTED','PLANNED','FILMING','EDITING','REVIEWING','SCHEDULED','PENDING_APPROVAL','APPROVED','CHANGES_REQUESTED'])
 
 // Auto-priority when status changes
 const STATUS_PRIORITY: Record<string, number> = {
   REVIEWING: 1,
+  PENDING_APPROVAL: 1,
+  CHANGES_REQUESTED: 1,
   FILMING:   2,
+  APPROVED:  2,
   SCRIPTED:  3,
   PLANNED:   4,
   EDITING:   5,
@@ -96,14 +106,17 @@ function get6Weeks(today: Date): string[] {
 }
 
 const STATUS_DOT: Record<string, string> = {
-  SCRIPTED:  '#c9a96e',
-  PLANNED:   '#4cc9ff',
-  FILMING:   '#fbbf24',
-  EDITING:   '#a78bfa',
-  REVIEWING: '#ff3b5f',
-  SCHEDULED: '#4cc9ff',
-  POSTED:    '#39ff88',
-  CANCELLED: '#555',
+  SCRIPTED:           '#c9a96e',
+  PLANNED:            '#4cc9ff',
+  FILMING:            '#fbbf24',
+  EDITING:            '#a78bfa',
+  REVIEWING:          '#ff3b5f',
+  PENDING_APPROVAL:   '#f97316',
+  APPROVED:           '#4ade80',
+  CHANGES_REQUESTED:  '#fb923c',
+  SCHEDULED:          '#4cc9ff',
+  POSTED:             '#39ff88',
+  CANCELLED:          '#555',
 }
 
 // ── YT Link Modal ──────────────────────────────────────────────────────────
@@ -455,6 +468,7 @@ function ItemEditPanel({
   const [week,        setWeek       ] = useState(item.week)
   const [platform,    setPlatform   ] = useState<string[]>(item.platform)
   const [script,      setScript     ] = useState(item.scriptContent ?? '')
+  const [driveLink,   setDriveLink  ] = useState(item.driveFileId ?? '')
   const [postedAtLocal, setPostedAtLocal] = useState<string>(() => isoToLocal(item.postedAt) || nowLocal())
   const [deleting, setDeleting] = useState(false)
 
@@ -778,6 +792,45 @@ function ItemEditPanel({
             </div>
           </div>
         )}
+
+        {/* Google Drive Link */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={labelStyle}>
+            Google Drive Link <SaveDot state={fieldState('drive_file_id')} />
+          </label>
+          <div className="flex gap-2">
+            <input
+              style={{ ...inputStyle, flex: 1 }}
+              value={driveLink}
+              onChange={e => {
+                const raw = e.target.value
+                setDriveLink(raw)
+                const m = raw.match(/\/d\/([a-zA-Z0-9_-]+)/) || raw.match(/id=([a-zA-Z0-9_-]+)/)
+                const fileId = m ? m[1] : raw.trim()
+                schedule('drive_file_id', fileId || null, { driveFileId: fileId || null })
+              }}
+              onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+              onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
+              placeholder="Paste Google Drive URL or file ID…"
+            />
+            {driveLink && (
+              <a
+                href={`https://drive.google.com/file/d/${driveLink.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] ?? driveLink}/view`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  padding: '4px 10px', fontSize: 9, color: '#4cc9ff',
+                  border: '1px solid rgba(76,201,255,.3)', borderRadius: 3,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  background: 'rgba(76,201,255,.06)',
+                }}
+              >
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1v-3M10 2h4v4M7 9l7-7"/></svg>
+                Open
+              </a>
+            )}
+          </div>
+        </div>
 
         {/* Script */}
         <div style={{ gridColumn: '1 / -1' }}>
@@ -1176,21 +1229,23 @@ function AddVideoModal({
     if (result.error) { setErr(result.error); toast(result.error, 'error'); return }
     toast(`Added to pipeline · ${computedId}`)
     onCreated({
-      id:            result.id!,
-      postId:        computedId,
-      title:         title.trim(),
-      platform:      platforms,
-      pillar:        pillar.trim() || '—',
+      id:              result.id!,
+      postId:          computedId,
+      title:           title.trim(),
+      platform:        platforms,
+      pillar:          pillar.trim() || '—',
       status,
-      priority:      autoPri,
-      week:          week.trim() || '—',
-      scheduledDate: null,
-      postedAt:      null,
-      ytType:        null,
-      ytId:          null,
-      videoUrl:      null,
-      scriptContent: script.trim() || null,
-      notes:         null,
+      priority:        autoPri,
+      week:            week.trim() || '—',
+      scheduledDate:   null,
+      postedAt:        null,
+      ytType:          null,
+      ytId:            null,
+      videoUrl:        null,
+      scriptContent:   script.trim() || null,
+      notes:           null,
+      driveFileId:     null,
+      approvalComment: null,
     })
     onClose()
   }
