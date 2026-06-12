@@ -260,7 +260,7 @@ function EditableTarget({
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
-      <span style={{ fontSize: 9, color: '#333' }}>target</span>
+      <span style={{ fontSize: 9, color: '#555' }}>target</span>
       <input
         type="number"
         min={0}
@@ -273,7 +273,7 @@ function EditableTarget({
           color: '#f2ede4', fontFamily: 'DM Sans, sans-serif', outline: 'none',
         }}
       />
-      {isPercent && <span style={{ fontSize: 9, color: '#333' }}>%</span>}
+      {isPercent && <span style={{ fontSize: 9, color: '#555' }}>%</span>}
       <span style={{
         width: 5, height: 5, borderRadius: '50%', display: 'block',
         background: saving ? '#fbbf24' : saved ? '#39ff88' : 'transparent',
@@ -307,7 +307,7 @@ function GoalCard({
   return (
     <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '28px 24px 22px', position: 'relative', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
-        <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.2em', textTransform: 'uppercase', color: '#333' }}>
+        <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.2em', textTransform: 'uppercase', color: '#555' }}>
           {label}
         </p>
         <span style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: sc.color, background: sc.bg, border: `1px solid ${sc.border}` }}>
@@ -327,7 +327,7 @@ function GoalCard({
           onSave={val => { setTgt(val); onTargetUpdate(goalId, val) }}
         />
       ) : (
-        <p style={{ fontSize: 10, color: '#2a2a2a', marginTop: 6 }}>
+        <p style={{ fontSize: 10, color: '#555', marginTop: 6 }}>
           target {isPercent ? tgt.toFixed(1) + '%' : fmtNum(tgt)}
         </p>
       )}
@@ -335,7 +335,7 @@ function GoalCard({
       <div style={{ marginTop: 14, height: 2, background: '#141414', borderRadius: 1, overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', borderRadius: 1, background: valueColor, opacity: 0.8 }} />
       </div>
-      <p style={{ fontSize: 9, marginTop: 4, color: '#2a2a2a' }}>{pct}% of monthly target</p>
+      <p style={{ fontSize: 9, marginTop: 4, color: '#555' }}>{pct}% of monthly target</p>
     </div>
   )
 }
@@ -445,7 +445,7 @@ export function GoalsDashboard({
           fontSize: 'clamp(28px,3vw,44px)', color: '#f2ede4', lineHeight: 1.06 }}>
           Performance Goals
         </h1>
-        <p style={{ fontSize: 12, fontWeight: 300, marginTop: 4, color: '#444' }}>
+        <p style={{ fontSize: 12, fontWeight: 300, marginTop: 4, color: '#666' }}>
           {MONTH_NAMES[(mo || 1) - 1]} {yr || now.getFullYear()}
         </p>
       </div>
@@ -476,7 +476,7 @@ export function GoalsDashboard({
         })}
       </div>
 
-      <p style={{ fontSize: 8, color: '#252525', marginBottom: 40, letterSpacing: '.1em' }}>
+      <p style={{ fontSize: 8, color: '#666', marginBottom: 40, letterSpacing: '.1em' }}>
         Click any target number to edit — saves automatically after 2 seconds
       </p>
 
@@ -485,17 +485,17 @@ export function GoalsDashboard({
         <div style={{ border: '1px solid #141414', marginBottom: 40 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #0e0e0e' }}>
             <div>
-              <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.2em', textTransform: 'uppercase', color: '#333', marginBottom: 6 }}>
+              <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.2em', textTransform: 'uppercase', color: '#555', marginBottom: 6 }}>
                 Report Card · {currentMonthGrade.label}
               </p>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
                 <span style={{ fontFamily: 'Plus Jakarta Sans, sans-serif', fontWeight: 300, fontSize: 42, lineHeight: 1, color: gradeColor(currentMonthGrade.grade) }}>
                   {currentMonthGrade.grade}
                 </span>
-                <span style={{ fontSize: 20, color: '#333', fontWeight: 300 }}>
-                  {currentMonthGrade.score}<span style={{ fontSize: 12, color: '#252525' }}>/100</span>
+                <span style={{ fontSize: 20, color: '#555', fontWeight: 300 }}>
+                  {currentMonthGrade.score}<span style={{ fontSize: 12, color: '#666' }}>/100</span>
                 </span>
-                <span style={{ fontSize: 11, color: '#444' }}>{currentMonthGrade.gradeLabel}</span>
+                <span style={{ fontSize: 11, color: '#666' }}>{currentMonthGrade.gradeLabel}</span>
               </div>
             </div>
             <button
@@ -531,7 +531,7 @@ export function GoalsDashboard({
               { label: 'Elite',     value: currentMonthGrade.eliteCount },
             ].map(({ label, value }) => (
               <div key={label} style={{ flex: 1, padding: '16px 20px', borderRight: '1px solid #0e0e0e' }}>
-                <p style={{ fontSize: 8, color: '#333', letterSpacing: '.14em', textTransform: 'uppercase', marginBottom: 4 }}>{label}</p>
+                <p style={{ fontSize: 8, color: '#555', letterSpacing: '.14em', textTransform: 'uppercase', marginBottom: 4 }}>{label}</p>
                 <p style={{ fontFamily: 'Plus Jakarta Sans, sans-serif', fontWeight: 300, fontSize: 18, color: '#f2ede4' }}>{value}</p>
               </div>
             ))}
@@ -577,7 +577,7 @@ export function GoalsDashboard({
                 onClick={() => setModalOpen(false)}
                 style={{
                   width: 36, height: 36, background: 'transparent',
-                  border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer',
+                  border: '1px solid #1e1e1e', color: '#666', cursor: 'pointer',
                   fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontFamily: 'DM Sans, sans-serif',
                 }}
