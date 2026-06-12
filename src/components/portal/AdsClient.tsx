@@ -67,7 +67,7 @@ function KpiCard({ label, value, sub, highlight = false }: { label: string; valu
       className="flex flex-col justify-between relative overflow-hidden"
       style={{ background: '#0a0a0a', border: `1px solid ${highlight ? 'rgba(201,169,110,.25)' : '#141414'}`, padding: '28px 24px 22px' }}
     >
-      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#333' }}>{label}</p>
+      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#555' }}>{label}</p>
       <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(26px,3vw,42px)', lineHeight: 1 }}>{value}</p>
       <p className="text-[10px] font-light mt-2" style={{ color: '#555' }}>{sub}</p>
     </div>
@@ -166,7 +166,7 @@ function CampaignEditPanel({
             style={{ fontSize: 9, padding: '3px 10px', cursor: 'pointer', color: '#ff3b5f', background: 'rgba(255,59,95,.06)', border: '1px solid rgba(255,59,95,.2)', opacity: deleting ? 0.5 : 1 }}>
             {deleting ? 'Deleting…' : 'Delete'}
           </button>
-          <button onClick={onClose} style={{ fontSize: 9, padding: '3px 10px', cursor: 'pointer', color: '#444', background: 'transparent', border: '1px solid #1e1e1e' }}>Close</button>
+          <button onClick={onClose} style={{ fontSize: 9, padding: '3px 10px', cursor: 'pointer', color: '#666', background: 'transparent', border: '1px solid #1e1e1e' }}>Close</button>
         </div>
       </div>
 
@@ -281,11 +281,11 @@ function CreativeRow({
           <span className="text-[11px] font-light" style={{ color: '#f2ede4', minWidth: 180 }}>{creative.name}</span>
           <span className="text-[7px] font-medium tracking-[.1em] uppercase px-2 py-0.5"
             style={{ color: '#888', background: '#0d0d0d', border: '1px solid #1a1a1a' }}>{type}</span>
-          <span className="text-[9px]" style={{ color: '#333' }}>{status}</span>
+          <span className="text-[9px]" style={{ color: '#555' }}>{status}</span>
           {creative.impressions > 0 && (
             <>
-              <span className="text-[9px]" style={{ color: '#444' }}>{fmtNum(creative.impressions)} impr.</span>
-              <span className="text-[9px]" style={{ color: '#444' }}>{fmtPct(creative.ctr)} CTR</span>
+              <span className="text-[9px]" style={{ color: '#666' }}>{fmtNum(creative.impressions)} impr.</span>
+              <span className="text-[9px]" style={{ color: '#666' }}>{fmtPct(creative.ctr)} CTR</span>
             </>
           )}
           {creative.impressions === 0 && <span className="text-[9px]" style={{ color: '#555' }}>No impression data</span>}
@@ -331,7 +331,7 @@ function CreativeRow({
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <button onClick={() => setEditing(false)}
-              style={{ fontSize: 9, padding: '2px 10px', cursor: 'pointer', color: '#444', background: 'transparent', border: '1px solid #1e1e1e' }}>
+              style={{ fontSize: 9, padding: '2px 10px', cursor: 'pointer', color: '#666', background: 'transparent', border: '1px solid #1e1e1e' }}>
               Done
             </button>
           </div>
@@ -413,7 +413,7 @@ export function AdsClient({
     <th
       onClick={() => handleSort(col)}
       className={`px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none cursor-pointer ${right ? 'text-right' : 'text-left'}`}
-      style={{ color: sortKey === col ? '#c9a96e' : '#2a2a2a', whiteSpace: 'nowrap' }}
+      style={{ color: sortKey === col ? '#c9a96e' : '#555', whiteSpace: 'nowrap' }}
     >
       {label}{arrow(col)}
     </th>
@@ -581,7 +581,7 @@ export function AdsClient({
               <button key={val} onClick={() => setStatusFilter(val)}
                 className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
                 style={{
-                  color:      statusFilter === val ? '#c9a96e' : '#333',
+                  color:      statusFilter === val ? '#c9a96e' : '#666',
                   background: statusFilter === val ? 'rgba(201,169,110,.07)' : 'transparent',
                   border:     `1px solid ${statusFilter === val ? 'rgba(201,169,110,.4)' : '#1a1a1a'}`,
                   cursor: 'pointer',
@@ -640,36 +640,36 @@ export function AdsClient({
                     <td className="px-5 py-4">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[12px] font-light" style={{ color: isWinner ? '#f2ede4' : '#ccc' }}>{c.name}</span>
-                        <span className="text-[9px]" style={{ color: '#333' }}>{c.objective}</span>
+                        <span className="text-[9px]" style={{ color: '#555' }}>{c.objective}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>{dateRange(c)}</td>
+                    <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#666', whiteSpace: 'nowrap' }}>{dateRange(c)}</td>
                     <td className="px-5 py-4">
                       <span className="text-[7px] font-medium tracking-[.12em] uppercase px-2 py-1"
                         style={{ color: '#1778f2', background: 'rgba(23,120,242,.1)', border: '1px solid rgba(23,120,242,.25)' }}>Meta</span>
                     </td>
                     <td className="px-5 py-4 text-right"><span className="text-[12px] font-light" style={{ color: '#f2ede4' }}>{fmtMoney(c.spend)}</span></td>
                     <td className="px-5 py-4 text-right">
-                      <span className="text-[12px] font-light" style={{ color: c.effectiveRevenue > 0 ? '#39ff88' : '#252525' }}>
+                      <span className="text-[12px] font-light" style={{ color: c.effectiveRevenue > 0 ? '#39ff88' : '#3a3a3a' }}>
                         {c.effectiveRevenue > 0 ? fmtMoney(c.effectiveRevenue) : '—'}
                       </span>
                     </td>
                     <td className="px-5 py-4 text-right">
-                      <span className="font-jakarta font-light" style={{ fontSize: c.roas > 0 ? 15 : 12, color: c.roas > 0 ? '#c9a96e' : '#252525' }}>
+                      <span className="font-jakarta font-light" style={{ fontSize: c.roas > 0 ? 15 : 12, color: c.roas > 0 ? '#c9a96e' : '#3a3a3a' }}>
                         {fmtROAS(c.roas)}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-right text-[12px] font-light" style={{ color: c.leads > 0 ? '#aaa' : '#252525' }}>{c.leads > 0 ? c.leads : '—'}</td>
+                    <td className="px-5 py-4 text-right text-[12px] font-light" style={{ color: c.leads > 0 ? '#aaa' : '#3a3a3a' }}>{c.leads > 0 ? c.leads : '—'}</td>
                     <td className="px-5 py-4 text-right">
-                      <span className="text-[12px] font-light" style={{ color: c.hires > 0 ? '#39ff88' : '#252525' }}>{c.hires > 0 ? c.hires : '—'}</span>
+                      <span className="text-[12px] font-light" style={{ color: c.hires > 0 ? '#39ff88' : '#3a3a3a' }}>{c.hires > 0 ? c.hires : '—'}</span>
                     </td>
-                    <td className="px-5 py-4 text-right text-[12px] font-light" style={{ color: c.cpl > 0 ? '#aaa' : '#252525' }}>{c.cpl > 0 ? fmtMoney(c.cpl) : '—'}</td>
-                    <td className="px-5 py-4 text-right text-[12px] font-light" style={{ color: c.cph > 0 ? '#aaa' : '#252525' }}>{c.cph > 0 ? fmtMoney(c.cph) : '—'}</td>
+                    <td className="px-5 py-4 text-right text-[12px] font-light" style={{ color: c.cpl > 0 ? '#aaa' : '#3a3a3a' }}>{c.cpl > 0 ? fmtMoney(c.cpl) : '—'}</td>
+                    <td className="px-5 py-4 text-right text-[12px] font-light" style={{ color: c.cph > 0 ? '#aaa' : '#3a3a3a' }}>{c.cph > 0 ? fmtMoney(c.cph) : '—'}</td>
                     <td className="px-5 py-4">
                       <span className="text-[7px] font-medium tracking-[.12em] uppercase px-2 py-0.5"
                         style={c.status === 'Active'
                           ? { color: '#39ff88', background: 'rgba(57,255,136,.1)', border: '1px solid rgba(57,255,136,.25)' }
-                          : { color: '#444',    background: 'rgba(100,100,100,.08)', border: '1px solid #1e1e1e' }}>
+                          : { color: '#666',    background: 'rgba(100,100,100,.08)', border: '1px solid #1e1e1e' }}>
                         {c.status}
                       </span>
                     </td>
@@ -758,7 +758,7 @@ export function AdsClient({
         </div>
       </div>
 
-      <p className="mt-4 text-[9px]" style={{ color: '#444' }}>
+      <p className="mt-4 text-[9px]" style={{ color: '#666' }}>
         Revenue estimated as ROAS × Spend. Click any campaign row to edit.
       </p>
 
