@@ -20,7 +20,7 @@ function ScoreBar({ label, score, max }: { label: string; score: number; max: nu
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
         <span style={{ fontSize: 10, color: '#555', letterSpacing: '.12em', textTransform: 'uppercase' }}>{label}</span>
         <span style={{ fontSize: 10, color: '#f2ede4' }}>
-          {score}<span style={{ color: '#444' }}>/{max}</span>
+          {score}<span style={{ color: '#666' }}>/{max}</span>
         </span>
       </div>
       <div style={{ height: 3, background: '#1a1a1a', borderRadius: 2 }}>
@@ -35,12 +35,12 @@ function ScoreBar({ label, score, max }: { label: string; score: number; max: nu
 
 function PostsTable({ posts }: { posts: PostSummary[] }) {
   if (!posts.length) {
-    return <p style={{ fontSize: 10, color: '#444', padding: '6px 0' }}>No posts this period.</p>
+    return <p style={{ fontSize: 10, color: '#666', padding: '6px 0' }}>No posts this period.</p>
   }
   return (
     <div>
       <div style={{
-        display: 'flex', gap: 8, fontSize: 9, color: '#444',
+        display: 'flex', gap: 8, fontSize: 9, color: '#666',
         letterSpacing: '.12em', textTransform: 'uppercase',
         paddingBottom: 6, borderBottom: '1px solid #141414', marginBottom: 2,
       }}>
@@ -92,7 +92,7 @@ export function ReportCardClient({
   if (!current && periods.length === 0) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
-        <p style={{ fontSize: 12, color: '#444' }}>No data available yet. Post content to see your report card.</p>
+        <p style={{ fontSize: 12, color: '#666' }}>No data available yet. Post content to see your report card.</p>
       </div>
     )
   }
@@ -215,7 +215,7 @@ export function ReportCardClient({
 
           {/* Score Breakdown */}
           <div style={{ marginBottom: 24 }}>
-            <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#333', marginBottom: 12 }}>
+            <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#555', marginBottom: 12 }}>
               Score Breakdown
             </p>
             <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '24px 28px' }}>
@@ -230,7 +230,7 @@ export function ReportCardClient({
             <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '22px 24px' }}>
               <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#4ade80', marginBottom: 12 }}>Wins</p>
               {current.wins.length === 0
-                ? <p style={{ fontSize: 10, color: '#333' }}>No wins logged this period.</p>
+                ? <p style={{ fontSize: 10, color: '#555' }}>No wins logged this period.</p>
                 : current.wins.map((w, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, fontSize: 11, color: '#aaa', lineHeight: 1.55 }}>
                     <span style={{ color: '#4ade80', flexShrink: 0, marginTop: 1 }}>✓</span>
@@ -242,7 +242,7 @@ export function ReportCardClient({
             <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '22px 24px' }}>
               <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#ef4444', marginBottom: 12 }}>Misses</p>
               {current.misses.length === 0
-                ? <p style={{ fontSize: 10, color: '#333' }}>Clean sheet — no misses this period.</p>
+                ? <p style={{ fontSize: 10, color: '#555' }}>Clean sheet — no misses this period.</p>
                 : current.misses.map((m, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, fontSize: 11, color: '#aaa', lineHeight: 1.55 }}>
                     <span style={{ color: '#ef4444', flexShrink: 0, marginTop: 1 }}>↓</span>
@@ -255,7 +255,7 @@ export function ReportCardClient({
 
           {/* Top Posts */}
           <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderRadius: 6, padding: '22px 28px', marginBottom: 24 }}>
-            <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#333', marginBottom: 12 }}>Top Posts</p>
+            <p style={{ fontSize: 9, letterSpacing: '.22em', textTransform: 'uppercase', color: '#555', marginBottom: 12 }}>Top Posts</p>
             <PostsTable posts={current.topPosts} />
           </div>
 
@@ -281,7 +281,7 @@ export function ReportCardClient({
         </div>
       ) : (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <p style={{ fontSize: 12, color: '#333' }}>Select a period to view details.</p>
+          <p style={{ fontSize: 12, color: '#555' }}>Select a period to view details.</p>
         </div>
       )}
     </div>
