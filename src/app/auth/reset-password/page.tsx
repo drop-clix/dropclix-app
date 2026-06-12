@@ -176,7 +176,7 @@ export default function ResetPasswordPage() {
                 <div className="flex justify-center">
                   <div
                     className="text-[9px] tracking-[.2em] uppercase"
-                    style={{ color: '#333' }}
+                    style={{ color: '#555' }}
                   >
                     Redirecting…
                   </div>
