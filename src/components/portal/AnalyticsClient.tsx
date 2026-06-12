@@ -48,7 +48,7 @@ const TIER_STYLES: Record<Tier, { color: string; bg: string; border: string; lab
   strong: { color: '#4cc9ff', bg: 'rgba(76,201,255,.1)',  border: 'rgba(76,201,255,.25)',  label: 'Strong' },
   avg:    { color: '#fbbf24', bg: 'rgba(251,191,36,.1)',  border: 'rgba(251,191,36,.25)',  label: 'Avg'    },
   kill:   { color: '#ff3b5f', bg: 'rgba(255,59,95,.1)',   border: 'rgba(255,59,95,.25)',   label: 'Kill'   },
-  none:   { color: '#333',    bg: 'rgba(255,255,255,.03)',border: '#1c1c1c',                label: '—'      },
+  none:   { color: '#555',    bg: 'rgba(255,255,255,.03)',border: '#1c1c1c',                label: '—'      },
 }
 
 const DECISION_STYLES: Record<string, { color: string }> = {
@@ -157,7 +157,7 @@ function FilterTab({ label, active, onClick }: { label: string; active: boolean;
       onClick={onClick}
       className="text-[9px] font-medium tracking-[.16em] uppercase px-4 py-2.5 transition-colors"
       style={{
-        color:      active ? '#c9a96e' : '#333',
+        color:      active ? '#c9a96e' : '#666',
         background: active ? 'rgba(201,169,110,.07)' : 'transparent',
         border:     `1px solid ${active ? 'rgba(201,169,110,.4)' : '#1a1a1a'}`,
         cursor: 'pointer',
@@ -174,7 +174,7 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub: str
       className="flex flex-col justify-between relative overflow-hidden"
       style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '28px 24px 22px' }}
     >
-      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#333' }}>{label}</p>
+      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#555' }}>{label}</p>
       <p className="font-jakarta font-light text-gold-gradient" style={{ fontSize: 'clamp(26px,3vw,42px)', lineHeight: 1 }}>{value}</p>
       <p className="text-[10px] font-light mt-2" style={{ color: '#555' }}>{sub}</p>
     </div>
@@ -232,7 +232,7 @@ function ReachByPostChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
   return (
     <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '20px 20px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#333' }}>
+        <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555' }}>
           Reach by Post
         </p>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -243,7 +243,7 @@ function ReachByPostChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
               style={{
                 fontSize: 8, letterSpacing: '.1em', textTransform: 'uppercase',
                 padding: '3px 8px', cursor: 'pointer',
-                color:      mode === m ? '#c9a96e' : '#333',
+                color:      mode === m ? '#c9a96e' : '#555',
                 background: mode === m ? 'rgba(201,169,110,.08)' : 'transparent',
                 border:     `1px solid ${mode === m ? 'rgba(201,169,110,.35)' : '#1e1e1e'}`,
               }}
@@ -297,7 +297,7 @@ function EROverTimeChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
 
   return (
     <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '20px 20px 16px' }}>
-      <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#333', marginBottom: 14 }}>
+      <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 14 }}>
         ER% Over Time
       </p>
       <div style={{ height: 190 }}>
@@ -517,7 +517,7 @@ function AdvancedAnalyticsCharts({
         <ChartCard title="Monthly Views / Reach by Post" platform={platform}>
           <div className="flex gap-1 mb-3">
             {(['top', 'last', 'all'] as const).map(mode => (
-              <button key={mode} type="button" onClick={() => setReachMode(mode)} style={{ fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase', padding: '4px 9px', border: `1px solid ${reachMode === mode ? 'rgba(201,169,110,.45)' : '#1f1f1f'}`, color: reachMode === mode ? '#c9a96e' : '#444', background: reachMode === mode ? 'rgba(201,169,110,.08)' : '#0d0d0d', cursor: 'pointer' }}>
+              <button key={mode} type="button" onClick={() => setReachMode(mode)} style={{ fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase', padding: '4px 9px', border: `1px solid ${reachMode === mode ? 'rgba(201,169,110,.45)' : '#1f1f1f'}`, color: reachMode === mode ? '#c9a96e' : '#666', background: reachMode === mode ? 'rgba(201,169,110,.08)' : '#0d0d0d', cursor: 'pointer' }}>
                 {mode === 'top' ? 'Top' : mode === 'last' ? 'Last 10' : 'All'}
               </button>
             ))}
@@ -665,7 +665,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
     <th
       onClick={() => handleSort(col)}
       className="text-left px-5 py-4 text-[8px] font-medium tracking-[.16em] uppercase select-none"
-      style={{ color: sortKey === col ? '#c9a96e' : '#2a2a2a', cursor: 'pointer', whiteSpace: 'nowrap', background: '#060606' }}
+      style={{ color: sortKey === col ? '#c9a96e' : '#555', cursor: 'pointer', whiteSpace: 'nowrap', background: '#060606' }}
     >
       {label}<SortIcon col={col} sortKey={sortKey} dir={sortDir} />
     </th>
@@ -690,7 +690,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
             onClick={() => setPillar(p)}
             className="text-[8px] font-medium tracking-[.12em] uppercase px-3 py-2 transition-colors"
             style={{
-              color:      pillar === p ? '#c9a96e' : '#333',
+              color:      pillar === p ? '#c9a96e' : '#666',
               background: pillar === p ? 'rgba(201,169,110,.08)' : 'transparent',
               border:     `1px solid ${pillar === p ? 'rgba(201,169,110,.35)' : '#1a1a1a'}`,
               cursor: 'pointer',
@@ -753,7 +753,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                           width: 52, height: '100%',
                           fontSize: 8, fontWeight: 500, letterSpacing: '.16em', textTransform: 'uppercase',
                           fontFamily: 'DM Sans, sans-serif',
-                          color: activeWin === w.key ? '#c9a96e' : '#2e2e2e',
+                          color: activeWin === w.key ? '#c9a96e' : '#555',
                           background: 'transparent', border: 'none',
                           borderRight: i < WINDOWS.length - 1 ? '1px solid #131313' : 'none',
                           cursor: 'pointer', position: 'relative', zIndex: 1,
@@ -850,27 +850,27 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
 
                     {/* Editable metric cells */}
                     <EditableCell
-                      value={w.views} displayValue={hasData ? fmt(w.views) : '—'} color={hasData ? '#f2ede4' : '#252525'}
+                      value={w.views} displayValue={hasData ? fmt(w.views) : '—'} color={hasData ? '#f2ede4' : '#3a3a3a'}
                       postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="views" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
-                      value={w.likes} displayValue={hasData ? fmt(w.likes) : '—'} color={hasData ? '#aaa' : '#252525'}
+                      value={w.likes} displayValue={hasData ? fmt(w.likes) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
                       postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="likes" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
-                      value={w.comments} displayValue={hasData ? fmt(w.comments) : '—'} color={hasData ? '#aaa' : '#252525'}
+                      value={w.comments} displayValue={hasData ? fmt(w.comments) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
                       postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="comments" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
-                      value={w.saves} displayValue={hasData ? fmt(w.saves) : '—'} color={hasData ? '#aaa' : '#252525'}
+                      value={w.saves} displayValue={hasData ? fmt(w.saves) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
                       postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="saves" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
                     <EditableCell
-                      value={w.shares} displayValue={hasData ? fmt(w.shares) : '—'} color={hasData ? '#aaa' : '#252525'}
+                      value={w.shares} displayValue={hasData ? fmt(w.shares) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
                       postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="shares" isPercent={false}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
@@ -878,7 +878,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     {/* ER % + tier (computed, not directly editable) */}
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2 justify-end">
-                        <span className="text-[12px] font-light" style={{ color: hasData ? ts.color : '#252525' }}>
+                        <span className="text-[12px] font-light" style={{ color: hasData ? ts.color : '#3a3a3a' }}>
                           {hasData ? er.toFixed(1) + '%' : '—'}
                         </span>
                         {hasData && (
@@ -893,7 +893,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     </td>
 
                     <EditableCell
-                      value={w.watch_pct} displayValue={hasData ? pct(w.watch_pct) : '—'} color={hasData ? '#aaa' : '#252525'}
+                      value={w.watch_pct} displayValue={hasData ? pct(w.watch_pct) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
                       postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="watch_pct" isPercent={true}
                       onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
                     />
@@ -929,7 +929,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
           return (
             <div key={t} className="flex items-center gap-1.5">
               <span style={{ width: 6, height: 6, borderRadius: 1, background: s.color, display: 'block', opacity: .8 }} />
-              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#333' }}>
+              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#555' }}>
                 {s.label} {t === 'elite' ? '≥12%' : t === 'strong' ? '7-12%' : t === 'avg' ? '4-7%' : '<4%'}
               </span>
             </div>
