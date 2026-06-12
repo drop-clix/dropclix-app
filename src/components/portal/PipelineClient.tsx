@@ -1382,6 +1382,13 @@ export function PipelineClient({
   const { platform, scope, from, to, setFilters } = usePortalFilters()
   const pillarColors = usePillarColors(useMemo(() => items.map(i => i.pillar ?? ''), [items]))
 
+  // Show only the link column matching the active platform pill
+  const showIG = platform === 'all' || platform === 'ig'
+  const showTT = platform === 'all' || platform === 'tt'
+  const showYT = platform === 'all' || platform === 'yt' || platform === 'lf'
+  // Total column count for colSpan (10 fixed + 0–3 link columns)
+  const colCount = 10 + (showIG ? 1 : 0) + (showTT ? 1 : 0) + (showYT ? 1 : 0)
+
   const today = useMemo(() => new Date(), [])
   const currentWeek = useMemo(() => monWkLabel(today), [today])
   const weekLabels   = useMemo(() => get6Weeks(today), [today])
@@ -1955,12 +1962,18 @@ export function PipelineClient({
                   style={{ color: sortKey === 'status' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 160, background: '#060606' }}>
                 Status{arrow('status')}
               </th>
-              <th className="text-left px-3 py-4 text-[9px] font-medium tracking-[.12em] uppercase"
-                  style={{ color: '#c9a96e', width: 30, background: '#060606' }}>IG</th>
-              <th className="text-left px-3 py-4 text-[9px] font-medium tracking-[.12em] uppercase"
-                  style={{ color: '#2dd4bf', width: 30, background: '#060606' }}>TT</th>
-              <th className="text-left px-3 py-4 text-[9px] font-medium tracking-[.12em] uppercase"
-                  style={{ color: '#4cc9ff', width: 30, background: '#060606' }}>YT</th>
+              {showIG && (
+                <th className="text-left px-3 py-4 text-[9px] font-medium tracking-[.12em] uppercase"
+                    style={{ color: '#c9a96e', width: 30, background: '#060606' }}>IG</th>
+              )}
+              {showTT && (
+                <th className="text-left px-3 py-4 text-[9px] font-medium tracking-[.12em] uppercase"
+                    style={{ color: '#2dd4bf', width: 30, background: '#060606' }}>TT</th>
+              )}
+              {showYT && (
+                <th className="text-left px-3 py-4 text-[9px] font-medium tracking-[.12em] uppercase"
+                    style={{ color: '#4cc9ff', width: 30, background: '#060606' }}>YT</th>
+              )}
               <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase"
                   style={{ color: '#555', width: 80, background: '#060606' }}>Actions</th>
             </tr>
@@ -1968,7 +1981,7 @@ export function PipelineClient({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="text-center py-16" style={{ color: '#444' }}>
+                <td colSpan={colCount} className="text-center py-16" style={{ color: '#444' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 20, opacity: 0.4 }}>◇</span>
                     <p style={{ fontSize: 12, fontWeight: 300, color: '#555' }}>
@@ -2121,62 +2134,68 @@ export function PipelineClient({
                         )}
                       </td>
 
-                      {/* IG link */}
-                      <td className="px-2 py-4" onClick={e => e.stopPropagation()}>
-                        {item.platform.includes('ig') ? (
-                          <button
-                            onClick={e => { e.stopPropagation(); setPlatLinkItem({ item, plat: 'ig' }) }}
-                            title={igLinked ? `Linked: Instagram` : 'Link Instagram post'}
-                            style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              width: 22, height: 20, cursor: 'pointer', fontSize: 7, fontWeight: 700,
-                              letterSpacing: '.08em', textTransform: 'uppercase',
-                              background: igLinked ? 'rgba(201,169,110,.15)' : 'transparent',
-                              border: `1px solid ${igLinked ? 'rgba(201,169,110,.4)' : '#1e1e1e'}`,
-                              color: igLinked ? '#c9a96e' : '#2a2a2a',
-                              borderRadius: 3,
-                            }}
-                          >IG</button>
-                        ) : <span style={{ width: 22, display: 'block' }} />}
-                      </td>
+                      {/* IG link — only when IG pill active or All */}
+                      {showIG && (
+                        <td className="px-2 py-4" onClick={e => e.stopPropagation()}>
+                          {item.platform.includes('ig') ? (
+                            <button
+                              onClick={e => { e.stopPropagation(); setPlatLinkItem({ item, plat: 'ig' }) }}
+                              title={igLinked ? `Linked: Instagram` : 'Link Instagram post'}
+                              style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                width: 22, height: 20, cursor: 'pointer', fontSize: 7, fontWeight: 700,
+                                letterSpacing: '.08em', textTransform: 'uppercase',
+                                background: igLinked ? 'rgba(201,169,110,.15)' : 'transparent',
+                                border: `1px solid ${igLinked ? 'rgba(201,169,110,.4)' : '#1e1e1e'}`,
+                                color: igLinked ? '#c9a96e' : '#2a2a2a',
+                                borderRadius: 3,
+                              }}
+                            >IG</button>
+                          ) : <span style={{ width: 22, display: 'block' }} />}
+                        </td>
+                      )}
 
-                      {/* TT link */}
-                      <td className="px-2 py-4" onClick={e => e.stopPropagation()}>
-                        {item.platform.includes('tt') ? (
-                          <button
-                            onClick={e => { e.stopPropagation(); setPlatLinkItem({ item, plat: 'tt' }) }}
-                            title={ttLinked ? `Linked: TikTok` : 'Link TikTok video'}
-                            style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              width: 22, height: 20, cursor: 'pointer', fontSize: 7, fontWeight: 700,
-                              letterSpacing: '.08em', textTransform: 'uppercase',
-                              background: ttLinked ? 'rgba(45,212,191,.15)' : 'transparent',
-                              border: `1px solid ${ttLinked ? 'rgba(45,212,191,.4)' : '#1e1e1e'}`,
-                              color: ttLinked ? '#2dd4bf' : '#2a2a2a',
-                              borderRadius: 3,
-                            }}
-                          >TT</button>
-                        ) : <span style={{ width: 22, display: 'block' }} />}
-                      </td>
+                      {/* TT link — only when TT pill active or All */}
+                      {showTT && (
+                        <td className="px-2 py-4" onClick={e => e.stopPropagation()}>
+                          {item.platform.includes('tt') ? (
+                            <button
+                              onClick={e => { e.stopPropagation(); setPlatLinkItem({ item, plat: 'tt' }) }}
+                              title={ttLinked ? `Linked: TikTok` : 'Link TikTok video'}
+                              style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                width: 22, height: 20, cursor: 'pointer', fontSize: 7, fontWeight: 700,
+                                letterSpacing: '.08em', textTransform: 'uppercase',
+                                background: ttLinked ? 'rgba(45,212,191,.15)' : 'transparent',
+                                border: `1px solid ${ttLinked ? 'rgba(45,212,191,.4)' : '#1e1e1e'}`,
+                                color: ttLinked ? '#2dd4bf' : '#2a2a2a',
+                                borderRadius: 3,
+                              }}
+                            >TT</button>
+                          ) : <span style={{ width: 22, display: 'block' }} />}
+                        </td>
+                      )}
 
-                      {/* YT link */}
-                      <td className="px-2 py-4" onClick={e => e.stopPropagation()}>
-                        {item.platform.includes('yt') || item.ytType != null ? (
-                          <button
-                            onClick={e => { e.stopPropagation(); setYtLinkItem(item) }}
-                            title={item.ytId ? `Linked: ${item.ytId}` : 'Link YouTube video'}
-                            style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              width: 22, height: 20, cursor: 'pointer',
-                              background: item.ytId ? 'rgba(76,201,255,.1)' : 'transparent',
-                              border: `1px solid ${item.ytId ? 'rgba(76,201,255,.4)' : '#1e1e1e'}`,
-                              borderRadius: 3,
-                            }}
-                          >
-                            <YTIcon size={10} color={item.ytId ? '#4cc9ff' : '#2a2a2a'} />
-                          </button>
-                        ) : <span style={{ width: 22, display: 'block' }} />}
-                      </td>
+                      {/* YT link — only when YT/LF pill active or All */}
+                      {showYT && (
+                        <td className="px-2 py-4" onClick={e => e.stopPropagation()}>
+                          {item.platform.includes('yt') || item.ytType != null ? (
+                            <button
+                              onClick={e => { e.stopPropagation(); setYtLinkItem(item) }}
+                              title={item.ytId ? `Linked: ${item.ytId}` : 'Link YouTube video'}
+                              style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                width: 22, height: 20, cursor: 'pointer',
+                                background: item.ytId ? 'rgba(76,201,255,.1)' : 'transparent',
+                                border: `1px solid ${item.ytId ? 'rgba(76,201,255,.4)' : '#1e1e1e'}`,
+                                borderRadius: 3,
+                              }}
+                            >
+                              <YTIcon size={10} color={item.ytId ? '#4cc9ff' : '#2a2a2a'} />
+                            </button>
+                          ) : <span style={{ width: 22, display: 'block' }} />}
+                        </td>
+                      )}
 
                       {/* Actions */}
                       <td className="px-4 py-4">
@@ -2234,7 +2253,7 @@ export function PipelineClient({
                     {/* Edit panel */}
                     {isEditing && (
                       <tr>
-                        <td colSpan={13} style={{ padding: 0 }}>
+                        <td colSpan={colCount} style={{ padding: 0 }}>
                           <ItemEditPanel
                             item={item}
                             onUpdate={handleUpdate}
