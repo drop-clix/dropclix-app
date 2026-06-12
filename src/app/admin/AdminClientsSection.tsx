@@ -111,7 +111,7 @@ const inputStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: 9, letterSpacing: '0.14em',
-  textTransform: 'uppercase', color: '#444', marginBottom: 6,
+  textTransform: 'uppercase', color: '#666', marginBottom: 6,
 }
 
 const btnGhost: React.CSSProperties = {
@@ -221,7 +221,7 @@ function CreateClientModal({ onClose, onSuccess }: { onClose: () => void; onSucc
             <div>
               <label style={labelStyle}>Monthly Retainer <span style={{ color: '#555', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#444', fontSize: 13 }}>$</span>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#666', fontSize: 13 }}>$</span>
                 <input name="retainer" type="number" min="0" step="100" placeholder="4500" style={{ ...inputStyle, paddingLeft: 26 }} />
               </div>
             </div>
@@ -285,7 +285,7 @@ function EditClientModal({ client, onClose }: { client: ClientRow; onClose: () =
             <div>
               <label style={labelStyle}>Monthly Retainer</label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#444', fontSize: 13 }}>$</span>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#666', fontSize: 13 }}>$</span>
                 <input name="retainer" type="number" min="0" step="100" defaultValue={client.monthly_retainer ?? ''} style={{ ...inputStyle, paddingLeft: 26 }} />
               </div>
             </div>
@@ -381,7 +381,7 @@ function AdminImportModal({ client, onClose }: { client: ClientRow; onClose: () 
 
         {stage === 'upload' && (
           <div>
-            <p style={{ fontSize: 11, color: '#444', fontWeight: 300, marginBottom: 20 }}>
+            <p style={{ fontSize: 11, color: '#666', fontWeight: 300, marginBottom: 20 }}>
               Upload a CSV using the standard Drop CLIX format (36 columns). Post IDs are checked against existing data.
             </p>
             <div
@@ -570,7 +570,7 @@ function ClientCard({
       </div>
 
       {/* Email */}
-      <p style={{ fontSize: 11, color: '#444', fontWeight: 300, marginBottom: 20 }}>{client.email}</p>
+      <p style={{ fontSize: 11, color: '#666', fontWeight: 300, marginBottom: 20 }}>{client.email}</p>
 
       {/* Divider */}
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.04)', marginBottom: 20 }} />

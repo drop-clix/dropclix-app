@@ -30,8 +30,16 @@ body {
   font-feature-settings: "kern" 1, "liga" 1;
 }
 
-/* All buttons pointer by default */
-button { cursor: pointer; }
+/* All buttons pointer by default + smooth transitions */
+button {
+  cursor: pointer;
+  transition: opacity .12s, color .12s, background-color .12s, border-color .12s;
+}
+
+/* Subtle active press feedback */
+button:not(:disabled):active {
+  opacity: .75;
+}
 
 /* Ensure interactive / code elements have no glow */
 input, textarea, select, button, code, pre, [data-radix-popper-content-wrapper] {
@@ -110,6 +118,18 @@ h1, h2, h3 {
 /* Remove default focus ring when using mouse (keep for keyboard) */
 :focus:not(:focus-visible) {
   outline: none;
+}
+
+/* ── Input placeholder ───────────────────── */
+::placeholder {
+  color: #3a3a3a;
+  opacity: 1;
+}
+
+/* ── Slide-over entrance ─────────────────── */
+@keyframes slideOverIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
 }
 
 /* ── AI Modal cinematic entrance ─────────── */

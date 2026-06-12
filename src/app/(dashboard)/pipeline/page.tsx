@@ -137,7 +137,7 @@ export default async function PipelinePage() {
         >
           Pipeline
         </h1>
-        <p className="text-[12px] font-light mt-1" style={{ color: '#444' }}>
+        <p className="text-[12px] font-light mt-1" style={{ color: '#666' }}>
           {items.length} items · status updates save instantly
         </p>
       </div>

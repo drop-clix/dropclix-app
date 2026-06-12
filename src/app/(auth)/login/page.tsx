@@ -140,7 +140,7 @@ export default function LoginPage() {
                 <label
                   htmlFor="email"
                   className="block text-[9px] font-medium tracking-[.2em] uppercase mb-2"
-                  style={{ color: '#444' }}
+                  style={{ color: '#666' }}
                 >
                   Email
                 </label>
@@ -168,7 +168,7 @@ export default function LoginPage() {
                   <label
                     htmlFor="password"
                     className="block text-[9px] font-medium tracking-[.2em] uppercase"
-                    style={{ color: '#444' }}
+                    style={{ color: '#666' }}
                   >
                     Password
                   </label>
@@ -273,7 +273,7 @@ export default function LoginPage() {
                     <label
                       htmlFor="reset-email"
                       className="block text-[9px] font-medium tracking-[.2em] uppercase mb-2"
-                      style={{ color: '#444' }}
+                      style={{ color: '#666' }}
                     >
                       Email
                     </label>
@@ -326,7 +326,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={enterLoginMode}
                     className="w-full py-3 text-[9px] tracking-[.18em] uppercase transition-colors"
-                    style={{ color: '#444', cursor: 'pointer' }}
+                    style={{ color: '#666', cursor: 'pointer' }}
                     onMouseEnter={e => ((e.target as HTMLElement).style.color = '#c9a96e')}
                     onMouseLeave={e => ((e.target as HTMLElement).style.color = '#444')}
                   >

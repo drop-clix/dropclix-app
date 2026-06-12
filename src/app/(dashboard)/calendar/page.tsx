@@ -104,7 +104,7 @@ export default async function CalendarPage() {
         >
           Calendar
         </h1>
-        <p className="text-[12px] font-light mt-1" style={{ color: '#444' }}>
+        <p className="text-[12px] font-light mt-1" style={{ color: '#666' }}>
           {events.length} events · Feb–May 2026 · IG & YT
         </p>
       </div>

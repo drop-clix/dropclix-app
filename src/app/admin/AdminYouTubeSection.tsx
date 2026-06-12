@@ -102,7 +102,7 @@ export function AdminYouTubeSection({
                           background: '#555', flexShrink: 0,
                         }}
                       />
-                      <span className="text-[9px] font-light" style={{ color: '#444' }}>
+                      <span className="text-[9px] font-light" style={{ color: '#666' }}>
                         Not connected
                       </span>
                     </div>

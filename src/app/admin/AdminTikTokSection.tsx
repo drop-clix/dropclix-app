@@ -72,7 +72,7 @@ export function AdminTikTokSection({
                   ) : (
                     <div className="flex items-center gap-2 mt-1">
                       <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#555', flexShrink: 0 }} />
-                      <span className="text-[9px] font-light" style={{ color: '#444' }}>Not connected</span>
+                      <span className="text-[9px] font-light" style={{ color: '#666' }}>Not connected</span>
                     </div>
                   )}
                 </div>

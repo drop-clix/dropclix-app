@@ -191,7 +191,7 @@ export default function ResetPasswordPage() {
                   <label
                     htmlFor="new-password"
                     className="block text-[9px] font-medium tracking-[.2em] uppercase mb-2"
-                    style={{ color: '#444' }}
+                    style={{ color: '#666' }}
                   >
                     New Password
                   </label>
@@ -214,7 +214,7 @@ export default function ResetPasswordPage() {
                   <label
                     htmlFor="confirm-password"
                     className="block text-[9px] font-medium tracking-[.2em] uppercase mb-2"
-                    style={{ color: '#444' }}
+                    style={{ color: '#666' }}
                   >
                     Confirm Password
                   </label>
@@ -261,7 +261,7 @@ export default function ResetPasswordPage() {
                 <a
                   href="/login"
                   className="block w-full py-3 text-center text-[9px] tracking-[.18em] uppercase transition-colors"
-                  style={{ color: '#444' }}
+                  style={{ color: '#666' }}
                   onMouseEnter={e => ((e.target as HTMLElement).style.color = '#c9a96e')}
                   onMouseLeave={e => ((e.target as HTMLElement).style.color = '#444')}
                 >

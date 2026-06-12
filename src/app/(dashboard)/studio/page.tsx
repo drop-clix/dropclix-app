@@ -114,7 +114,7 @@ export default async function StudioPage() {
         >
           Studio
         </h1>
-        <p className="text-[12px] font-light mt-1" style={{ color: '#444' }}>
+        <p className="text-[12px] font-light mt-1" style={{ color: '#666' }}>
           {pipelineStats.SCRIPTED} scripts · {pipelineStats.FILMING + pipelineStats.REVIEWING} in production · {pipelineStats.POSTED} posted
         </p>
       </div>

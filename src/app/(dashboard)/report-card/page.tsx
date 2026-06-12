@@ -370,7 +370,7 @@ export default async function ReportCardPage() {
             style={{ fontSize: 'clamp(28px,3vw,44px)', color: '#f2ede4', lineHeight: 1.06 }}>
           Report Card
         </h1>
-        <p className="text-[12px] font-light mt-1" style={{ color: '#444' }}>
+        <p className="text-[12px] font-light mt-1" style={{ color: '#666' }}>
           {weekGrades.length} weeks · {monthGrades.length} months · score out of 100
         </p>
       </div>

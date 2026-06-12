@@ -101,7 +101,7 @@ export default async function AnalyticsPage() {
         >
           Analytics
         </h1>
-        <p className="text-[12px] font-light mt-1" style={{ color: '#444' }}>
+        <p className="text-[12px] font-light mt-1" style={{ color: '#666' }}>
           {posts.length} posts · all metric windows · IG / TT / YT
         </p>
       </div>

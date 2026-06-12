@@ -42,7 +42,7 @@ function fmt(n: number): string {
 
 const PLAT_CFG: Record<string, { label: string; color: string; bg: string }> = {
   ig: { label: 'IG', color: '#c9a96e', bg: 'rgba(201,169,110,.1)' },
-  tt: { label: 'TT', color: '#a78bfa', bg: 'rgba(167,139,250,.1)' },
+  tt: { label: 'TT', color: '#2dd4bf', bg: 'rgba(45,212,191,.1)'  },
   yt: { label: 'YT', color: '#4cc9ff', bg: 'rgba(76,201,255,.1)'  },
   lf: { label: 'LF', color: '#4cc9ff', bg: 'rgba(76,201,255,.1)'  },
 }
@@ -137,7 +137,9 @@ export function PostSlideOver({
             </div>
             <button
               onClick={onClose}
-              style={{ fontSize: 20, color: '#444', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, flexShrink: 0, padding: '0 0 0 8px' }}
+              style={{ fontSize: 20, color: '#666', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, flexShrink: 0, padding: '0 0 0 8px', transition: 'color .12s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#aaa' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#666' }}
             >
               ×
             </button>
@@ -245,7 +247,7 @@ export function PostSlideOver({
             <div style={{ display: 'flex', gap: 8 }}>
               {post.pillar && post.pillar !== '—' && (
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 7, color: '#444', marginBottom: 4 }}>Pillar</p>
+                  <p style={{ fontSize: 7, color: '#666', marginBottom: 4 }}>Pillar</p>
                   <span style={{
                     fontSize: 9, fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase',
                     padding: '4px 10px', color: '#555', background: '#0d0d0d', border: '1px solid #1a1a1a',
@@ -256,7 +258,7 @@ export function PostSlideOver({
               )}
               {post.hook && post.hook !== '—' && (
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 7, color: '#444', marginBottom: 4 }}>Hook</p>
+                  <p style={{ fontSize: 7, color: '#666', marginBottom: 4 }}>Hook</p>
                   <span style={{ fontSize: 9, padding: '4px 10px', color: '#555', background: '#0d0d0d', border: '1px solid #1a1a1a' }}>
                     {post.hook}
                   </span>
@@ -273,6 +275,7 @@ export function PostSlideOver({
                 padding: '10px 20px', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase',
                 background: 'rgba(201,169,110,.08)', border: '1px solid rgba(201,169,110,.3)',
                 color: '#c9a96e', cursor: 'pointer', fontWeight: 600, width: '100%',
+                transition: 'background .15s, border-color .15s',
               }}
             >
               Edit Post
@@ -281,12 +284,6 @@ export function PostSlideOver({
         </div>
       </div>
 
-      <style>{`
-        @keyframes slideOverIn {
-          from { transform: translateX(100%); }
-          to   { transform: translateX(0); }
-        }
-      `}</style>
     </>
   )
 }

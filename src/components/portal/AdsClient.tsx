@@ -521,9 +521,9 @@ export function AdsClient({
               <ResponsiveContainer width="100%" height={180}>
                 <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
                   <CartesianGrid stroke="rgba(255,255,255,.04)" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} />
-                  <YAxis yAxisId="spend" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v >= 1000 ? (v/1000).toFixed(0)+'K' : v}`} width={44} />
-                  <YAxis yAxisId="roas" orientation="right" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}x`} width={36} />
+                  <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#666' }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="spend" tick={{ fontSize: 8, fill: '#666' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v >= 1000 ? (v/1000).toFixed(0)+'K' : v}`} width={44} />
+                  <YAxis yAxisId="roas" orientation="right" tick={{ fontSize: 8, fill: '#666' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}x`} width={36} />
                   <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [n === 'roas' ? `${Number(v).toFixed(2)}x` : `$${Number(v).toLocaleString()}`, n === 'roas' ? 'ROAS' : 'Spend']} />
                   <Bar yAxisId="spend" dataKey="spend" fill="rgba(201,169,110,.35)" radius={[2,2,0,0]} />
                   <Line yAxisId="roas" dataKey="roas" stroke="#c9a96e" strokeWidth={2} dot={{ r: 3, fill: '#c9a96e' }} />
@@ -537,9 +537,9 @@ export function AdsClient({
               <ResponsiveContainer width="100%" height={180}>
                 <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
                   <CartesianGrid stroke="rgba(255,255,255,.04)" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} />
-                  <YAxis yAxisId="ctr" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={36} />
-                  <YAxis yAxisId="cpm" orientation="right" tick={{ fontSize: 8, fill: '#444' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(1)}`} width={36} />
+                  <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#666' }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="ctr" tick={{ fontSize: 8, fill: '#666' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={36} />
+                  <YAxis yAxisId="cpm" orientation="right" tick={{ fontSize: 8, fill: '#666' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `$${v.toFixed(1)}`} width={36} />
                   <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [n === 'ctr' ? `${Number(v).toFixed(2)}%` : `$${Number(v).toFixed(2)}`, n === 'ctr' ? 'CTR' : 'CPM']} />
                   <Area yAxisId="cpm" dataKey="cpm" fill="rgba(76,201,255,.06)" stroke="rgba(76,201,255,.3)" strokeWidth={1} />
                   <Line yAxisId="ctr" dataKey="ctr" stroke="#4cc9ff" strokeWidth={2} dot={{ r: 3, fill: '#4cc9ff' }} />

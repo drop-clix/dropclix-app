@@ -182,14 +182,14 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub: str
 }
 
 function SortIcon({ col, sortKey, dir }: { col: SortKey; sortKey: SortKey; dir: SortDir }) {
-  if (col !== sortKey) return <span style={{ color: '#444', marginLeft: 4, fontSize: 9 }}>↕</span>
+  if (col !== sortKey) return <span style={{ color: '#666', marginLeft: 4, fontSize: 9 }}>↕</span>
   return <span style={{ color: '#c9a96e', marginLeft: 4, fontSize: 9 }}>{dir === 'desc' ? '↓' : '↑'}</span>
 }
 
 // ── Analytics chart helpers ────────────────────────────────────────────────
 
 const CHART_GRID  = 'rgba(255,255,255,.04)'
-const CHART_TICK  = '#333'
+const CHART_TICK  = '#555'
 
 function tierColor(er: number): string {
   return er >= 12 ? '#39ff88' : er >= 7 ? '#4cc9ff' : er >= 4 ? '#fbbf24' : '#ff3b5f'
@@ -205,7 +205,7 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   if (!active || !payload?.length) return null
   return (
     <div style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', padding: '8px 12px', fontSize: 10, fontFamily: 'DM Sans, sans-serif' }}>
-      {label != null && <p style={{ color: '#444', marginBottom: 4 }}>{String(label)}</p>}
+      {label != null && <p style={{ color: '#666', marginBottom: 4 }}>{String(label)}</p>}
       {payload.map((p: any, i: number) => (
         <p key={i} style={{ color: p.color ?? '#c9a96e' }}>{p.name}: {p.value?.toLocaleString?.() ?? p.value}</p>
       ))}
@@ -786,7 +786,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="text-center py-16 text-[11px]" style={{ color: '#444' }}>
+                <td colSpan={13} className="text-center py-16 text-[11px]" style={{ color: '#666' }}>
                   No posts found for this filter.
                 </td>
               </tr>
@@ -796,7 +796,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                 const er      = calcER(w, post.platform)
                 const t       = tier(er, w.views > 0)
                 const ts      = TIER_STYLES[t]
-                const ds      = DECISION_STYLES[post.decision] ?? { color: '#444' }
+                const ds      = DECISION_STYLES[post.decision] ?? { color: '#666' }
                 const hasData = w.views > 0
                 const pillarColor = pillarColors.get(post.pillar ?? '') ?? '#1a1a1a'
 
@@ -834,7 +834,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                     </td>
 
                     {/* Date */}
-                    <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>
+                    <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#666', whiteSpace: 'nowrap' }}>
                       {post.date || '—'}
                     </td>
 
@@ -918,7 +918,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
         <AdvancedAnalyticsCharts rows={rows} win={activeWin} platform={platform} onOpen={setSnapshotPost} />
       )}
 
-      <p className="mt-3 text-[9px]" style={{ color: '#444' }}>
+      <p className="mt-3 text-[9px]" style={{ color: '#666' }}>
         Click any metric cell to edit · IG ER uses saves · YT ER uses subscribers gained
       </p>
 

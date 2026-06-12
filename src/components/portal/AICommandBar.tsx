@@ -381,7 +381,7 @@ function ActionCard({
             disabled={status === 'executing'}
             style={{
               padding: '6px 14px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
-              background: 'transparent', border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer',
+              background: 'transparent', border: '1px solid #1e1e1e', color: '#666', cursor: 'pointer',
             }}
           >
             Cancel
@@ -686,7 +686,7 @@ export function AICommandBar() {
         }}>
           {visibleMessages.length === 0 && (
             <div style={{ textAlign: 'center', paddingTop: 24 }}>
-              <p style={{ fontSize: 12, color: '#444', marginBottom: 8 }}>Ask me anything about your content.</p>
+              <p style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>Ask me anything about your content.</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
                 {[
                   'Add a TikTok video "Why solar saves money" to Sales, JunWk3',
