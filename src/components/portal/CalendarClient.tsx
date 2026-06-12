@@ -27,7 +27,7 @@ const PIPELINE_STATUS_COLOR: Record<string, string> = {
   FILMING:   '#fbbf24',
   REVIEWING: '#ff3b5f',
   SCHEDULED: '#4cc9ff',
-  CANCELLED: '#444',
+  CANCELLED: '#666',
 }
 
 const ALL_STATUSES_LIST = [
@@ -187,7 +187,7 @@ function SlideOverPanel({
                 {pillar && (() => { const pc = pillarColors.get(pillar) ?? '#555'; return <span key="pi" style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: pc, background: `${pc}18`, border: `1px solid ${pc}40` }}>{pillar}</span> })()}
               </div>
             </div>
-            <button onClick={onClose} style={{ fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, flexShrink: 0, marginTop: -2 }}>×</button>
+            <button onClick={onClose} style={{ fontSize: 18, color: '#555', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, flexShrink: 0, marginTop: -2 }}>×</button>
           </div>
         </div>
 
@@ -214,7 +214,7 @@ function SlideOverPanel({
                     style={{
                       padding: '4px 14px', cursor: 'pointer', fontSize: 9, fontWeight: 600,
                       letterSpacing: '.1em', textTransform: 'uppercase',
-                      color:      platform === k ? v.color : '#333',
+                      color:      platform === k ? v.color : '#666',
                       background: platform === k ? v.bg    : 'transparent',
                       border:    `1px solid ${platform === k ? v.color + '60' : '#1e1e1e'}`,
                       transition: 'all .12s',
@@ -310,7 +310,7 @@ function SlideOverPanel({
                 )
               })()}
               {!analyticsLoading && (!analyticsData || analyticsData.windows.length === 0) && (
-                <p style={{ fontSize: 11, color: '#333', fontWeight: 300 }}>No analytics data for <span style={{ color: '#c9a96e', fontFamily: 'monospace' }}>{ev.postId}</span>.</p>
+                <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>No analytics data for <span style={{ color: '#c9a96e', fontFamily: 'monospace' }}>{ev.postId}</span>.</p>
               )}
             </div>
           )}
@@ -323,7 +323,7 @@ function SlideOverPanel({
               <div style={{ background: 'rgba(255,59,95,.06)', border: '1px solid rgba(255,59,95,.25)', padding: '12px 14px' }}>
                 <p style={{ fontSize: 10, color: '#ff3b5f', marginBottom: 10, fontWeight: 300 }}>Delete this event? This cannot be undone.</p>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setDelConfirm(false)} style={{ flex: 1, padding: '6px', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => setDelConfirm(false)} style={{ flex: 1, padding: '6px', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#666', cursor: 'pointer' }}>Cancel</button>
                   <button onClick={handleDelete} disabled={deleting} style={{ flex: 1, padding: '6px', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', background: 'rgba(255,59,95,.12)', border: '1px solid rgba(255,59,95,.4)', color: '#ff3b5f', cursor: deleting ? 'wait' : 'pointer', opacity: deleting ? 0.6 : 1 }}>{deleting ? 'Deleting…' : 'Confirm Delete'}</button>
                 </div>
               </div>
@@ -492,7 +492,7 @@ function EventEditPanel({
             style={{ fontSize: 9, padding: '2px 8px', cursor: 'pointer', color: '#ff3b5f', background: 'rgba(255,59,95,.06)', border: '1px solid rgba(255,59,95,.2)', opacity: deleting ? 0.5 : 1 }}>
             {deleting ? 'Deleting…' : 'Delete'}
           </button>
-          <button onClick={onClose} style={{ fontSize: 9, padding: '2px 8px', cursor: 'pointer', color: '#444', background: 'transparent', border: '1px solid #1e1e1e' }}>Done</button>
+          <button onClick={onClose} style={{ fontSize: 9, padding: '2px 8px', cursor: 'pointer', color: '#666', background: 'transparent', border: '1px solid #1e1e1e' }}>Done</button>
         </div>
       </div>
 
@@ -841,18 +841,18 @@ export function CalendarClient({
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <button onClick={prevMonth} className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
-            style={{ color: '#444', background: '#080808', border: '1px solid #1a1a1a', cursor: 'pointer' }}>‹ Prev</button>
+            style={{ color: '#666', background: '#080808', border: '1px solid #1a1a1a', cursor: 'pointer' }}>‹ Prev</button>
           <span className="font-jakarta font-light" style={{ fontSize: 18, color: '#f2ede4', minWidth: 180, textAlign: 'center' }}>
             {`${MONTHS_LONG[month]} ${year}`}
           </span>
           <button onClick={nextMonth} className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
-            style={{ color: '#444', background: '#080808', border: '1px solid #1a1a1a', cursor: 'pointer' }}>Next ›</button>
+            style={{ color: '#666', background: '#080808', border: '1px solid #1a1a1a', cursor: 'pointer' }}>Next ›</button>
           <button onClick={goToday} className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
             style={{ color: '#c9a96e', background: 'transparent', border: '1px solid rgba(201,169,110,.3)', cursor: 'pointer' }}>Today</button>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex gap-2 text-[9px]" style={{ color: '#333' }}>
+          <div className="flex gap-2 text-[9px]" style={{ color: '#555' }}>
             {monthEvents.length > 0 && (
               <>
                 <span>{monthEvents.length} posts</span>
@@ -861,14 +861,14 @@ export function CalendarClient({
                 {ttCount > 0 && <span style={{ color: PLAT.tt.color }}>{ttCount} TT</span>}
               </>
             )}
-            {monthEvents.length === 0 && <span style={{ color: '#444' }}>No events this month</span>}
+            {monthEvents.length === 0 && <span style={{ color: '#666' }}>No events this month</span>}
           </div>
           <div className="flex gap-1">
             {(['calendar', 'agenda'] as const).map(v => (
               <button key={v} onClick={() => setView(v)}
                 className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
                 style={{
-                  color:      view === v ? '#c9a96e' : '#333',
+                  color:      view === v ? '#c9a96e' : '#666',
                   background: view === v ? 'rgba(201,169,110,.07)' : 'transparent',
                   border:     `1px solid ${view === v ? 'rgba(201,169,110,.4)' : '#1a1a1a'}`,
                   cursor: 'pointer',
@@ -945,7 +945,7 @@ export function CalendarClient({
                         onTouchStart={e => onPillTouchStart(e, ev)}
                       />
                     ))}
-                    {cell.evs.length > 2 && <span className="text-[8px]" style={{ color: '#333' }}>+{cell.evs.length - 2} more</span>}
+                    {cell.evs.length > 2 && <span className="text-[8px]" style={{ color: '#555' }}>+{cell.evs.length - 2} more</span>}
                   </div>
                 )
               })}
@@ -964,7 +964,7 @@ export function CalendarClient({
                         width: 20, height: 20, fontSize: 9, cursor: 'pointer',
                         background: selEvIdx === i ? 'rgba(201,169,110,.15)' : 'transparent',
                         border: `1px solid ${selEvIdx === i ? 'rgba(201,169,110,.4)' : '#1a1a1a'}`,
-                        color: selEvIdx === i ? '#c9a96e' : '#333',
+                        color: selEvIdx === i ? '#c9a96e' : '#666',
                       }}>
                       {i + 1}
                     </button>
@@ -984,7 +984,7 @@ export function CalendarClient({
                   )}
                   <button
                     onClick={() => { setSelDate(null); setEditingId(null) }}
-                    style={{ width: 20, height: 20, fontSize: 10, background: 'transparent', border: '1px solid #1a1a1a', color: '#333', cursor: 'pointer', marginLeft: 4 }}>
+                    style={{ width: 20, height: 20, fontSize: 10, background: 'transparent', border: '1px solid #1a1a1a', color: '#555', cursor: 'pointer', marginLeft: 4 }}>
                     ×
                   </button>
                 </div>
@@ -1025,7 +1025,7 @@ export function CalendarClient({
               <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#555' }}>Today</span>
             </div>
             <div className="flex items-center gap-1.5 ml-auto">
-              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#444' }}>Drag events to reschedule</span>
+              <span className="text-[8px] tracking-[.12em] uppercase" style={{ color: '#666' }}>Drag events to reschedule</span>
             </div>
           </div>
         </>
@@ -1071,10 +1071,10 @@ export function CalendarClient({
                           {ev.title}
                         </p>
                         <span className="text-[8px] font-medium tracking-[.1em] uppercase px-2 py-0.5 hidden sm:inline"
-                          style={{ color: '#444', background: '#0d0d0d', border: '1px solid #1a1a1a', whiteSpace: 'nowrap' }}>
+                          style={{ color: '#666', background: '#0d0d0d', border: '1px solid #1a1a1a', whiteSpace: 'nowrap' }}>
                           {ev.contentType !== '—' ? ev.contentType : '—'}
                         </span>
-                        <span className="text-[10px] font-light" style={{ fontFamily: 'monospace', color: '#333', minWidth: 50 }}>{ev.postId}</span>
+                        <span className="text-[10px] font-light" style={{ fontFamily: 'monospace', color: '#555', minWidth: 50 }}>{ev.postId}</span>
                         {ev.pipelineStatus && (
                           <span className="text-[8px] font-medium tracking-[.1em] uppercase" style={{ color: statusColor, minWidth: 64, textAlign: 'right' }}>
                             {ev.pipelineStatus}
@@ -1122,7 +1122,7 @@ export function CalendarClient({
 
 function EventDetailCard({ ev }: { ev: CalendarEvent }) {
   const platCfg     = PLAT[ev.platform] ?? PLAT.ig
-  const statusColor = ev.pipelineStatus ? (PIPELINE_STATUS_COLOR[ev.pipelineStatus] ?? '#555') : '#333'
+  const statusColor = ev.pipelineStatus ? (PIPELINE_STATUS_COLOR[ev.pipelineStatus] ?? '#555') : '#555'
 
   return (
     <div style={{ background: '#0a0a0a', border: '1px solid #141414', borderLeft: `3px solid ${platCfg.color}`, padding: '22px 24px' }}>
