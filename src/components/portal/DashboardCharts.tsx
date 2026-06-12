@@ -89,7 +89,7 @@ function ChartCard({
         fontSize: 8,
         letterSpacing: '.14em',
         textTransform: 'uppercase',
-        color: '#333',
+        color: '#555',
         marginBottom: 14,
       }}>
         {title}

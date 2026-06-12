@@ -119,7 +119,7 @@ export function AISuggestionsModal({ isOpen, onClose, title, subtitle, suggestio
               ))}
             </div>
           ) : suggestions.length === 0 ? (
-            <p style={{ color: '#333', fontSize: 12, textAlign: 'center', padding: '32px 0' }}>No insights available.</p>
+            <p style={{ color: '#555', fontSize: 12, textAlign: 'center', padding: '32px 0' }}>No insights available.</p>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 14 }}>
               {suggestions.map((s, i) => {

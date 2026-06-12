@@ -239,7 +239,7 @@ export function PipelineBulkImportModal({
                     ['pillar',   'any text (optional)'],
                     ['IDs',      'auto-generated · status defaults to PLANNED · priority 3'],
                   ].map(([k, v]) => (
-                    <p key={k} style={{ fontSize: 9, color: '#333' }}>
+                    <p key={k} style={{ fontSize: 9, color: '#555' }}>
                       <span style={{ color: '#555', fontFamily: 'monospace', marginRight: 4 }}>{k}:</span>{v}
                     </p>
                   ))}
@@ -275,7 +275,7 @@ export function PipelineBulkImportModal({
                 <p style={{ fontSize: 13, color: '#666', fontWeight: 300, marginBottom: 5 }}>
                   Drop your CSV here, or click to browse
                 </p>
-                <p style={{ fontSize: 9, color: '#2a2a2a', letterSpacing: '.12em', textTransform: 'uppercase' }}>
+                <p style={{ fontSize: 9, color: '#555', letterSpacing: '.12em', textTransform: 'uppercase' }}>
                   .csv files only
                 </p>
                 <input
@@ -293,13 +293,13 @@ export function PipelineBulkImportModal({
 
               {/* Example snippet */}
               <div>
-                <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 6 }}>
+                <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 6 }}>
                   Example
                 </p>
                 <div style={{
                   background: '#050505', border: '1px solid #141414',
                   padding: '10px 14px', fontFamily: 'monospace', fontSize: 10,
-                  color: '#333', lineHeight: 2.2,
+                  color: '#555', lineHeight: 2.2,
                 }}>
                   <span style={{ color: '#1e1e1e' }}>title,platform,pillar,week</span><br />
                   &quot;How to close a deal&quot;,ig|tt,Sales Tips,JunWk3<br />
@@ -341,7 +341,7 @@ export function PipelineBulkImportModal({
                   <tbody>
                     {preview.map((row, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #0e0e0e', background: i % 2 === 0 ? '#070707' : '#080808' }}>
-                        <td className="px-3 py-2" style={{ color: '#2a2a2a', fontSize: 9, width: 28, textAlign: 'right' }}>
+                        <td className="px-3 py-2" style={{ color: '#555', fontSize: 9, width: 28, textAlign: 'right' }}>
                           {i + 1}
                         </td>
                         <td className="px-3 py-2" style={{ fontFamily: 'monospace', fontSize: 9, color: '#c9a96e', whiteSpace: 'nowrap' }}>
@@ -386,7 +386,7 @@ export function PipelineBulkImportModal({
                 </table>
               </div>
 
-              <p style={{ fontSize: 9, color: '#333', marginTop: 10, lineHeight: 1.7 }}>
+              <p style={{ fontSize: 9, color: '#555', marginTop: 10, lineHeight: 1.7 }}>
                 All {preview.length} items will be created as{' '}
                 <span style={{ color: '#4cc9ff' }}>PLANNED</span> with priority 3.
                 You can edit them individually after import.

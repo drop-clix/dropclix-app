@@ -53,7 +53,7 @@ export function OnboardingBanner({ postCount }: { postCount: number }) {
         style={{
           background: 'transparent',
           border: 'none',
-          color: '#333',
+          color: '#555',
           fontSize: 14,
           cursor: 'pointer',
           flexShrink: 0,

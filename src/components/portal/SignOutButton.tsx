@@ -18,7 +18,7 @@ export function SignOutButton({ iconOnly = false }: { iconOnly?: boolean }) {
       title="Sign Out"
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
-        color: '#333', cursor: 'pointer', background: 'transparent', border: 'none',
+        color: '#555', cursor: 'pointer', background: 'transparent', border: 'none',
         transition: 'color .15s',
         fontSize: 9, fontWeight: 500, letterSpacing: '.16em', textTransform: 'uppercase',
       }}

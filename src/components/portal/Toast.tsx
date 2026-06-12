@@ -70,7 +70,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <span style={{ fontSize: 11, color: '#d4ccbc', fontFamily: 'DM Sans, sans-serif', flex: 1, lineHeight: 1.4 }}>
                 {t.message}
               </span>
-              <span style={{ fontSize: 15, color: '#333', lineHeight: 1, flexShrink: 0 }}>×</span>
+              <span style={{ fontSize: 15, color: '#555', lineHeight: 1, flexShrink: 0 }}>×</span>
             </div>
           )
         })}

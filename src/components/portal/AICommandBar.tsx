@@ -669,7 +669,7 @@ export function AICommandBar() {
           </div>
           <button
             onClick={() => setOpen(false)}
-            style={{ fontSize: 16, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+            style={{ fontSize: 16, color: '#555', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
           >
             ×
           </button>
