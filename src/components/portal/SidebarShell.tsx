@@ -167,7 +167,7 @@ export function SidebarShell({
               justifyContent: 'center',
               background: 'transparent',
               border: 'none',
-              color: pinned ? '#c9a96e' : '#333',
+              color: pinned ? '#c9a96e' : '#555',
               cursor: 'pointer',
               flexShrink: 0,
               transition: 'color .2s',
@@ -282,15 +282,32 @@ export function SidebarShell({
                   alignItems: 'center',
                   gap: expanded ? 10 : 0,
                   justifyContent: expanded ? 'flex-start' : 'center',
-                  padding: expanded ? '10px 10px' : '10px 0',
-                  color: active ? '#c9a96e' : '#3a3a3a',
+                  padding: expanded ? '9px 10px' : '9px 0',
+                  color: active ? '#c9a96e' : '#666',
                   background: active ? 'rgba(201,169,110,.07)' : 'transparent',
                   borderLeft: active ? '2px solid #c9a96e' : '2px solid transparent',
-                  transition: 'color .15s, background .15s, border-color .15s, gap 200ms ease, padding 200ms ease, justify-content 200ms ease',
+                  borderRadius: 3,
+                  transition: 'color .15s, background .15s, border-color .15s, gap 200ms ease, padding 200ms ease',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textDecoration: 'none',
                   flexShrink: 0,
+                  marginLeft: 2,
+                  marginRight: 2,
+                }}
+                onMouseEnter={e => {
+                  if (!active) {
+                    const el = e.currentTarget as HTMLAnchorElement
+                    el.style.color = '#aaa'
+                    el.style.background = 'rgba(255,255,255,0.03)'
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!active) {
+                    const el = e.currentTarget as HTMLAnchorElement
+                    el.style.color = '#666'
+                    el.style.background = 'transparent'
+                  }
                 }}
               >
                 <span style={{ flexShrink: 0 }}>{item.icon}</span>
@@ -353,7 +370,7 @@ export function SidebarShell({
           ) : (
             <>
               {expanded && (
-                <p style={{ fontSize: 9, letterSpacing: '.1em', color: '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>
+                <p style={{ fontSize: 9, letterSpacing: '.1em', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>
                   {userEmail ?? ''}
                 </p>
               )}
