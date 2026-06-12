@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { SignOutButton } from '@/components/portal/SignOutButton'
 import { AdminYouTubeSection } from './AdminYouTubeSection'
+import { AdminInstagramSection } from './AdminInstagramSection'
 import { AdminClientsSection, type ClientRow } from './AdminClientsSection'
 
 export default async function AdminPage() {
@@ -27,9 +28,10 @@ export default async function AdminPage() {
     'Authorization': `Bearer ${key}`,
   }
 
-  const [clientsJson, connectionsJson, postsJson] = await Promise.all([
+  const [clientsJson, connectionsJson, igConnectionsJson, postsJson] = await Promise.all([
     fetch(`${base}/rest/v1/clients?select=id,name,email,slug,created_at,monthly_retainer,enabled_platforms,enabled_tabs&order=created_at.desc`, { headers, cache: 'no-store' }).then(r => r.json()),
     fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,subscriber_count,created_at,last_synced_at&platform=eq.youtube`, { headers, cache: 'no-store' }).then(r => r.json()),
+    fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,created_at&platform=eq.instagram`, { headers, cache: 'no-store' }).then(r => r.json()),
     fetch(`${base}/rest/v1/posts?select=client_id,date&order=date.desc`,  { headers, cache: 'no-store' }).then(r => r.json()),
   ])
 
@@ -39,14 +41,18 @@ export default async function AdminPage() {
     enabled_platforms: string[] | null; enabled_tabs: string[] | null
   }
   type RawPost       = { client_id: string; date: string | null }
-  type RawConnection = {
+  type RawYTConn = {
     client_id: string; channel_name: string | null; channel_id: string | null
     subscriber_count: number | null; created_at: string | null; last_synced_at: string | null
   }
+  type RawIGConn = {
+    client_id: string; channel_name: string | null; channel_id: string | null; created_at: string | null
+  }
 
-  const rawClients:    RawClient[]    = Array.isArray(clientsJson)     ? clientsJson     : []
-  const allPosts:      RawPost[]      = Array.isArray(postsJson)       ? postsJson       : []
-  const ytConnections: RawConnection[] = Array.isArray(connectionsJson) ? connectionsJson : []
+  const rawClients:    RawClient[]  = Array.isArray(clientsJson)      ? clientsJson      : []
+  const allPosts:      RawPost[]    = Array.isArray(postsJson)        ? postsJson        : []
+  const ytConnections: RawYTConn[]  = Array.isArray(connectionsJson)  ? connectionsJson  : []
+  const igConnectionsRaw: RawIGConn[] = Array.isArray(igConnectionsJson) ? igConnectionsJson : []
 
   const postCountMap    = new Map<string, number>()
   const lastActivityMap = new Map<string, string | null>()
@@ -77,6 +83,13 @@ export default async function AdminPage() {
     lastSyncedAt:    c.last_synced_at,
   }))
 
+  const igSectionConnections = igConnectionsRaw.map(c => ({
+    clientId:  c.client_id,
+    username:  c.channel_name,
+    igUserId:  c.channel_id,
+    createdAt: c.created_at,
+  }))
+
   return (
     <div className="min-h-screen" style={{ background: '#060606', padding: '48px 40px' }}>
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
@@ -98,12 +111,20 @@ export default async function AdminPage() {
         <AdminClientsSection clients={clients} />
 
         {clients.length > 0 && (
-          <div style={{ marginTop: 56 }}>
-            <AdminYouTubeSection
-              clients={clients.map(c => ({ id: c.id, name: c.name }))}
-              connections={ytSectionConnections}
-            />
-          </div>
+          <>
+            <div style={{ marginTop: 56 }}>
+              <AdminYouTubeSection
+                clients={clients.map(c => ({ id: c.id, name: c.name }))}
+                connections={ytSectionConnections}
+              />
+            </div>
+            <div style={{ marginTop: 40 }}>
+              <AdminInstagramSection
+                clients={clients.map(c => ({ id: c.id, name: c.name }))}
+                connections={igSectionConnections}
+              />
+            </div>
+          </>
         )}
 
       </div>
