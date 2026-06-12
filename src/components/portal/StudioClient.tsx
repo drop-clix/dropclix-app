@@ -37,7 +37,7 @@ const STATUS_COLOR: Record<string, string> = {
   REVIEWING: '#ef4444',
   PLANNED:   '#3a5a8a',
   POSTED:    '#4ade80',
-  CANCELLED: '#2a2a2a',
+  CANCELLED: '#555',
 }
 
 const PLAT_COLOR: Record<string, string> = {
@@ -179,7 +179,7 @@ function ScriptCard({ item }: { item: StudioItem }) {
               </span>
               {item.platform.map(p => <PlatBadge key={p} platform={p} />)}
               {item.week && (
-                <span style={{ fontSize: 9, color: '#333', letterSpacing: '.08em' }}>Week {item.week}</span>
+                <span style={{ fontSize: 9, color: '#555', letterSpacing: '.08em' }}>Week {item.week}</span>
               )}
             </div>
             <p style={{ fontSize: 13, color: '#f2ede4', margin: 0, fontWeight: 400, lineHeight: 1.3 }}>
@@ -207,7 +207,7 @@ function ScriptCard({ item }: { item: StudioItem }) {
                 {open ? 'Hide' : 'Read Script'}
               </button>
             ) : (
-              <span style={{ fontSize: 9, color: '#2a2a2a', letterSpacing: '.08em' }}>No script</span>
+              <span style={{ fontSize: 9, color: '#555', letterSpacing: '.08em' }}>No script</span>
             )}
           </div>
         </div>
@@ -244,7 +244,7 @@ function ProductionRow({ item }: { item: StudioItem }) {
       <span style={{ color: '#c9a96e', fontFamily: 'monospace', minWidth: 44, fontSize: 9 }}>{item.postId}</span>
       <span style={{ flex: 1, color: '#f2ede4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
       {item.week && (
-        <span style={{ color: '#333', fontSize: 9, whiteSpace: 'nowrap' }}>Wk {item.week}</span>
+        <span style={{ color: '#555', fontSize: 9, whiteSpace: 'nowrap' }}>Wk {item.week}</span>
       )}
       <span style={{
         fontSize: 8, letterSpacing: '.1em', textTransform: 'uppercase',
@@ -268,7 +268,7 @@ const inputStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = {
   fontSize: 7, fontWeight: 600, letterSpacing: '.16em',
-  textTransform: 'uppercase', color: '#2a2a2a',
+  textTransform: 'uppercase', color: '#555',
   display: 'block', marginBottom: 4,
 }
 
@@ -383,7 +383,7 @@ function NewPostForm({ nextPostId, onSuccess }: { nextPostId: string; onSuccess:
                   onClick={() => togglePlatform(p)}
                   style={{
                     padding: '5px 10px', cursor: 'pointer', fontSize: 9,
-                    color:      on ? color : '#333',
+                    color:      on ? color : '#555',
                     background: on ? `${color}18` : 'transparent',
                     border:     `1px solid ${on ? color + '50' : '#1e1e1e'}`,
                     fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase',
@@ -432,7 +432,7 @@ function NewPostForm({ nextPostId, onSuccess }: { nextPostId: string; onSuccess:
 
       {/* Metric windows */}
       <div style={{ marginBottom: 16 }}>
-        <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.18em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 8 }}>
+        <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.18em', textTransform: 'uppercase', color: '#555', marginBottom: 8 }}>
           Metrics
         </p>
         {/* Window tabs */}
@@ -448,7 +448,7 @@ function NewPostForm({ nextPostId, onSuccess }: { nextPostId: string; onSuccess:
                   padding: '6px 14px', fontSize: 9,
                   fontWeight: 500, letterSpacing: '.14em', textTransform: 'uppercase',
                   background: activeWin === wk ? 'rgba(201,169,110,.08)' : 'transparent',
-                  color: activeWin === wk ? '#c9a96e' : hasData ? '#555' : '#2a2a2a',
+                  color: activeWin === wk ? '#c9a96e' : hasData ? '#555' : '#555',
                   border: `1px solid ${activeWin === wk ? 'rgba(201,169,110,.3)' : '#1e1e1e'}`,
                   borderRadius: 3, cursor: 'pointer',
                 }}
@@ -495,7 +495,7 @@ function NewPostForm({ nextPostId, onSuccess }: { nextPostId: string; onSuccess:
           padding: '10px 24px', fontSize: 9,
           fontWeight: 600, letterSpacing: '.18em', textTransform: 'uppercase',
           background: submitting ? '#1a1a1a' : 'rgba(201,169,110,.12)',
-          color: submitting ? '#333' : '#c9a96e',
+          color: submitting ? '#555' : '#c9a96e',
           border: `1px solid ${submitting ? '#1e1e1e' : 'rgba(201,169,110,.4)'}`,
           borderRadius: 3, cursor: submitting ? 'not-allowed' : 'pointer',
         }}
@@ -740,7 +740,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
     return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <p style={{ fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a' }}>
+          <p style={{ fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase', color: '#555' }}>
             CSV Import — Standard Format
           </p>
           <button
@@ -772,8 +772,8 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
             if (file) handleFileEvent(file)
           }}
         >
-          <p style={{ fontSize: 13, color: '#333', marginBottom: 8 }}>Drop CSV file here</p>
-          <p style={{ fontSize: 10, color: '#252525' }}>or click to browse</p>
+          <p style={{ fontSize: 13, color: '#555', marginBottom: 8 }}>Drop CSV file here</p>
+          <p style={{ fontSize: 10, color: '#444' }}>or click to browse</p>
           <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) handleFileEvent(f) }} />
         </div>
@@ -781,13 +781,13 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
         {error && <p style={{ fontSize: 11, color: '#ff3b5f', marginTop: 8 }}>{error}</p>}
 
         <div style={{ marginTop: 14, padding: '12px 16px', background: '#060606', border: '1px solid #141414', borderRadius: 3 }}>
-          <p style={{ fontSize: 8, color: '#2a2a2a', letterSpacing: '.14em', textTransform: 'uppercase', marginBottom: 6 }}>
+          <p style={{ fontSize: 8, color: '#555', letterSpacing: '.14em', textTransform: 'uppercase', marginBottom: 6 }}>
             Standard column format (pipe-separated platform)
           </p>
-          <p style={{ fontSize: 9, color: '#252525', fontFamily: 'monospace', lineHeight: 1.9, wordBreak: 'break-all' }}>
+          <p style={{ fontSize: 9, color: '#444', fontFamily: 'monospace', lineHeight: 1.9, wordBreak: 'break-all' }}>
             post_id, title, platform (ig|tt|yt), date, pillar, hook_type, format, decision*, views_24h, likes_24h, comments_24h, shares_24h, saves_24h, watch_pct_24h, skip_rate_24h, followers_24h, views_3d … watch_pct_3d, views_7d … watch_pct_7d, eom_views … eom_followers
           </p>
-          <p style={{ fontSize: 8, color: '#252525', marginTop: 6 }}>* decision column is always ignored — auto-calculated from ER%</p>
+          <p style={{ fontSize: 8, color: '#444', marginTop: 6 }}>* decision column is always ignored — auto-calculated from ER%</p>
         </div>
       </div>
     )
@@ -816,7 +816,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
             <p style={{ fontSize: 12, color: '#c9a96e', marginBottom: 3 }}>
               {previewRows.length} post{previewRows.length !== 1 ? 's' : ''} ready to review
             </p>
-            <p style={{ fontSize: 9, color: '#333' }}>
+            <p style={{ fontSize: 9, color: '#555' }}>
               {dupCount > 0 && <span style={{ color: '#f59e0b' }}>{dupCount} duplicate{dupCount !== 1 ? 's' : ''} detected · </span>}
               {skipCount > 0 && <span style={{ color: '#555' }}>{skipCount} skipped · </span>}
               {toImport} will be imported
@@ -824,7 +824,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={reset}
-              style={{ padding: '7px 14px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer', borderRadius: 3 }}>
+              style={{ padding: '7px 14px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#555', cursor: 'pointer', borderRadius: 3 }}>
               Cancel
             </button>
             <button onClick={handleConfirmImport} disabled={toImport === 0}
@@ -832,7 +832,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
                 padding: '7px 18px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
                 background: toImport === 0 ? '#1a1a1a' : 'rgba(201,169,110,.12)',
                 border: `1px solid ${toImport === 0 ? '#1e1e1e' : 'rgba(201,169,110,.4)'}`,
-                color: toImport === 0 ? '#333' : '#c9a96e',
+                color: toImport === 0 ? '#555' : '#c9a96e',
                 cursor: toImport === 0 ? 'not-allowed' : 'pointer', borderRadius: 3,
               }}>
               Confirm Import ({toImport})
@@ -877,7 +877,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
                   </div>
                   <span style={{ fontSize: 9, color: '#555', flexShrink: 0 }}>{pr.date}</span>
                   {pr.pillar && <span style={{ fontSize: 9, color: '#444', flexShrink: 0 }}>{pr.pillar}</span>}
-                  {pr.format && <span style={{ fontSize: 9, color: '#333', flexShrink: 0 }}>{pr.format}</span>}
+                  {pr.format && <span style={{ fontSize: 9, color: '#555', flexShrink: 0 }}>{pr.format}</span>}
 
                   {/* Window presence badges */}
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
@@ -889,7 +889,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
                           fontSize: 7, padding: '2px 5px', borderRadius: 2, fontWeight: 600, letterSpacing: '.08em',
                           background: has ? `${col}18` : 'transparent',
                           border: `1px solid ${has ? col + '40' : '#1a1a1a'}`,
-                          color: has ? col : '#2a2a2a',
+                          color: has ? col : '#555',
                         }}>
                           {wk === 'w24' ? '24h' : wk === 'w3' ? '3d' : wk === 'w7' ? '7d' : 'EOM'}
                         </span>
@@ -948,7 +948,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
                   </div>
                 )}
                 {pr.filledWindows.length === 0 && (
-                  <p style={{ fontSize: 9, color: '#2a2a2a', padding: '10px 16px' }}>No metric windows detected — post will be created without analytics</p>
+                  <p style={{ fontSize: 9, color: '#555', padding: '10px 16px' }}>No metric windows detected — post will be created without analytics</p>
                 )}
               </div>
             )
@@ -958,7 +958,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
         {/* Footer confirm bar */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20, paddingTop: 16, borderTop: '1px solid #141414' }}>
           <button onClick={reset}
-            style={{ padding: '9px 18px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer', borderRadius: 3 }}>
+            style={{ padding: '9px 18px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#555', cursor: 'pointer', borderRadius: 3 }}>
             Cancel
           </button>
           <button onClick={handleConfirmImport} disabled={toImport === 0}
@@ -966,7 +966,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
               padding: '9px 22px', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase',
               background: toImport === 0 ? '#1a1a1a' : 'rgba(201,169,110,.12)',
               border: `1px solid ${toImport === 0 ? '#1e1e1e' : 'rgba(201,169,110,.4)'}`,
-              color: toImport === 0 ? '#333' : '#c9a96e',
+              color: toImport === 0 ? '#555' : '#c9a96e',
               cursor: toImport === 0 ? 'not-allowed' : 'pointer', borderRadius: 3, fontWeight: 600,
             }}>
             Confirm Import ({toImport} post{toImport !== 1 ? 's' : ''})
@@ -1014,7 +1014,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
         <p key={i} style={{ fontSize: 10, color: '#ff3b5f', marginBottom: 3 }}>{e}</p>
       ))}
       <button onClick={reset}
-        style={{ marginTop: 16, padding: '7px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer', borderRadius: 3 }}>
+        style={{ marginTop: 16, padding: '7px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#555', cursor: 'pointer', borderRadius: 3 }}>
         Import Another CSV
       </button>
     </div>
@@ -1102,7 +1102,7 @@ export function StudioClient({
             </p>
             <p style={{
               fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase',
-              color: '#333', margin: '5px 0 0',
+              color: '#555', margin: '5px 0 0',
             }}>
               {key}
             </p>
@@ -1118,20 +1118,20 @@ export function StudioClient({
           background: ytStatus.connected ? 'rgba(76,201,255,.05)' : 'rgba(255,255,255,.02)',
           border: `1px solid ${ytStatus.connected ? 'rgba(76,201,255,.15)' : '#141414'}`,
         }}>
-          <svg width={13} height={13} viewBox="0 0 24 24" fill={ytStatus.connected ? '#4cc9ff' : '#2a2a2a'}>
+          <svg width={13} height={13} viewBox="0 0 24 24" fill={ytStatus.connected ? '#4cc9ff' : '#555'}>
             <path d="M23.5 6.2s-.3-2-1.2-2.8c-1.1-1.2-2.4-1.2-3-1.3C16.6 2 12 2 12 2s-4.6 0-7.3.1c-.6.1-1.9.1-3 1.3C.8 4.2.5 6.2.5 6.2S.2 8.5.2 10.8v2.1c0 2.3.3 4.6.3 4.6s.3 2 1.2 2.8c1.1 1.2 2.6 1.1 3.3 1.2C7.2 21.7 12 21.8 12 21.8s4.6 0 7.3-.2c.6-.1 1.9-.1 3-1.2.9-.8 1.2-2.8 1.2-2.8s.3-2.3.3-4.6v-2.1C23.8 8.5 23.5 6.2 23.5 6.2zM9.7 15.5V8.4l8.1 3.6-8.1 3.5z"/>
           </svg>
-          <span style={{ fontSize: 9, fontWeight: 500, letterSpacing: '.14em', textTransform: 'uppercase', color: ytStatus.connected ? '#4cc9ff' : '#2a2a2a' }}>
+          <span style={{ fontSize: 9, fontWeight: 500, letterSpacing: '.14em', textTransform: 'uppercase', color: ytStatus.connected ? '#4cc9ff' : '#555' }}>
             YouTube
           </span>
           <span style={{ width: 1, height: 10, background: ytStatus.connected ? 'rgba(76,201,255,.2)' : '#1e1e1e' }} />
-          <span style={{ fontSize: 9, color: ytStatus.connected ? '#4cc9ff' : '#333', fontWeight: 300 }}>
+          <span style={{ fontSize: 9, color: ytStatus.connected ? '#4cc9ff' : '#555', fontWeight: 300 }}>
             {ytStatus.connected
               ? `${ytStatus.channelName ? ytStatus.channelName + ' · ' : ''}Connected`
               : 'Not connected'}
           </span>
           {ytStatus.connected && ytStatus.lastSyncedAt && (
-            <span style={{ fontSize: 8, color: '#333', marginLeft: 4 }}>
+            <span style={{ fontSize: 8, color: '#555', marginLeft: 4 }}>
               · Last sync {new Date(ytStatus.lastSyncedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
             </span>
           )}
@@ -1140,7 +1140,7 @@ export function StudioClient({
               href="/admin"
               style={{
                 marginLeft: 'auto', fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase',
-                color: '#2a2a2a', textDecoration: 'none',
+                color: '#555', textDecoration: 'none',
               }}
             >
               Connect in Admin →
