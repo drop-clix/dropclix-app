@@ -21,22 +21,21 @@ body {
   color: #f2ede4;
   font-family: "DM Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
-  text-shadow: 0 0 4px rgba(242,237,228,0.28);
 }
 
-/* Reset glow on interactive / code elements so it doesn't look muddy */
+/* Ensure interactive / code elements have no glow */
 input, textarea, select, button, code, pre, [data-radix-popper-content-wrapper] {
   text-shadow: none;
 }
 
-/* Hero / section headings — stronger internal glow */
+/* Hero / section headings — very subtle depth only */
 h1, h2, h3 {
-  text-shadow: 0 0 8px rgba(242,237,228,0.45);
+  text-shadow: 0 0 32px rgba(242,237,228,0.10);
 }
 
 /* Font-Jakarta large numbers (KPI cards, phase counts) */
 .font-jakarta {
-  text-shadow: 0 0 12px rgba(242,237,228,0.35);
+  text-shadow: 0 0 18px rgba(242,237,228,0.18);
 }
 
 /* Gold text — warm internal glow */
