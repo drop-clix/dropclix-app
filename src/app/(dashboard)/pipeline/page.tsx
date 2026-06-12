@@ -14,6 +14,7 @@ export type PipelineItem = {
   postedAt: string | null
   ytType: string | null
   ytId: string | null
+  videoUrl: string | null
   scriptContent: string | null
   notes: string | null
 }
@@ -26,14 +27,14 @@ export default async function PipelinePage() {
     id: string; post_id: string; title: string; platform: string[];
     pillar: string | null; status: string; priority: number | null;
     week: string | null; scheduled_date: string | null; posted_at: string | null;
-    yt_type: string | null; script_content: string | null; notes: string | null;
+    yt_type: string | null; video_url: string | null; script_content: string | null; notes: string | null;
   }
 
   const { data, error } = await supabase
     .from('pipeline_items')
     .select(
       'id, post_id, title, platform, pillar, status, priority, week, ' +
-      'scheduled_date, posted_at, yt_type, script_content, notes',
+      'scheduled_date, posted_at, yt_type, video_url, script_content, notes',
     )
     .eq('client_id', clientId ?? fallback)
     .order('priority', { ascending: true })
@@ -115,6 +116,7 @@ export default async function PipelinePage() {
     postedAt:      r.posted_at      ?? null,
     ytType:        r.yt_type        ?? null,
     ytId:          ytIdByTextPostId[r.post_id] ?? null,
+    videoUrl:      r.video_url      ?? null,
     scriptContent: r.script_content ?? null,
     notes:         r.notes         ?? null,
   }))

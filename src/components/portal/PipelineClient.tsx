@@ -208,6 +208,130 @@ function YTLinkModal({
   )
 }
 
+// ── Platform link button helper ────────────────────────────────────────────
+
+function isPlatLinked(videoUrl: string | null, plat: 'ig' | 'tt'): boolean {
+  if (!videoUrl) return false
+  if (plat === 'ig') return videoUrl.includes('instagram.com') || videoUrl.includes('/p/')
+  if (plat === 'tt') return videoUrl.includes('tiktok.com')
+  return false
+}
+
+const PLAT_LINK_CFG = {
+  ig: { label: 'IG', color: '#c9a96e', placeholder: 'https://www.instagram.com/p/... or reel URL' },
+  tt: { label: 'TT', color: '#2dd4bf', placeholder: 'https://www.tiktok.com/@user/video/...' },
+}
+
+function PlatformLinkModal({
+  item,
+  plat,
+  onClose,
+  onLinked,
+}: {
+  item: PipelineItem
+  plat: 'ig' | 'tt'
+  onClose: () => void
+  onLinked: (url: string) => void
+}) {
+  const cfg = PLAT_LINK_CFG[plat]
+  const [input, setInput]   = useState(isPlatLinked(item.videoUrl, plat) ? (item.videoUrl ?? '') : '')
+  const [saving, setSaving] = useState(false)
+  const [errMsg, setErrMsg] = useState('')
+
+  async function handleSave() {
+    const val = input.trim()
+    if (!val) return
+    setSaving(true)
+    setErrMsg('')
+    const result = await updatePipelineItem(item.id, { video_url: val })
+    setSaving(false)
+    if (result.error) { setErrMsg(result.error); return }
+    onLinked(val)
+    onClose()
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9000,
+        background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: '#0a0a0a', border: '1px solid #1e1e1e',
+          borderTop: `2px solid ${cfg.color}`, padding: '28px 32px', width: 420, maxWidth: '90vw',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ marginBottom: 18 }}>
+          <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.22em', textTransform: 'uppercase', color: cfg.color, marginBottom: 4 }}>
+            Link {cfg.label === 'IG' ? 'Instagram' : 'TikTok'} Post
+          </p>
+          <p style={{ fontSize: 13, color: '#f2ede4', fontWeight: 300 }}>{item.title}</p>
+          <p style={{ fontSize: 10, color: '#c9a96e', fontFamily: 'monospace', marginTop: 2 }}>{item.postId}</p>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 6 }}>
+            {cfg.label === 'IG' ? 'Instagram' : 'TikTok'} Post URL
+          </p>
+          <input
+            autoFocus
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder={cfg.placeholder}
+            onKeyDown={e => e.key === 'Enter' && handleSave()}
+            style={{
+              width: '100%', background: '#080808', border: '1px solid #1e1e1e',
+              color: '#f2ede4', padding: '8px 10px', fontSize: 12,
+              fontFamily: "'DM Sans', sans-serif", outline: 'none',
+            }}
+            onFocus={e => { e.target.style.borderColor = cfg.color }}
+            onBlur={e  => { e.target.style.borderColor = '#1e1e1e' }}
+          />
+          {errMsg && (
+            <p style={{ fontSize: 10, color: '#ff3b5f', marginTop: 5 }}>{errMsg}</p>
+          )}
+        </div>
+
+        {isPlatLinked(item.videoUrl, plat) && (
+          <p style={{ fontSize: 9, color: '#2a2a2a', marginBottom: 16, wordBreak: 'break-all' }}>
+            Currently linked: <span style={{ color: cfg.color }}>{item.videoUrl}</span>
+          </p>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '7px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+              background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!input.trim() || saving}
+            style={{
+              padding: '7px 20px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+              background: `rgba(${cfg.color === '#c9a96e' ? '201,169,110' : '45,212,191'},.1)`,
+              border: `1px solid ${cfg.color}66`,
+              color: cfg.color, cursor: saving ? 'wait' : 'pointer',
+              opacity: !input.trim() ? 0.4 : 1,
+            }}
+          >
+            {saving ? 'Saving…' : 'Link Post'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDisplayId(postId: string, platform: string[]): string {
@@ -1050,6 +1174,7 @@ function AddVideoModal({
       postedAt:      null,
       ytType:        null,
       ytId:          null,
+      videoUrl:      null,
       scriptContent: script.trim() || null,
       notes:         null,
     })
@@ -1231,6 +1356,7 @@ export function PipelineClient({
   const [saveError,    setSaveError   ] = useState<string | null>(null)
   const [page,         setPage        ] = useState(1)
   const [ytLinkItem,   setYtLinkItem  ] = useState<PipelineItem | null>(null)
+  const [platLinkItem, setPlatLinkItem] = useState<{ item: PipelineItem; plat: 'ig' | 'tt' } | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [bulkImportOpen, setBulkImportOpen] = useState(false)
   const [markPostedItem, setMarkPostedItem] = useState<PipelineItem | null>(null)
@@ -1343,6 +1469,10 @@ export function PipelineClient({
     setItems(prev => prev.map(i => i.id === itemId ? { ...i, ytId } : i))
   }
 
+  function handlePlatLinked(itemId: string, url: string) {
+    setItems(prev => prev.map(i => i.id === itemId ? { ...i, videoUrl: url } : i))
+  }
+
   function handleCreated(item: PipelineItem) {
     setItems(prev => [item, ...prev])
     setFilter('ACTIVE')
@@ -1425,6 +1555,16 @@ export function PipelineClient({
           item={ytLinkItem}
           onClose={() => setYtLinkItem(null)}
           onLinked={ytId => handleYtLinked(ytLinkItem.id, ytId)}
+        />
+      )}
+
+      {/* IG / TT Link modal */}
+      {platLinkItem && (
+        <PlatformLinkModal
+          item={platLinkItem.item}
+          plat={platLinkItem.plat}
+          onClose={() => setPlatLinkItem(null)}
+          onLinked={url => handlePlatLinked(platLinkItem.item.id, url)}
         />
       )}
 
@@ -1779,8 +1919,12 @@ export function PipelineClient({
                   style={{ color: sortKey === 'status' ? '#c9a96e' : '#555', whiteSpace: 'nowrap', width: 160, background: '#060606' }}>
                 Status{arrow('status')}
               </th>
-              <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase"
-                  style={{ color: '#555', width: 40, background: '#060606' }}>YT</th>
+              <th className="text-left px-3 py-4 text-[9px] font-medium tracking-[.12em] uppercase"
+                  style={{ color: '#c9a96e', width: 30, background: '#060606' }}>IG</th>
+              <th className="text-left px-3 py-4 text-[9px] font-medium tracking-[.12em] uppercase"
+                  style={{ color: '#2dd4bf', width: 30, background: '#060606' }}>TT</th>
+              <th className="text-left px-3 py-4 text-[9px] font-medium tracking-[.12em] uppercase"
+                  style={{ color: '#4cc9ff', width: 30, background: '#060606' }}>YT</th>
               <th className="text-left px-4 py-4 text-[9px] font-medium tracking-[.14em] uppercase"
                   style={{ color: '#555', width: 80, background: '#060606' }}>Actions</th>
             </tr>
@@ -1788,7 +1932,7 @@ export function PipelineClient({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={11} className="text-center py-16" style={{ color: '#444' }}>
+                <td colSpan={13} className="text-center py-16" style={{ color: '#444' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 20, opacity: 0.4 }}>◇</span>
                     <p style={{ fontSize: 12, fontWeight: 300, color: '#555' }}>
@@ -1822,6 +1966,9 @@ export function PipelineClient({
                 const isEditing = editingId === item.id
                 const isHovered = hoveredId === item.id
                 const pillarColor = pillarColors.get(item.pillar ?? '') ?? '#2a2a2a'
+                const primaryPlatColor = PLAT_CFG[item.platform[0]] ? PLAT_CFG[item.platform[0]].color : '#2a2a2a'
+                const igLinked = isPlatLinked(item.videoUrl, 'ig')
+                const ttLinked = isPlatLinked(item.videoUrl, 'tt')
 
                 return (
                   <Fragment key={item.id}>
@@ -1850,8 +1997,8 @@ export function PipelineClient({
                         setHoverPreviewId(null)
                       }}
                     >
-                      {/* Pillar color stripe */}
-                      <td style={{ width: 4, padding: 0, background: `${pillarColor}cc` }} />
+                      {/* Platform color stripe (primary platform) */}
+                      <td style={{ width: 4, padding: 0, background: `${primaryPlatColor}bb` }} />
 
                       {/* Checkbox */}
                       <td
@@ -1938,23 +2085,61 @@ export function PipelineClient({
                         )}
                       </td>
 
-                      {/* YT link indicator */}
-                      <td className="px-3 py-4" onClick={e => e.stopPropagation()}>
+                      {/* IG link */}
+                      <td className="px-2 py-4" onClick={e => e.stopPropagation()}>
+                        {item.platform.includes('ig') ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); setPlatLinkItem({ item, plat: 'ig' }) }}
+                            title={igLinked ? `Linked: Instagram` : 'Link Instagram post'}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              width: 22, height: 20, cursor: 'pointer', fontSize: 7, fontWeight: 700,
+                              letterSpacing: '.08em', textTransform: 'uppercase',
+                              background: igLinked ? 'rgba(201,169,110,.15)' : 'transparent',
+                              border: `1px solid ${igLinked ? 'rgba(201,169,110,.4)' : '#1e1e1e'}`,
+                              color: igLinked ? '#c9a96e' : '#2a2a2a',
+                              borderRadius: 3,
+                            }}
+                          >IG</button>
+                        ) : <span style={{ width: 22, display: 'block' }} />}
+                      </td>
+
+                      {/* TT link */}
+                      <td className="px-2 py-4" onClick={e => e.stopPropagation()}>
+                        {item.platform.includes('tt') ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); setPlatLinkItem({ item, plat: 'tt' }) }}
+                            title={ttLinked ? `Linked: TikTok` : 'Link TikTok video'}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              width: 22, height: 20, cursor: 'pointer', fontSize: 7, fontWeight: 700,
+                              letterSpacing: '.08em', textTransform: 'uppercase',
+                              background: ttLinked ? 'rgba(45,212,191,.15)' : 'transparent',
+                              border: `1px solid ${ttLinked ? 'rgba(45,212,191,.4)' : '#1e1e1e'}`,
+                              color: ttLinked ? '#2dd4bf' : '#2a2a2a',
+                              borderRadius: 3,
+                            }}
+                          >TT</button>
+                        ) : <span style={{ width: 22, display: 'block' }} />}
+                      </td>
+
+                      {/* YT link */}
+                      <td className="px-2 py-4" onClick={e => e.stopPropagation()}>
                         {item.platform.includes('yt') || item.ytType != null ? (
                           <button
                             onClick={e => { e.stopPropagation(); setYtLinkItem(item) }}
                             title={item.ytId ? `Linked: ${item.ytId}` : 'Link YouTube video'}
                             style={{
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              width: 24, height: 24, cursor: 'pointer',
+                              width: 22, height: 20, cursor: 'pointer',
                               background: item.ytId ? 'rgba(76,201,255,.1)' : 'transparent',
                               border: `1px solid ${item.ytId ? 'rgba(76,201,255,.4)' : '#1e1e1e'}`,
                               borderRadius: 3,
                             }}
                           >
-                            <YTIcon size={11} color={item.ytId ? '#4cc9ff' : '#2a2a2a'} />
+                            <YTIcon size={10} color={item.ytId ? '#4cc9ff' : '#2a2a2a'} />
                           </button>
-                        ) : null}
+                        ) : <span style={{ width: 22, display: 'block' }} />}
                       </td>
 
                       {/* Actions */}
@@ -2013,7 +2198,7 @@ export function PipelineClient({
                     {/* Edit panel */}
                     {isEditing && (
                       <tr>
-                        <td colSpan={11} style={{ padding: 0 }}>
+                        <td colSpan={13} style={{ padding: 0 }}>
                           <ItemEditPanel
                             item={item}
                             onUpdate={handleUpdate}
