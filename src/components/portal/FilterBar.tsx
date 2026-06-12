@@ -115,7 +115,7 @@ export function PlatformPills({
               cursor: 'pointer',
               border: `1px solid ${active ? 'rgba(201,169,110,.5)' : '#1e1e1e'}`,
               background: active ? '#c9a96e' : '#0d0d0d',
-              color: active ? '#000' : '#3a3a3a',
+              color: active ? '#000' : '#777',
               boxShadow: active ? '0 0 10px rgba(201,169,110,.2)' : 'none',
               transition: 'all .15s ease',
               borderRadius: 2,
@@ -131,7 +131,7 @@ export function PlatformPills({
             onMouseLeave={e => {
               if (!active) {
                 const el = e.currentTarget as HTMLButtonElement
-                el.style.color = '#3a3a3a'
+                el.style.color = '#777'
                 el.style.borderColor = '#1e1e1e'
                 el.style.transform = 'translateY(0)'
               }
@@ -189,7 +189,7 @@ export function ScopeDropdown({
           letterSpacing: '.12em',
           textTransform: 'uppercase',
           fontFamily: 'DM Sans, sans-serif',
-          color: scope !== 'all' ? '#c9a96e' : '#3a3a3a',
+          color: scope !== 'all' ? '#c9a96e' : '#777',
           background: scope !== 'all' ? 'rgba(201,169,110,.06)' : '#0d0d0d',
           border: `1px solid ${scope !== 'all' ? 'rgba(201,169,110,.3)' : '#1e1e1e'}`,
           cursor: 'pointer',
@@ -198,7 +198,7 @@ export function ScopeDropdown({
         }}
       >
         <span>{label}</span>
-        <span style={{ fontSize: 8, color: '#3a3a3a', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', display: 'inline-block' }}>▾</span>
+        <span style={{ fontSize: 8, color: '#666', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', display: 'inline-block' }}>▾</span>
       </button>
 
       {open && (

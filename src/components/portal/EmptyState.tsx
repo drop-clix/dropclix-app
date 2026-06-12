@@ -106,7 +106,7 @@ export function EmptyState({
         gap: 0,
       }}
     >
-      <div style={{ color: '#1e1e1e', marginBottom: 20 }}>
+      <div style={{ color: '#2a2a2a', marginBottom: 20 }}>
         {EMPTY_ICONS[icon]}
       </div>
       <p style={{
@@ -121,7 +121,7 @@ export function EmptyState({
       <p style={{
         fontSize: 11,
         fontWeight: 300,
-        color: '#333',
+        color: '#555',
         maxWidth: 360,
         lineHeight: 1.7,
         marginBottom: action ? 24 : 0,
