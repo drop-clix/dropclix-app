@@ -71,7 +71,7 @@ export function AdminTikTokSection({
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 mt-1">
-                      <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#333', flexShrink: 0 }} />
+                      <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#555', flexShrink: 0 }} />
                       <span className="text-[9px] font-light" style={{ color: '#444' }}>Not connected</span>
                     </div>
                   )}
@@ -82,18 +82,18 @@ export function AdminTikTokSection({
                   <div className="flex gap-8">
                     {conn.displayName && (
                       <div>
-                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#333' }}>Display Name</p>
+                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Display Name</p>
                         <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{conn.displayName}</p>
                       </div>
                     )}
                     {conn.followerCount != null && (
                       <div>
-                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#333' }}>Followers</p>
+                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Followers</p>
                         <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmt(conn.followerCount)}</p>
                       </div>
                     )}
                     <div>
-                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#333' }}>Connected</p>
+                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Connected</p>
                       <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(conn.createdAt)}</p>
                     </div>
                   </div>

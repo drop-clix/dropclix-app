@@ -99,7 +99,7 @@ export function AdminYouTubeSection({
                       <span
                         style={{
                           display: 'inline-block', width: 5, height: 5, borderRadius: '50%',
-                          background: '#333', flexShrink: 0,
+                          background: '#555', flexShrink: 0,
                         }}
                       />
                       <span className="text-[9px] font-light" style={{ color: '#444' }}>
@@ -113,7 +113,7 @@ export function AdminYouTubeSection({
                 {conn && (
                   <div className="flex gap-8">
                     <div>
-                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#333' }}>
+                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>
                         Channel
                       </p>
                       <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>
@@ -122,7 +122,7 @@ export function AdminYouTubeSection({
                     </div>
                     {conn.subscriberCount != null && (
                       <div>
-                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#333' }}>
+                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>
                           Subscribers
                         </p>
                         <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>
@@ -131,7 +131,7 @@ export function AdminYouTubeSection({
                       </div>
                     )}
                     <div>
-                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#333' }}>
+                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>
                         Connected
                       </p>
                       <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>
@@ -140,7 +140,7 @@ export function AdminYouTubeSection({
                     </div>
                     {conn.lastSyncedAt && (
                       <div>
-                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#333' }}>
+                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>
                           Last Sync
                         </p>
                         <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>

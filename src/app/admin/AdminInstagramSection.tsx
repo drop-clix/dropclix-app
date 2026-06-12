@@ -64,7 +64,7 @@ export function AdminInstagramSection({
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 mt-1">
-                      <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#333', flexShrink: 0 }} />
+                      <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#555', flexShrink: 0 }} />
                       <span className="text-[9px] font-light" style={{ color: '#444' }}>Not connected</span>
                     </div>
                   )}
@@ -74,13 +74,13 @@ export function AdminInstagramSection({
                 {conn && (
                   <div className="flex gap-8">
                     <div>
-                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#333' }}>Username</p>
+                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Username</p>
                       <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>
                         {conn.username ? `@${conn.username}` : conn.igUserId ?? '—'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#333' }}>Connected</p>
+                      <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Connected</p>
                       <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(conn.createdAt)}</p>
                     </div>
                   </div>

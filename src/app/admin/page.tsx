@@ -118,7 +118,7 @@ export default async function AdminPage() {
               <span className="font-jakarta font-light tracking-[.36em] uppercase text-[10px] text-gold-gradient">Clix</span>
             </div>
             <h1 className="font-jakarta font-light" style={{ fontSize: 32, color: '#f2ede4', lineHeight: 1.08, marginBottom: 6 }}>Admin</h1>
-            <p style={{ fontSize: 11, color: '#333', fontWeight: 300 }}>{profile.email}</p>
+            <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>{profile.email}</p>
           </div>
           <SignOutButton />
         </div>

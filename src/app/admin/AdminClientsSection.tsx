@@ -197,7 +197,7 @@ function CreateClientModal({ onClose, onSuccess }: { onClose: () => void; onSucc
             New Client
           </p>
           <h2 style={{ fontSize: 22, fontWeight: 300, color: '#f2ede4', lineHeight: 1.1, marginBottom: 6 }}>Create Client</h2>
-          <p style={{ fontSize: 11, color: '#333', fontWeight: 300 }}>An invite email will be sent automatically.</p>
+          <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>An invite email will be sent automatically.</p>
         </div>
 
         <form action={formAction}>
@@ -213,13 +213,13 @@ function CreateClientModal({ onClose, onSuccess }: { onClose: () => void; onSucc
               <input name="email" type="email" required placeholder="client@company.com" style={inputStyle} />
             </div>
             <div>
-              <label style={labelStyle}>Slug <span style={{ color: '#2a2a2a', textTransform: 'none', letterSpacing: 0 }}>(auto-generated)</span></label>
+              <label style={labelStyle}>Slug <span style={{ color: '#555', textTransform: 'none', letterSpacing: 0 }}>(auto-generated)</span></label>
               <input name="slug" type="text" required placeholder="sparta-solar" value={slug}
                 onChange={e => { setSlug(e.target.value); setSlugTouched(true) }}
                 style={inputStyle} />
             </div>
             <div>
-              <label style={labelStyle}>Monthly Retainer <span style={{ color: '#2a2a2a', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+              <label style={labelStyle}>Monthly Retainer <span style={{ color: '#555', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#444', fontSize: 13 }}>$</span>
                 <input name="retainer" type="number" min="0" step="100" placeholder="4500" style={{ ...inputStyle, paddingLeft: 26 }} />
@@ -268,7 +268,7 @@ function EditClientModal({ client, onClose }: { client: ClientRow; onClose: () =
             Edit Client
           </p>
           <h2 style={{ fontSize: 22, fontWeight: 300, color: '#f2ede4', lineHeight: 1.1, marginBottom: 4 }}>{client.name}</h2>
-          <p style={{ fontSize: 11, color: '#333', fontWeight: 300 }}>{client.email}</p>
+          <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>{client.email}</p>
         </div>
 
         <form action={formAction}>
@@ -392,7 +392,7 @@ function AdminImportModal({ client, onClose }: { client: ClientRow; onClose: () 
               onDrop={async e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) await handleFile(f) }}
             >
               <p style={{ fontSize: 11, color: '#555', marginBottom: 8 }}>Drop CSV here or click to browse</p>
-              <p style={{ fontSize: 9, color: '#2a2a2a', letterSpacing: '.1em', textTransform: 'uppercase' }}>
+              <p style={{ fontSize: 9, color: '#555', letterSpacing: '.1em', textTransform: 'uppercase' }}>
                 {CSV_COLUMNS.slice(0, 8).join(', ')}…
               </p>
             </div>
@@ -417,9 +417,9 @@ function AdminImportModal({ client, onClose }: { client: ClientRow; onClose: () 
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
-                    <th style={{ textAlign: 'left', padding: '6px 8px', color: '#333', fontWeight: 500, fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase' }}>OW</th>
+                    <th style={{ textAlign: 'left', padding: '6px 8px', color: '#555', fontWeight: 500, fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase' }}>OW</th>
                     {['ID','Title','Platform','Date','Pillar','Hook','EOM Views','Decision'].map(h => (
-                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', color: '#333', fontWeight: 500, fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', color: '#555', fontWeight: 500, fontSize: 8, letterSpacing: '.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -464,7 +464,7 @@ function AdminImportModal({ client, onClose }: { client: ClientRow; onClose: () 
         {stage === 'importing' && (
           <div style={{ textAlign: 'center', padding: '48px 0' }}>
             <p style={{ fontSize: 13, color: '#c9a96e', fontWeight: 300 }}>Importing…</p>
-            <p style={{ fontSize: 10, color: '#333', marginTop: 8 }}>This may take a moment.</p>
+            <p style={{ fontSize: 10, color: '#555', marginTop: 8 }}>This may take a moment.</p>
           </div>
         )}
 
@@ -475,7 +475,7 @@ function AdminImportModal({ client, onClose }: { client: ClientRow; onClose: () 
               <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
                 {[{ label: 'Imported', val: result.imported, color: '#39ff88' }, { label: 'Updated', val: result.updated, color: '#c9a96e' }, { label: 'Failed', val: result.failed, color: '#ff3b5f' }].map(({ label, val, color }) => (
                   <div key={label}>
-                    <p style={{ fontSize: 7, letterSpacing: '.14em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 2 }}>{label}</p>
+                    <p style={{ fontSize: 7, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 2 }}>{label}</p>
                     <p style={{ fontSize: 20, fontWeight: 300, color }}>{val}</p>
                   </div>
                 ))}
@@ -580,22 +580,22 @@ function ClientCard({
         {/* Stats */}
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           <div>
-            <p style={{ fontSize: 7, letterSpacing: '.12em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 3 }}>Posts</p>
-            <p style={{ fontSize: 12, color: client.postCount > 0 ? '#f2ede4' : '#333', fontWeight: 300 }}>{client.postCount}</p>
+            <p style={{ fontSize: 7, letterSpacing: '.12em', textTransform: 'uppercase', color: '#555', marginBottom: 3 }}>Posts</p>
+            <p style={{ fontSize: 12, color: client.postCount > 0 ? '#f2ede4' : '#555', fontWeight: 300 }}>{client.postCount}</p>
           </div>
           {client.lastActivity && (
             <div>
-              <p style={{ fontSize: 7, letterSpacing: '.12em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 3 }}>Last Post</p>
+              <p style={{ fontSize: 7, letterSpacing: '.12em', textTransform: 'uppercase', color: '#555', marginBottom: 3 }}>Last Post</p>
               <p style={{ fontSize: 12, color: '#555', fontWeight: 300 }}>{fmtDate(client.lastActivity)}</p>
             </div>
           )}
           <div>
-            <p style={{ fontSize: 7, letterSpacing: '.12em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 3 }}>Member Since</p>
+            <p style={{ fontSize: 7, letterSpacing: '.12em', textTransform: 'uppercase', color: '#555', marginBottom: 3 }}>Member Since</p>
             <p style={{ fontSize: 12, color: '#555', fontWeight: 300 }}>{fmtDate(client.created_at)}</p>
           </div>
           {client.monthly_retainer && (
             <div>
-              <p style={{ fontSize: 7, letterSpacing: '.12em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 3 }}>Retainer</p>
+              <p style={{ fontSize: 7, letterSpacing: '.12em', textTransform: 'uppercase', color: '#555', marginBottom: 3 }}>Retainer</p>
               <p style={{ fontSize: 12, color: '#c9a96e', fontWeight: 300 }}>${client.monthly_retainer.toLocaleString()}/mo</p>
             </div>
           )}
@@ -639,7 +639,7 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
           <span style={{ display: 'block', width: 20, height: 1, background: '#c9a96e' }} />
           <p style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#c9a96e' }}>
             Clients
-            {clients.length > 0 && <span style={{ color: '#333', marginLeft: 8 }}>{clients.length}</span>}
+            {clients.length > 0 && <span style={{ color: '#555', marginLeft: 8 }}>{clients.length}</span>}
           </p>
         </div>
         <button
@@ -661,7 +661,7 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
       {clients.length === 0 ? (
         <div style={{ padding: '56px 32px', textAlign: 'center', background: '#0c0c0c', border: '1px solid rgba(255,255,255,0.04)' }}>
           <p style={{ fontSize: 13, color: '#1e1e1e', fontWeight: 300, marginBottom: 8 }}>No clients yet</p>
-          <p style={{ fontSize: 11, color: '#2a2a2a', fontWeight: 300 }}>Click "+ New Client" to get started.</p>
+          <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>Click "+ New Client" to get started.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
