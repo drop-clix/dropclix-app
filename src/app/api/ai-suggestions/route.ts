@@ -14,6 +14,17 @@ type ContextPost = {
   decision: string | null
 }
 
+type ContextCampaign = {
+  name: string
+  status: string
+  spend: number
+  roas: number
+  ctr: number
+  cpm: number
+  leads: number
+  hires: number
+}
+
 type Suggestion = {
   icon: string
   headline: string
@@ -42,12 +53,64 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const { posts, platform, mode, projectionMetric, goalsSummary } = (await req.json()) as {
+  const { posts, campaigns, platform, mode, projectionMetric, goalsSummary } = (await req.json()) as {
     posts: ContextPost[]
+    campaigns?: ContextCampaign[]
     platform: string
     mode?: string
     projectionMetric?: string
     goalsSummary?: string
+  }
+
+  // ── Ads mode ────────────────────────────────────────────────────
+  if (mode === 'ads') {
+    if (!campaigns?.length) return NextResponse.json({ suggestions: [] })
+
+    const active   = campaigns.filter(c => c.status === 'Active')
+    const byRoas   = [...campaigns].sort((a, b) => b.roas - a.roas)
+    const byCtr    = [...campaigns].sort((a, b) => b.ctr  - a.ctr)
+    const byCpm    = [...campaigns].sort((a, b) => b.cpm  - a.cpm)
+    const totalSpend = campaigns.reduce((s, c) => s + c.spend, 0)
+    const avgRoas    = campaigns.filter(c => c.roas > 0).reduce((s, c) => s + c.roas, 0) / (campaigns.filter(c => c.roas > 0).length || 1)
+    const avgCtr     = campaigns.filter(c => c.ctr  > 0).reduce((s, c) => s + c.ctr,  0) / (campaigns.filter(c => c.ctr  > 0).length || 1)
+    const avgCpm     = campaigns.filter(c => c.cpm  > 0).reduce((s, c) => s + c.cpm,  0) / (campaigns.filter(c => c.cpm  > 0).length || 1)
+
+    const adsPrompt = `You are a paid media strategist. Analyze these ad campaigns and return exactly 4 specific, actionable recommendations.
+
+CAMPAIGNS (${campaigns.length} total, ${active.length} active, $${fmt(totalSpend)} total spend):
+${campaigns.map(c => `- "${c.name}" | Status: ${c.status} | Spend: $${c.spend.toLocaleString()} | ROAS: ${c.roas.toFixed(2)}x | CTR: ${c.ctr.toFixed(2)}% | CPM: $${c.cpm.toFixed(2)} | Leads: ${c.leads} | Hires: ${c.hires}`).join('\n')}
+
+BENCHMARKS: avg ROAS ${avgRoas.toFixed(2)}x | avg CTR ${avgCtr.toFixed(2)}% | avg CPM $${avgCpm.toFixed(2)}
+
+TOP ROAS: ${byRoas[0]?.name ?? '—'} (${byRoas[0]?.roas.toFixed(2)}x)
+TOP CTR:  ${byCtr[0]?.name ?? '—'} (${byCtr[0]?.ctr.toFixed(2)}%)
+WORST ROAS: ${byRoas[byRoas.length - 1]?.name ?? '—'} (${byRoas[byRoas.length - 1]?.roas.toFixed(2)}x)
+
+Return 4 specific, data-driven ad recommendations referencing exact campaign names and numbers. Format (JSON array only):
+[
+  {
+    "icon": "trend" | "fire" | "repair" | "pace" | "ad" | "spark",
+    "headline": "5-8 word action headline",
+    "body": "One specific sentence referencing actual campaign names and numbers.",
+    "trigger": "Key metric that triggered this (e.g. '3.4x vs 1.2x avg')"
+  }
+]`
+
+    try {
+      const client  = new Anthropic({ apiKey })
+      const message = await client.messages.create({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: adsPrompt }],
+      })
+      const text  = message.content[0].type === 'text' ? message.content[0].text : '[]'
+      const match = text.match(/\[[\s\S]*\]/)
+      const suggestions: Suggestion[] = match ? JSON.parse(match[0]) : []
+      return NextResponse.json({ suggestions: suggestions.slice(0, 4) })
+    } catch (err) {
+      console.error('AI ads suggestions error:', err)
+      return NextResponse.json({ suggestions: [] })
+    }
   }
 
   if (!posts?.length) {

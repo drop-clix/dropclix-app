@@ -12,6 +12,8 @@ import {
 } from '@/app/(dashboard)/edit-actions'
 import { Paginator } from '@/components/portal/Paginator'
 import { EmptyState } from '@/components/portal/EmptyState'
+import { AISuggestionsModal } from '@/components/portal/AISuggestionsModal'
+import type { AISuggestion } from '@/components/portal/AISuggestionsModal'
 
 // ── Formatters ─────────────────────────────────────────────────────────────
 
@@ -50,6 +52,14 @@ function dateRange(c: AdCampaign): string {
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
+
+function SparkIcon({ color = '#c9a96e', size = 14 }: { color?: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M8 1.5L9.6 6.4L14.5 8L9.6 9.6L8 14.5L6.4 9.6L1.5 8L6.4 6.4L8 1.5Z" stroke={color} strokeWidth="1.2" />
+    </svg>
+  )
+}
 
 function KpiCard({ label, value, sub, highlight = false }: { label: string; value: string; sub: string; highlight?: boolean }) {
   return (
@@ -361,6 +371,9 @@ export function AdsClient({
   const [editingId,    setEditingId   ] = useState<string | null>(null)
   const [hoveredId,    setHoveredId   ] = useState<string | null>(null)
   const [page,         setPage        ] = useState(1)
+  const [aiModalOpen,  setAiModalOpen ] = useState(false)
+  const [adsSuggestions, setAdsSuggestions] = useState<AISuggestion[]>([])
+  const [adsLoading,   setAdsLoading  ] = useState(false)
 
   useEffect(() => { setPage(1) }, [statusFilter, sortKey])
 
@@ -431,6 +444,34 @@ export function AdsClient({
 
   function handleCreativeDelete(id: string) {
     setCreatives(prev => prev.filter(cr => cr.id !== id))
+  }
+
+  async function openAiInsights() {
+    setAiModalOpen(true)
+    setAdsLoading(true)
+    try {
+      const payload = campaigns.map(c => ({
+        name:   c.name,
+        status: c.status,
+        spend:  c.spend,
+        roas:   c.roas,
+        ctr:    c.ctr,
+        cpm:    c.cpm,
+        leads:  c.leads,
+        hires:  c.hires,
+      }))
+      const res  = await fetch('/api/ai-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'ads', campaigns: payload, platform: 'all', posts: [] }),
+      })
+      const json = await res.json() as { suggestions?: AISuggestion[] }
+      setAdsSuggestions(json.suggestions ?? [])
+    } catch {
+      setAdsSuggestions([])
+    } finally {
+      setAdsLoading(false)
+    }
   }
 
   if (campaigns.length === 0) {
@@ -509,25 +550,46 @@ export function AdsClient({
         )
       })()}
 
-      {/* ── Status toggle ──────────────────────────────────────────── */}
+      {/* ── Status toggle + AI Insights ────────────────────────────── */}
       <div className="flex items-center justify-between mb-4">
         <p className="text-[9px] font-medium tracking-[.24em] uppercase flex items-center gap-3" style={{ color: '#c9a96e' }}>
           <span style={{ display: 'block', width: 16, height: 1, background: '#c9a96e' }} />
           Campaign Performance
         </p>
-        <div className="flex gap-1">
-          {([['all', `All (${counts.all})`], ['Active', `Active (${counts.active})`], ['Completed', `Completed (${counts.completed})`]] as [StatusFilter, string][]).map(([val, label]) => (
-            <button key={val} onClick={() => setStatusFilter(val)}
-              className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
-              style={{
-                color:      statusFilter === val ? '#c9a96e' : '#333',
-                background: statusFilter === val ? 'rgba(201,169,110,.07)' : 'transparent',
-                border:     `1px solid ${statusFilter === val ? 'rgba(201,169,110,.4)' : '#1a1a1a'}`,
-                cursor: 'pointer',
-              }}>
-              {label}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={openAiInsights}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px',
+              background: 'rgba(201,169,110,0.07)',
+              border: '1px solid rgba(201,169,110,0.25)',
+              borderRadius: 5,
+              color: '#c9a96e',
+              fontSize: 10,
+              cursor: 'pointer',
+              transition: 'all .15s ease',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <SparkIcon size={12} />
+            AI Insights
+          </button>
+          <div className="flex gap-1">
+            {([['all', `All (${counts.all})`], ['Active', `Active (${counts.active})`], ['Completed', `Completed (${counts.completed})`]] as [StatusFilter, string][]).map(([val, label]) => (
+              <button key={val} onClick={() => setStatusFilter(val)}
+                className="text-[9px] font-medium tracking-[.14em] uppercase px-4 py-2.5 transition-colors"
+                style={{
+                  color:      statusFilter === val ? '#c9a96e' : '#333',
+                  background: statusFilter === val ? 'rgba(201,169,110,.07)' : 'transparent',
+                  border:     `1px solid ${statusFilter === val ? 'rgba(201,169,110,.4)' : '#1a1a1a'}`,
+                  cursor: 'pointer',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -699,6 +761,15 @@ export function AdsClient({
       <p className="mt-4 text-[9px]" style={{ color: '#444' }}>
         Revenue estimated as ROAS × Spend. Click any campaign row to edit.
       </p>
+
+      <AISuggestionsModal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        title="Ad Campaign Insights"
+        subtitle="Powered by Claude · Actionable recommendations based on your campaign data"
+        suggestions={adsSuggestions}
+        loading={adsLoading}
+      />
     </div>
   )
 }

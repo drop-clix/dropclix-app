@@ -6,6 +6,8 @@ import { PlatformPills, ScopeDropdown } from '@/components/portal/FilterBar'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { EmptyState } from '@/components/portal/EmptyState'
 import { OnboardingBanner } from '@/components/portal/OnboardingBanner'
+import { AISuggestionsModal } from '@/components/portal/AISuggestionsModal'
+import type { AISuggestion } from '@/components/portal/AISuggestionsModal'
 import type { PlatformFilter } from '@/hooks/usePortalFilters'
 
 export type RawDashPost = {
@@ -84,7 +86,7 @@ type PostStat = RawDashPost & {
   er: number
   platformKey: string
 }
-type Suggestion = { icon: string; headline: string; body: string; trigger: string }
+type Suggestion = AISuggestion
 
 const EMPTY: MetricSet = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, followers: 0, watch_pct: 0 }
 const TIER_COLORS = { a: '#39ff88', b: '#4cc9ff', c: '#fbbf24', d: '#ff3b5f', f: '#ff3b5f' }
@@ -325,8 +327,8 @@ export function DashboardClient({
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
-  const [projectionPanel, setProjectionPanel] = useState<string | null>(null)
-  const [projectionSuggestions, setProjectionSuggestions] = useState<Suggestion[]>([])
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [aiModalTitle, setAiModalTitle] = useState('Content Performance')
   const [loadingAi, setLoadingAi] = useState(false)
 
   const datedPosts = useMemo(
@@ -447,7 +449,7 @@ export function DashboardClient({
       er: +p.er.toFixed(2),
       decision: p.decision,
     }))
-    if (mode === 'projection') setLoadingAi(true)
+    setLoadingAi(true)
     try {
       const res = await fetch('/api/ai-suggestions', {
         method: 'POST',
@@ -463,12 +465,10 @@ export function DashboardClient({
       })
       const json = await res.json() as { suggestions?: Suggestion[] }
       const next = json.suggestions?.length ? json.suggestions : fallbackSuggestions(mode === 'projection' ? last10 : posts, mode)
-      if (mode === 'projection') setProjectionSuggestions(next)
-      else setSuggestions(next.slice(0, 4))
+      setSuggestions(next.slice(0, 4))
     } catch {
       const next = fallbackSuggestions(mode === 'projection' ? last10 : posts, mode)
-      if (mode === 'projection') setProjectionSuggestions(next)
-      else setSuggestions(next.slice(0, 4))
+      setSuggestions(next.slice(0, 4))
     } finally {
       setLoadingAi(false)
     }
@@ -479,9 +479,9 @@ export function DashboardClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platform, scope, from, to, win, rawPosts.length])
 
-  function openProjection(metric: string) {
-    setProjectionPanel(metric)
-    setProjectionSuggestions(fallbackSuggestions(last10, 'projection'))
+  function openProjection(metric: string, label: string) {
+    setAiModalTitle(`${label} — Projection Analysis`)
+    setAiModalOpen(true)
     void loadSuggestions('projection', metric)
   }
 
@@ -607,7 +607,7 @@ export function DashboardClient({
             ['Projected Reach', fmt(projections.reach), 'reach'],
             ['Projected Avg ER %', pct(projections.er), 'er'],
           ].map(([label, value, key]) => (
-            <CardShell key={key} onClick={() => openProjection(key)}>
+            <CardShell key={key} onClick={() => openProjection(key as string, label as string)}>
               <div className="flex items-center justify-between mb-5">
                 <p className="text-[8px] font-medium tracking-[.2em] uppercase" style={{ color: '#555' }}>{label}</p>
                 <SparkIcon />
@@ -736,20 +736,34 @@ export function DashboardClient({
       </section>
 
       <section style={{ marginBottom: 8 }}>
-        <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3" style={{ color: '#c9a96e' }}>
-          <span style={{ width: 16, height: 1, background: '#c9a96e' }} />
-          AI Suggestions
-        </p>
-        <div className="grid gap-6 dashboard-suggestions" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
-          {(suggestions.length ? suggestions : fallbackSuggestions(posts, 'monthly')).slice(0, 4).map((s, i) => (
-            <CardShell key={`${s.headline}-${i}`}>
-              <div className="flex items-center gap-2 mb-4"><SparkIcon /><p className="text-[8px] tracking-[.18em] uppercase" style={{ color: '#555' }}>{s.icon}</p></div>
-              <h3 className="font-jakarta font-light text-[18px] mb-3" style={{ color: '#f2ede4', lineHeight: 1.2 }}>{s.headline}</h3>
-              <p className="text-[12px] mb-4" style={{ color: '#777', lineHeight: 1.55 }}>{s.body}</p>
-              <p className="text-[10px]" style={{ color: '#c9a96e' }}>{s.trigger}</p>
-            </CardShell>
-          ))}
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-[9px] font-medium tracking-[.24em] uppercase flex items-center gap-3" style={{ color: '#c9a96e' }}>
+            <span style={{ width: 16, height: 1, background: '#c9a96e' }} />
+            AI Insights
+          </p>
+          <button
+            type="button"
+            onClick={() => { setAiModalTitle('Content Performance'); setAiModalOpen(true) }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '8px 16px',
+              background: 'rgba(201,169,110,0.07)',
+              border: '1px solid rgba(201,169,110,0.25)',
+              borderRadius: 5,
+              color: '#c9a96e',
+              fontSize: 11,
+              cursor: 'pointer',
+              transition: 'all .15s ease',
+            }}
+          >
+            <SparkIcon />
+            View Insights
+          </button>
         </div>
+        <p className="text-[11px]" style={{ color: '#444', lineHeight: 1.5 }}>
+          AI-powered analysis of your top content pillars, hook performance, and engagement trends.
+          Click a projection card above to drill into metric-specific insights.
+        </p>
       </section>
 
       {selectedPost && (
@@ -789,30 +803,14 @@ export function DashboardClient({
         </div>
       )}
 
-      {projectionPanel && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'rgba(0,0,0,.55)' }} onClick={e => { if (e.currentTarget === e.target) setProjectionPanel(null) }}>
-          <aside style={{ marginLeft: 'auto', width: 420, maxWidth: '100%', height: '100%', background: '#0a0a0a', borderLeft: '1px solid #242424', padding: 28, boxShadow: '-24px 0 70px rgba(0,0,0,.55)', overflowY: 'auto' }}>
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <p className="text-[9px] tracking-[.22em] uppercase mb-2" style={{ color: '#c9a96e' }}>AI Suggestions</p>
-                <h2 className="font-jakarta font-light text-[28px]" style={{ color: '#f2ede4' }}>{projectionPanel}</h2>
-              </div>
-              <button type="button" onClick={() => setProjectionPanel(null)} style={{ width: 32, height: 32, border: '1px solid #1f1f1f', background: '#0d0d0d', color: '#c9a96e', cursor: 'pointer', borderRadius: 4 }}>x</button>
-            </div>
-            {loadingAi && <p className="text-[11px] mb-4" style={{ color: '#555' }}>Refreshing Claude suggestions...</p>}
-            <div className="flex flex-col gap-4">
-              {projectionSuggestions.map((s, i) => (
-                <div key={`${s.headline}-${i}`} style={{ border: '1px solid #171717', borderRadius: 6, padding: 18, background: '#070707' }}>
-                  <div className="flex gap-2 items-center mb-3"><SparkIcon /><p className="text-[8px] tracking-[.18em] uppercase" style={{ color: '#555' }}>{s.icon}</p></div>
-                  <h3 className="font-jakarta font-light text-[18px] mb-2" style={{ color: '#f2ede4' }}>{s.headline}</h3>
-                  <p className="text-[12px] mb-3" style={{ color: '#777', lineHeight: 1.55 }}>{s.body}</p>
-                  <p className="text-[10px]" style={{ color: '#c9a96e' }}>{s.trigger}</p>
-                </div>
-              ))}
-            </div>
-          </aside>
-        </div>
-      )}
+      <AISuggestionsModal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        title={aiModalTitle}
+        subtitle="Powered by Claude · Based on your recent content data"
+        suggestions={suggestions}
+        loading={loadingAi}
+      />
     </div>
   )
 }
