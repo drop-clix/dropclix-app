@@ -111,7 +111,7 @@ function KpiCard({ label, value, sub, sub2 }: { label: string; value: string; su
       className="flex flex-col justify-between overflow-hidden"
       style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '28px 24px 22px' }}
     >
-      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#333' }}>
+      <p className="text-[8px] font-medium tracking-[.2em] uppercase mb-4" style={{ color: '#555' }}>
         {label}
       </p>
       <p className="font-jakarta font-light text-gold-gradient"
@@ -144,10 +144,10 @@ function BreakdownBar({ row, max, rank }: { row: BreakdownRow; max: number; rank
       >
         {ts.label}
       </span>
-      <span className="text-[10px] font-light" style={{ color: '#444', minWidth: 56 }}>
+      <span className="text-[10px] font-light" style={{ color: '#666', minWidth: 56 }}>
         {row.count} post{row.count !== 1 ? 's' : ''}
       </span>
-      <span className="text-[10px] font-light" style={{ color: '#333', minWidth: 60, textAlign: 'right' }}>
+      <span className="text-[10px] font-light" style={{ color: '#555', minWidth: 60, textAlign: 'right' }}>
         {fmtViews(row.totalViews)}
       </span>
     </div>
@@ -230,7 +230,7 @@ function PostTable({
                     <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#555', whiteSpace: 'nowrap' }}>
                       {p.hook}
                     </td>
-                    <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#444', whiteSpace: 'nowrap' }}>
+                    <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#666', whiteSpace: 'nowrap' }}>
                       {p.format}
                     </td>
                     <td className="px-5 py-4">
@@ -244,7 +244,7 @@ function PostTable({
                         </span>
                       </div>
                     </td>
-                    <td className="px-5 py-4 text-[12px] font-light" style={{ color: '#444' }}>
+                    <td className="px-5 py-4 text-[12px] font-light" style={{ color: '#666' }}>
                       {fmtViews(p.views)}
                     </td>
                     <td className="px-5 py-4 text-[9px] font-medium tracking-[.08em] uppercase"
@@ -397,7 +397,7 @@ export function AnglesClient({ rawPosts }: { rawPosts: RawAnglesPost[] }) {
       )}
 
       {/* Summary line */}
-      <p className="text-[11px] font-light mb-8" style={{ color: '#444' }}>
+      <p className="text-[11px] font-light mb-8" style={{ color: '#666' }}>
         {totalWithViews} posts analysed · {overallAvgER.toFixed(1)}% overall avg ER
       </p>
 
