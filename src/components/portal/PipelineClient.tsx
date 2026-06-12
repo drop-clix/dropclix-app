@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/portal/EmptyState'
 import { useToast } from '@/components/portal/Toast'
 import { usePillarColors } from '@/hooks/usePillarColors'
 import { PipelineBulkImportModal } from '@/components/portal/PipelineBulkImportModal'
+import { RichTextEditor } from '@/components/portal/RichTextEditor'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -832,27 +833,20 @@ function ItemEditPanel({
           </div>
         </div>
 
-        {/* Script */}
+        {/* Script (Rich Text) */}
         <div style={{ gridColumn: '1 / -1' }}>
           <label style={labelStyle}>
             Script <SaveDot state={fieldState('script_content')} />
           </label>
-          <textarea
-            style={{
-              ...inputStyle,
-              height: 140,
-              resize: 'vertical',
-              lineHeight: 1.6,
-              whiteSpace: 'pre-wrap',
+          <RichTextEditor
+            content={script}
+            onChange={html => {
+              setScript(html)
+              schedule('script_content', html || null, { scriptContent: html || null })
             }}
-            value={script}
-            onChange={e => {
-              setScript(e.target.value)
-              schedule('script_content', e.target.value || null, { scriptContent: e.target.value || null })
-            }}
-            onFocus={e => (e.target.style.borderColor = '#c9a96e')}
-            onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
             placeholder="Script content…"
+            debounceMs={1000}
+            minHeight={140}
           />
         </div>
 
