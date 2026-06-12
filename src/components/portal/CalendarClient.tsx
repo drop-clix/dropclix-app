@@ -3,7 +3,8 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import type { CalendarEvent } from '@/app/(dashboard)/calendar/page'
-import { updateCalendarEvent, deleteCalendarEvent, getPostAnalyticsSnapshot } from '@/app/(dashboard)/edit-actions'
+import { updateCalendarEvent, deleteCalendarEvent, getPostAnalyticsSnapshot, updatePipelineByPostId } from '@/app/(dashboard)/edit-actions'
+import { useToast } from '@/components/portal/Toast'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { EmptyState } from '@/components/portal/EmptyState'
 import { usePillarColors } from '@/hooks/usePillarColors'
@@ -28,6 +29,10 @@ const PIPELINE_STATUS_COLOR: Record<string, string> = {
   SCHEDULED: '#4cc9ff',
   CANCELLED: '#444',
 }
+
+const ALL_STATUSES_LIST = [
+  'SCRIPTED','PLANNED','FILMING','EDITING','REVIEWING','SCHEDULED','POSTED','CANCELLED',
+] as const
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -65,6 +70,269 @@ function buildGrid(year: number, month: number, events: CalendarEvent[]) {
     const key = iso(nextY, nextM, nd); cells.push({ date: nd, iso: key, current: false, evs: byDate[key] ?? [] }); nd++
   }
   return cells
+}
+
+// ── SlideOverPanel ────────────────────────────────────────────────────────
+
+function SlideOverPanel({
+  ev,
+  pillarColors,
+  onUpdate,
+  onDelete,
+  onClose,
+}: {
+  ev: CalendarEvent
+  pillarColors: Map<string, string>
+  onUpdate: (id: string, patch: Partial<CalendarEvent>) => void
+  onDelete: (id: string) => void
+  onClose: () => void
+}) {
+  const { toast } = useToast()
+  const [date,       setDate      ] = useState(ev.eventDate)
+  const [platform,   setPlatformS ] = useState(ev.platform)
+  const [status,     setStatus    ] = useState(ev.pipelineStatus ?? '')
+  const [link,       setLink      ] = useState(ev.videoUrl ?? '')
+  const [pillar,     setPillarS   ] = useState(ev.pillar ?? '')
+  const [notes,      setNotes     ] = useState(ev.userNotes ?? '')
+  const [delConfirm, setDelConfirm] = useState(false)
+  const [deleting,   setDeleting  ] = useState(false)
+  const [saving,     setSaving    ] = useState<Record<string, SaveState>>({})
+
+  type AnalyticsSnap = { windows: { window: string; views: number; likes: number; comments: number; shares: number; saves: number; watchPct: number; er: number }[]; platform: string }
+  const [analyticsData,    setAnalyticsData   ] = useState<AnalyticsSnap | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [showChart,        setShowChart        ] = useState(false)
+
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  useEffect(() => {
+    setAnalyticsData(null); setShowChart(false)
+    if (ev.pipelineStatus !== 'POSTED' || !ev.postId) return
+    setAnalyticsLoading(true)
+    getPostAnalyticsSnapshot(ev.postId).then(r => {
+      setAnalyticsLoading(false)
+      if (r.windows?.length) {
+        setAnalyticsData({ windows: r.windows, platform: r.platform ?? 'ig' })
+        setTimeout(() => setShowChart(true), 200)
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ev.id])
+
+  const ss = (f: string): SaveState => saving[f] ?? 'idle'
+
+  type CalFields = Parameters<typeof updateCalendarEvent>[1]
+  type PipeFields = Parameters<typeof updatePipelineByPostId>[1]
+
+  function schedCal(dbField: string, value: string, patch: Partial<CalendarEvent>) {
+    clearTimeout(timers.current[dbField])
+    timers.current[dbField] = setTimeout(async () => {
+      setSaving(s => ({ ...s, [dbField]: 'saving' }))
+      const res = await updateCalendarEvent(ev.id, { [dbField]: value } as CalFields)
+      if (res.error) { setSaving(s => ({ ...s, [dbField]: 'error' })); toast(res.error, 'error') }
+      else { onUpdate(ev.id, patch); setSaving(s => ({ ...s, [dbField]: 'saved' })); setTimeout(() => setSaving(s => ({ ...s, [dbField]: 'idle' })), 1500) }
+    }, 1500)
+  }
+
+  function schedPipe(dbField: string, value: string, patch: Partial<CalendarEvent>) {
+    if (!ev.postId) return
+    clearTimeout(timers.current[dbField])
+    timers.current[dbField] = setTimeout(async () => {
+      setSaving(s => ({ ...s, [dbField]: 'saving' }))
+      const res = await updatePipelineByPostId(ev.postId, { [dbField]: value } as PipeFields)
+      if (res.error) { setSaving(s => ({ ...s, [dbField]: 'error' })); toast(res.error, 'error') }
+      else { onUpdate(ev.id, patch); setSaving(s => ({ ...s, [dbField]: 'saved' })); setTimeout(() => setSaving(s => ({ ...s, [dbField]: 'idle' })), 1500) }
+    }, 1500)
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    const res = await deleteCalendarEvent(ev.id)
+    if (res.error) { toast(res.error, 'error'); setDeleting(false); return }
+    onDelete(ev.id); onClose()
+  }
+
+  const platCfg = PLAT[platform] ?? PLAT.ig
+  const inp: React.CSSProperties = {
+    background: '#080808', border: '1px solid #1e1e1e', color: '#f2ede4',
+    padding: '5px 8px', fontSize: 11, fontFamily: 'DM Sans, sans-serif',
+    outline: 'none', width: '100%',
+  }
+  const lbl: React.CSSProperties = {
+    fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase',
+    color: '#555', display: 'flex', alignItems: 'center', gap: 3, marginBottom: 4,
+  }
+
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 8000, background: 'rgba(0,0,0,.5)' }} onClick={onClose} />
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 8001, width: 420, maxWidth: '92vw',
+        background: '#070707', borderLeft: '1px solid #1a1a1a', borderTop: `3px solid ${platCfg.color}`,
+        display: 'flex', flexDirection: 'column', boxShadow: '-32px 0 72px rgba(0,0,0,.8)',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid #141414', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.18em', textTransform: 'uppercase', color: platCfg.color, marginBottom: 5 }}>
+                {isoToDisplay(date)}
+              </p>
+              <p style={{ fontSize: 15, color: '#f2ede4', fontWeight: 300, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {ev.title}
+              </p>
+              {ev.postId && <p style={{ fontSize: 10, color: '#c9a96e', fontFamily: 'monospace', marginTop: 4 }}>{ev.postId}</p>}
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                {status && (() => { const c = PIPELINE_STATUS_COLOR[status] ?? '#555'; return <span key="st" style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: c, background: `${c}18`, border: `1px solid ${c}40` }}>{status}</span> })()}
+                {pillar && (() => { const pc = pillarColors.get(pillar) ?? '#555'; return <span key="pi" style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: pc, background: `${pc}18`, border: `1px solid ${pc}40` }}>{pillar}</span> })()}
+              </div>
+            </div>
+            <button onClick={onClose} style={{ fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, flexShrink: 0, marginTop: -2 }}>×</button>
+          </div>
+        </div>
+
+        {/* Scrollable edit fields */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          <div style={{ display: 'grid', gap: 14 }}>
+
+            {/* Date */}
+            <div>
+              <label style={lbl}>Date <SaveDot s={ss('event_date')} /></label>
+              <input type="date" style={inp} value={date}
+                onChange={e => { setDate(e.target.value); schedCal('event_date', e.target.value, { eventDate: e.target.value }) }}
+                onFocus={e => (e.target.style.borderColor = platCfg.color)}
+                onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
+            </div>
+
+            {/* Platform */}
+            <div>
+              <label style={lbl}>Platform <SaveDot s={ss('platform')} /></label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {Object.entries(PLAT).map(([k, v]) => (
+                  <button key={k} type="button"
+                    onClick={() => { setPlatformS(k); schedCal('platform', k, { platform: k }) }}
+                    style={{
+                      padding: '4px 14px', cursor: 'pointer', fontSize: 9, fontWeight: 600,
+                      letterSpacing: '.1em', textTransform: 'uppercase',
+                      color:      platform === k ? v.color : '#333',
+                      background: platform === k ? v.bg    : 'transparent',
+                      border:    `1px solid ${platform === k ? v.color + '60' : '#1e1e1e'}`,
+                      transition: 'all .12s',
+                    }}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Status */}
+            {ev.postId && (
+              <div>
+                <label style={lbl}>Status <SaveDot s={ss('status')} /></label>
+                <select style={{ ...inp, appearance: 'none', cursor: 'pointer' }} value={status}
+                  onChange={e => { setStatus(e.target.value); schedPipe('status', e.target.value, { pipelineStatus: e.target.value }) }}>
+                  <option value="" style={{ background: '#0a0a0a' }}>— no status —</option>
+                  {ALL_STATUSES_LIST.map(s => <option key={s} value={s} style={{ background: '#0a0a0a' }}>{s}</option>)}
+                </select>
+              </div>
+            )}
+
+            {/* Link */}
+            {ev.postId && (
+              <div>
+                <label style={lbl}>Video Link <SaveDot s={ss('video_url')} /></label>
+                <input type="text" style={inp} value={link}
+                  placeholder="https://youtu.be/… or instagram.com/reel/…"
+                  onChange={e => { setLink(e.target.value); schedPipe('video_url', e.target.value, { videoUrl: e.target.value }) }}
+                  onFocus={e => (e.target.style.borderColor = platCfg.color)}
+                  onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
+              </div>
+            )}
+
+            {/* Pillar */}
+            {ev.postId && (
+              <div>
+                <label style={lbl}>Pillar <SaveDot s={ss('pillar')} /></label>
+                <input type="text" style={inp} value={pillar} placeholder="e.g. Sales Tips"
+                  onChange={e => { setPillarS(e.target.value); schedPipe('pillar', e.target.value, { pillar: e.target.value }) }}
+                  onFocus={e => (e.target.style.borderColor = platCfg.color)}
+                  onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
+              </div>
+            )}
+
+            {/* Notes */}
+            <div>
+              <label style={lbl}>Notes <SaveDot s={ss('user_notes')} /></label>
+              <textarea style={{ ...inp, height: 72, resize: 'none', lineHeight: 1.5 }} value={notes}
+                placeholder="Optional notes…"
+                onChange={e => { setNotes(e.target.value); schedCal('user_notes', e.target.value, { userNotes: e.target.value }) }}
+                onFocus={e => (e.target.style.borderColor = platCfg.color)}
+                onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
+            </div>
+          </div>
+
+          {/* Analytics snapshot (POSTED) */}
+          {ev.pipelineStatus === 'POSTED' && (
+            <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #141414' }}>
+              <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#39ff88', marginBottom: 12 }}>Performance Snapshot</p>
+              {analyticsLoading && <div style={{ display: 'flex', gap: 6, padding: '8px 0', alignItems: 'center' }}>{[0,1,2].map(i => <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: '#39ff88', display: 'block', opacity: 0.5, animation: `dotPulse .8s ease-in-out ${i*0.2}s infinite` }} />)}</div>}
+              {!analyticsLoading && analyticsData && analyticsData.windows.length > 0 && (() => {
+                const best = analyticsData.windows[analyticsData.windows.length - 1]
+                const chartData = analyticsData.windows.map(w => ({ name: w.window === 'w24' ? '24h' : w.window === 'w3' ? '3d' : w.window === 'w7' ? '7d' : 'EOM', views: w.views }))
+                return (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+                      {[
+                        { label: 'Views',    value: best.views >= 1000 ? `${(best.views/1000).toFixed(1)}K` : String(best.views) },
+                        { label: 'ER%',      value: `${best.er}%` },
+                        { label: 'Likes',    value: best.likes >= 1000 ? `${(best.likes/1000).toFixed(1)}K` : String(best.likes) },
+                        { label: 'Comments', value: String(best.comments) },
+                        { label: 'Shares',   value: String(best.shares) },
+                        { label: 'Watch%',   value: best.watchPct ? `${best.watchPct.toFixed(0)}%` : '—' },
+                      ].map(kpi => (
+                        <div key={kpi.label} style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '7px 9px' }}>
+                          <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#555', marginBottom: 3 }}>{kpi.label}</p>
+                          <p style={{ fontSize: 13, color: '#f2ede4', fontWeight: 300 }}>{kpi.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {showChart && chartData.length >= 2 && (
+                      <ResponsiveContainer width="100%" height={70}>
+                        <BarChart data={chartData} barCategoryGap="30%">
+                          <XAxis dataKey="name" tick={{ fill: '#555', fontSize: 8 }} axisLine={false} tickLine={false} />
+                          <YAxis hide />
+                          <Tooltip cursor={{ fill: 'rgba(57,255,136,.05)' }} contentStyle={{ background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: 0, fontSize: 10 }} labelStyle={{ color: '#39ff88' }} itemStyle={{ color: '#aaa' }} formatter={(v: unknown) => [Number(v).toLocaleString(), 'Views']} />
+                          <Bar dataKey="views" fill="#39ff88" fillOpacity={0.7} radius={[1,1,0,0]} isAnimationActive animationDuration={800} animationEasing="ease-out" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </>
+                )
+              })()}
+              {!analyticsLoading && (!analyticsData || analyticsData.windows.length === 0) && (
+                <p style={{ fontSize: 11, color: '#333', fontWeight: 300 }}>No analytics data for <span style={{ color: '#c9a96e', fontFamily: 'monospace' }}>{ev.postId}</span>.</p>
+              )}
+            </div>
+          )}
+
+          {/* Delete */}
+          <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #141414' }}>
+            {!delConfirm ? (
+              <button onClick={() => setDelConfirm(true)} style={{ width: '100%', padding: '8px 16px', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#ff3b5f', background: 'rgba(255,59,95,.04)', border: '1px solid rgba(255,59,95,.2)', cursor: 'pointer' }}>Delete Event</button>
+            ) : (
+              <div style={{ background: 'rgba(255,59,95,.06)', border: '1px solid rgba(255,59,95,.25)', padding: '12px 14px' }}>
+                <p style={{ fontSize: 10, color: '#ff3b5f', marginBottom: 10, fontWeight: 300 }}>Delete this event? This cannot be undone.</p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setDelConfirm(false)} style={{ flex: 1, padding: '6px', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', background: 'transparent', border: '1px solid #1e1e1e', color: '#444', cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={handleDelete} disabled={deleting} style={{ flex: 1, padding: '6px', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', background: 'rgba(255,59,95,.12)', border: '1px solid rgba(255,59,95,.4)', color: '#ff3b5f', cursor: deleting ? 'wait' : 'pointer', opacity: deleting ? 0.6 : 1 }}>{deleting ? 'Deleting…' : 'Confirm Delete'}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  )
 }
 
 // ── PlatBadge ─────────────────────────────────────────────────────────────
@@ -323,31 +591,6 @@ export function CalendarClient({
   const [editingId,  setEditingId ] = useState<string | null>(null)
   const [hoveredId,  setHoveredId ] = useState<string | null>(null)
 
-  // ── Analytics snapshot state (for POSTED event slide-overs) ─────────────
-
-  type AnalyticsSnapshot = {
-    windows: { window: string; views: number; likes: number; comments: number; shares: number; saves: number; watchPct: number; er: number }[]
-    platform: string
-  }
-  const [analyticsData,    setAnalyticsData   ] = useState<AnalyticsSnapshot | null>(null)
-  const [analyticsLoading, setAnalyticsLoading] = useState(false)
-  const [showChart,        setShowChart        ] = useState(false)
-
-  useEffect(() => {
-    setAnalyticsData(null)
-    setShowChart(false)
-    if (!slideOverEv || slideOverEv.pipelineStatus !== 'POSTED' || !slideOverEv.postId) return
-    setAnalyticsLoading(true)
-    getPostAnalyticsSnapshot(slideOverEv.postId).then(result => {
-      setAnalyticsLoading(false)
-      if (result.windows && result.windows.length > 0) {
-        setAnalyticsData({ windows: result.windows, platform: result.platform ?? 'ig' })
-        setTimeout(() => setShowChart(true), 200)
-      }
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slideOverEv?.id])
-
   // ── Drag state ────────────────────────────────────────────────────────────
   const [dragEventId, setDragEventId] = useState<string | null>(null)
   const [dragOverDate, setDragOverDate] = useState<string | null>(null)
@@ -559,155 +802,13 @@ export function CalendarClient({
 
       {/* ── Event slide-over ─────────────────────────────────────── */}
       {slideOverEv && (
-        <>
-          <div
-            style={{ position: 'fixed', inset: 0, zIndex: 8000, background: 'rgba(0,0,0,.45)' }}
-            onClick={() => setSlideOverEv(null)}
-          />
-          <div style={{
-            position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 8001,
-            width: 380, maxWidth: '90vw',
-            background: '#070707', borderLeft: '1px solid #1a1a1a',
-            borderTop: `3px solid ${(PLAT[slideOverEv.platform] ?? PLAT.ig).color}`,
-            display: 'flex', flexDirection: 'column',
-            boxShadow: '-24px 0 60px rgba(0,0,0,.7)',
-          }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #141414', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 8, fontWeight: 600, letterSpacing: '.18em', textTransform: 'uppercase', color: (PLAT[slideOverEv.platform] ?? PLAT.ig).color, marginBottom: 6 }}>
-                    {isoToDisplay(slideOverEv.eventDate)}
-                  </p>
-                  <p style={{ fontSize: 15, color: '#f2ede4', fontWeight: 300, lineHeight: 1.3 }}>
-                    {slideOverEv.title}
-                  </p>
-                  {slideOverEv.postId && (
-                    <p style={{ fontSize: 10, color: '#c9a96e', fontFamily: 'monospace', marginTop: 4 }}>{slideOverEv.postId}</p>
-                  )}
-                </div>
-                <button onClick={() => setSlideOverEv(null)} style={{ fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                {(() => { const cfg = PLAT[slideOverEv.platform] ?? PLAT.ig; return <span key="plat" style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}` }}>{cfg.label}</span> })()}
-                {slideOverEv.pipelineStatus && (() => { const c = PIPELINE_STATUS_COLOR[slideOverEv.pipelineStatus] ?? '#555'; return <span key="status" style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: c, background: `${c}18`, border: `1px solid ${c}40` }}>{slideOverEv.pipelineStatus}</span> })()}
-                {slideOverEv.pillar && (() => { const pc = pillarColors.get(slideOverEv.pillar!) ?? '#555'; return <span key="pillar" style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', padding: '2px 8px', color: pc, background: `${pc}18`, border: `1px solid ${pc}40` }}>{slideOverEv.pillar}</span> })()}
-              </div>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-              <div style={{ display: 'grid', gap: 14 }}>
-                {([
-                  ['Post Time',      slideOverEv.postTime !== '—' ? slideOverEv.postTime : null],
-                  ['Content Type',   slideOverEv.contentType !== '—' ? slideOverEv.contentType : null],
-                  ['Caption Status', slideOverEv.captionStatus !== '—' ? slideOverEv.captionStatus : null],
-                  ['CTA',            slideOverEv.cta !== '—' ? slideOverEv.cta : null],
-                ] as [string, string|null][]).filter(([, v]) => v != null).map(([label, val]) => (
-                  <div key={label}>
-                    <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 3 }}>{label}</p>
-                    <p style={{ fontSize: 12, color: '#ccc', fontWeight: 300 }}>{val}</p>
-                  </div>
-                ))}
-              </div>
-
-              {slideOverEv.pipelineStatus === 'POSTED' && (
-                <div style={{ marginTop: 20 }}>
-                  <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#39ff88', marginBottom: 12 }}>
-                    Performance Snapshot
-                  </p>
-
-                  {analyticsLoading && (
-                    <div style={{ display: 'flex', gap: 6, padding: '16px 0', alignItems: 'center' }}>
-                      {[0,1,2].map(i => (
-                        <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: '#39ff88', display: 'block', opacity: 0.5, animation: `dotPulse .8s ease-in-out ${i * 0.2}s infinite` }} />
-                      ))}
-                    </div>
-                  )}
-
-                  {!analyticsLoading && analyticsData && analyticsData.windows.length > 0 && (() => {
-                    const best = analyticsData.windows[analyticsData.windows.length - 1]
-                    const chartData = analyticsData.windows.map(w => ({
-                      name: w.window === 'w24' ? '24h' : w.window === 'w3' ? '3d' : w.window === 'w7' ? '7d' : 'EOM',
-                      views: w.views,
-                      er: w.er,
-                    }))
-
-                    return (
-                      <>
-                        {/* KPI row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
-                          {[
-                            { label: 'Views',    value: best.views >= 1000 ? `${(best.views/1000).toFixed(1)}K` : String(best.views) },
-                            { label: 'ER%',      value: `${best.er}%` },
-                            { label: 'Likes',    value: best.likes >= 1000 ? `${(best.likes/1000).toFixed(1)}K` : String(best.likes) },
-                            { label: 'Comments', value: String(best.comments) },
-                            { label: 'Shares',   value: String(best.shares) },
-                            { label: 'Watch%',   value: best.watchPct ? `${best.watchPct.toFixed(0)}%` : '—' },
-                          ].map(kpi => (
-                            <div key={kpi.label} style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '8px 10px' }}>
-                              <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 3 }}>{kpi.label}</p>
-                              <p style={{ fontSize: 13, color: '#f2ede4', fontWeight: 300 }}>{kpi.value}</p>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Animated chart — draws itself on open */}
-                        {showChart && chartData.length >= 2 && (
-                          <div style={{ marginBottom: 8 }}>
-                            <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#333', marginBottom: 8 }}>Views over time</p>
-                            <ResponsiveContainer width="100%" height={80}>
-                              <BarChart data={chartData} barCategoryGap="30%">
-                                <XAxis dataKey="name" tick={{ fill: '#555', fontSize: 8 }} axisLine={false} tickLine={false} />
-                                <YAxis hide />
-                                <Tooltip
-                                  cursor={{ fill: 'rgba(57,255,136,.05)' }}
-                                  contentStyle={{ background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: 0, fontSize: 10 }}
-                                  labelStyle={{ color: '#39ff88' }}
-                                  itemStyle={{ color: '#aaa' }}
-                                  formatter={(v: unknown) => [Number(v).toLocaleString(), 'Views']}
-                                />
-                                <Bar
-                                  dataKey="views"
-                                  fill="#39ff88"
-                                  fillOpacity={0.7}
-                                  radius={[1,1,0,0]}
-                                  isAnimationActive
-                                  animationDuration={800}
-                                  animationEasing="ease-out"
-                                />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
-                      </>
-                    )
-                  })()}
-
-                  {!analyticsLoading && (!analyticsData || analyticsData.windows.length === 0) && (
-                    <p style={{ fontSize: 11, color: '#333', fontWeight: 300 }}>
-                      No analytics data yet for <span style={{ color: '#c9a96e', fontFamily: 'monospace' }}>{slideOverEv.postId}</span>.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {slideOverEv.pipelineStatus && ['SCRIPTED','PLANNED','FILMING','REVIEWING','EDITING','SCHEDULED'].includes(slideOverEv.pipelineStatus) && (
-                <div style={{ marginTop: 20, padding: '14px 16px', background: 'rgba(76,201,255,.04)', border: '1px solid rgba(76,201,255,.15)', borderLeft: '3px solid #4cc9ff' }}>
-                  <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#4cc9ff', marginBottom: 6 }}>In Production</p>
-                  <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>Open Pipeline tab to update status or edit details.</p>
-                </div>
-              )}
-            </div>
-
-            <div style={{ padding: '14px 24px', borderTop: '1px solid #141414', flexShrink: 0 }}>
-              <button
-                onClick={() => { setSlideOverEv(null); setSelDate(slideOverEv.eventDate); setSelEvIdx(0); setEditingId(slideOverEv.id) }}
-                style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', padding: '7px 16px', background: 'rgba(201,169,110,.08)', border: '1px solid rgba(201,169,110,.3)', color: '#c9a96e', cursor: 'pointer', width: '100%' }}
-              >
-                Edit Event
-              </button>
-            </div>
-          </div>
-        </>
+        <SlideOverPanel
+          ev={slideOverEv}
+          pillarColors={pillarColors}
+          onUpdate={handleEventUpdate}
+          onDelete={handleEventDelete}
+          onClose={() => setSlideOverEv(null)}
+        />
       )}
 
       {/* ── Touch drag ghost ─────────────────────────────────────── */}
@@ -810,7 +911,7 @@ export function CalendarClient({
                       setEditingId(null)
                     }}
                     style={{
-                      minHeight: 100, padding: '8px 7px 6px',
+                      height: 100, overflow: 'hidden', padding: '8px 7px 6px',
                       borderRight:  idx % 7 !== 6 ? '1px solid #0e0e0e' : 'none',
                       borderBottom: idx < 35       ? '1px solid #0e0e0e' : 'none',
                       background: isDragOver

@@ -13,8 +13,10 @@ export type CalendarEvent = {
   postTime: string
   contentType: string
   cta: string
+  userNotes: string      // notes.user_notes — free-text note from slide-over
   pipelineStatus: string | null  // joined from pipeline_items via post_id
   pillar: string | null          // joined from pipeline_items via post_id
+  videoUrl: string | null        // pipeline_items.video_url
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────
@@ -27,7 +29,7 @@ export default async function CalendarPage() {
     id: string; title: string; platform: string
     event_date: string; notes: string | null
   }
-  type RawPipeline = { post_id: string; status: string; pillar: string | null }
+  type RawPipeline = { post_id: string; status: string; pillar: string | null; video_url: string | null }
 
   // Fetch events + all pipeline items in parallel
   const [evRes, pipeRes] = await Promise.all([
@@ -38,20 +40,22 @@ export default async function CalendarPage() {
       .order('event_date', { ascending: true }),
     supabase
       .from('pipeline_items')
-      .select('post_id, status, pillar')
+      .select('post_id, status, pillar, video_url')
       .eq('client_id', cid),
   ])
 
   const rawEvents   = (evRes.data   ?? []) as unknown as RawEvent[]
   const rawPipeline = (pipeRes.data ?? []) as unknown as RawPipeline[]
 
-  // Build post_id → pipeline status + pillar lookup
-  const pipelineStatus: Record<string, string> = {}
-  const pipelinePillar: Record<string, string> = {}
+  // Build post_id → pipeline status + pillar + video_url lookup
+  const pipelineStatus:   Record<string, string>      = {}
+  const pipelinePillar:   Record<string, string>      = {}
+  const pipelineVideoUrl: Record<string, string|null> = {}
   for (const p of rawPipeline) {
     if (p.post_id) {
-      pipelineStatus[p.post_id] = p.status
+      pipelineStatus[p.post_id]   = p.status
       if (p.pillar) pipelinePillar[p.post_id] = p.pillar
+      pipelineVideoUrl[p.post_id] = p.video_url ?? null
     }
   }
 
@@ -72,8 +76,10 @@ export default async function CalendarPage() {
       postTime:       notes.post_time       ?? '—',
       contentType:    notes.content_type    ?? '—',
       cta:            notes.cta             ?? '—',
-      pipelineStatus: postId ? (pipelineStatus[postId] ?? null) : null,
-      pillar: postId ? (pipelinePillar[postId] ?? null) : null,
+      userNotes:      notes.user_notes      ?? '',
+      pipelineStatus: postId ? (pipelineStatus[postId]   ?? null) : null,
+      pillar:         postId ? (pipelinePillar[postId]   ?? null) : null,
+      videoUrl:       postId ? (pipelineVideoUrl[postId] ?? null) : null,
     }
   })
 

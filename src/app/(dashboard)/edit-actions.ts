@@ -276,6 +276,7 @@ export async function updateCalendarEvent(
     caption_status?: string
     cta?: string
     content_type?: string
+    user_notes?: string
   },
 ): Promise<{ error?: string }> {
   const c = await getCtx()
@@ -305,6 +306,7 @@ export async function updateCalendarEvent(
       if (noteFields.caption_status !== undefined) notes.caption_status = noteFields.caption_status
       if (noteFields.cta !== undefined)            notes.cta            = noteFields.cta
       if (noteFields.content_type !== undefined)   notes.content_type   = noteFields.content_type
+      if (noteFields.user_notes !== undefined)     notes.user_notes     = noteFields.user_notes
       direct.notes = JSON.stringify(notes)
     }
   }
@@ -324,6 +326,40 @@ export async function updateCalendarEvent(
 
   revalidatePath('/calendar')
   revalidatePath('/pipeline')
+  return {}
+}
+
+// Update a pipeline item by its text post_id (for use from calendar slide-over)
+export async function updatePipelineByPostId(
+  postTextId: string,
+  fields: { status?: string; pillar?: string; video_url?: string },
+): Promise<{ error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (!postTextId) return {}
+
+  const update: Record<string, unknown> = {}
+  if (fields.status !== undefined) {
+    if (!VALID_STATUSES.has(fields.status)) return { error: 'Invalid status' }
+    update.status = fields.status
+    update.priority = {
+      REVIEWING: 1, FILMING: 2, SCRIPTED: 3, PLANNED: 4,
+      EDITING: 5, SCHEDULED: 5, POSTED: 6, CANCELLED: 6,
+    }[fields.status] ?? 4
+  }
+  if (fields.pillar !== undefined)    update.pillar    = fields.pillar
+  if (fields.video_url !== undefined) update.video_url = fields.video_url
+  if (Object.keys(update).length === 0) return {}
+
+  const { error } = await c.admin
+    .from('pipeline_items')
+    .update(update)
+    .eq('post_id', postTextId)
+    .eq('client_id', c.cid)
+
+  if (error) return { error: error.message }
+  revalidatePath('/pipeline')
+  revalidatePath('/calendar')
   return {}
 }
 
