@@ -103,7 +103,7 @@ const STATUS_DOT: Record<string, string> = {
   REVIEWING: '#ff3b5f',
   SCHEDULED: '#4cc9ff',
   POSTED:    '#39ff88',
-  CANCELLED: '#333',
+  CANCELLED: '#555',
 }
 
 // ── YT Link Modal ──────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ function YTLinkModal({
         </div>
 
         <div style={{ marginBottom: 18 }}>
-          <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 6 }}>
+          <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#555', marginBottom: 6 }}>
             YouTube URL or Video ID
           </p>
           <input
@@ -189,7 +189,7 @@ function YTLinkModal({
         </div>
 
         {item.ytId && (
-          <p style={{ fontSize: 9, color: '#2a2a2a', marginBottom: 16 }}>
+          <p style={{ fontSize: 9, color: '#555', marginBottom: 16 }}>
             Currently linked: <span style={{ color: '#4cc9ff', fontFamily: 'monospace' }}>{item.ytId}</span>
           </p>
         )}
@@ -199,7 +199,7 @@ function YTLinkModal({
             onClick={onClose}
             style={{
               padding: '7px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
-              background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer',
+              background: 'transparent', border: '1px solid #1e1e1e', color: '#555', cursor: 'pointer',
             }}
           >
             Cancel
@@ -288,7 +288,7 @@ function PlatformLinkModal({
         </div>
 
         <div style={{ marginBottom: 18 }}>
-          <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 6 }}>
+          <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#555', marginBottom: 6 }}>
             {cfg.label === 'IG' ? 'Instagram' : 'TikTok'} Post URL
           </p>
           <input
@@ -312,7 +312,7 @@ function PlatformLinkModal({
         </div>
 
         {isPlatLinked(item.videoUrl, plat) && (
-          <p style={{ fontSize: 9, color: '#2a2a2a', marginBottom: 16, wordBreak: 'break-all' }}>
+          <p style={{ fontSize: 9, color: '#555', marginBottom: 16, wordBreak: 'break-all' }}>
             Currently linked: <span style={{ color: cfg.color }}>{item.videoUrl}</span>
           </p>
         )}
@@ -322,7 +322,7 @@ function PlatformLinkModal({
             onClick={onClose}
             style={{
               padding: '7px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
-              background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer',
+              background: 'transparent', border: '1px solid #1e1e1e', color: '#555', cursor: 'pointer',
             }}
           >
             Cancel
@@ -682,7 +682,7 @@ function ItemEditPanel({
             fontWeight: 600, fontSize: 13, userSelect: 'none',
           }}>
             {priority}
-            <span style={{ fontSize: 9, color: '#2a2a2a', fontWeight: 400, letterSpacing: '.1em', textTransform: 'uppercase' }}>auto</span>
+            <span style={{ fontSize: 9, color: '#555', fontWeight: 400, letterSpacing: '.1em', textTransform: 'uppercase' }}>auto</span>
           </div>
         </div>
 
@@ -729,7 +729,7 @@ function ItemEditPanel({
                   onClick={() => togglePlatform(p)}
                   style={{
                     padding: '4px 10px', cursor: 'pointer', fontSize: 9,
-                    color:      on ? cfg.color : '#333',
+                    color:      on ? cfg.color : '#666',
                     background: on ? cfg.bg : 'transparent',
                     border:     `1px solid ${on ? cfg.color + '60' : '#1e1e1e'}`,
                     fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase',
@@ -766,13 +766,13 @@ function ItemEditPanel({
                   onFocus={e => (e.target.style.borderColor = dateIsFuture ? '#4cc9ff' : '#39ff88')}
                   onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
                 />
-                <span style={{ fontSize: 9, color: '#333', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 9, color: '#555', whiteSpace: 'nowrap' }}>
                   {dateIsFuture
                     ? '↑ status auto-set to SCHEDULED'
                     : '↑ status auto-set to POSTED'}
                 </span>
               </div>
-              <p style={{ fontSize: 9, color: '#252525', marginTop: 6, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 9, color: '#555', marginTop: 6, lineHeight: 1.5 }}>
                 Future date → SCHEDULED · Past date → POSTED · Synced to calendar automatically
               </p>
             </div>
@@ -835,7 +835,7 @@ function ItemEditPanel({
 
             {/* Platform selection */}
             <div style={{ marginBottom: 20 }}>
-              <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 8 }}>
+              <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#555', marginBottom: 8 }}>
                 Platform
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -851,7 +851,7 @@ function ItemEditPanel({
                       )}
                       style={{
                         padding: '6px 14px', cursor: 'pointer', fontSize: 9,
-                        color:      on ? cfg.color : '#333',
+                        color:      on ? cfg.color : '#666',
                         background: on ? cfg.bg : 'transparent',
                         border:     `1px solid ${on ? cfg.color + '60' : '#1e1e1e'}`,
                         fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase',
@@ -867,7 +867,7 @@ function ItemEditPanel({
 
             {/* Date/time */}
             <div style={{ marginBottom: 24 }}>
-              <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2a2a2a', marginBottom: 8 }}>
+              <p style={{ fontSize: 7, fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: '#555', marginBottom: 8 }}>
                 Date & Time
               </p>
               <input
@@ -889,7 +889,7 @@ function ItemEditPanel({
                 onClick={() => setDateModal(false)}
                 style={{
                   padding: '8px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
-                  background: 'transparent', border: '1px solid #1e1e1e', color: '#333', cursor: 'pointer',
+                  background: 'transparent', border: '1px solid #1e1e1e', color: '#555', cursor: 'pointer',
                 }}
               >
                 Cancel
@@ -1020,7 +1020,7 @@ function MarkAsPostedModal({
             <p style={{ fontSize: 14, color: '#f2ede4', fontWeight: 300, maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</p>
             <p style={{ fontSize: 10, color: '#c9a96e', fontFamily: 'monospace', marginTop: 2 }}>{item.postId}</p>
           </div>
-          <button onClick={onClose} style={{ fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ fontSize: 18, color: '#555', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ display: 'grid', gap: 16 }}>
@@ -1227,7 +1227,7 @@ function AddVideoModal({
             </p>
             <p style={{ fontSize: 18, color: '#f2ede4', fontWeight: 300 }}>Add to Pipeline</p>
           </div>
-          <button onClick={onClose} style={{ fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ fontSize: 18, color: '#555', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ display: 'grid', gap: 18 }}>
@@ -1241,7 +1241,7 @@ function AddVideoModal({
                   <button key={p} type="button" onClick={() => togglePlat(p)} style={{
                     padding: '7px 18px', cursor: 'pointer', fontSize: 10, fontWeight: 600,
                     letterSpacing: '.1em', textTransform: 'uppercase',
-                    color: on ? cfg.color : '#444',
+                    color: on ? cfg.color : '#666',
                     background: on ? cfg.bg : 'transparent',
                     border: `1px solid ${on ? cfg.color + '60' : '#1e1e1e'}`,
                     transition: 'all .15s',
@@ -1262,7 +1262,7 @@ function AddVideoModal({
               fontFamily: 'monospace', letterSpacing: computedId ? '.06em' : undefined,
               cursor: 'default',
             }}>
-              {computedId || <span style={{ color: '#2a2a2a', fontFamily: 'DM Sans, sans-serif', fontSize: 11 }}>Select a platform above</span>}
+              {computedId || <span style={{ color: '#555', fontFamily: 'DM Sans, sans-serif', fontSize: 11 }}>Select a platform above</span>}
             </div>
           </div>
 
@@ -1283,7 +1283,7 @@ function AddVideoModal({
               onChange={e => setStatus(e.target.value)}>
               {ALL_STATUSES.map(s => <option key={s} value={s} style={{ background: '#0a0a0a' }}>{s}</option>)}
             </select>
-            <p style={{ fontSize: 8, color: '#2a2a2a', marginTop: 4, letterSpacing: '.08em' }}>
+            <p style={{ fontSize: 8, color: '#555', marginTop: 4, letterSpacing: '.08em' }}>
               Priority auto-set: {STATUS_PRIORITY[status] ?? 4}
             </p>
           </div>
@@ -2287,7 +2287,7 @@ export function PipelineClient({
             </span>
           </div>
         ))}
-        <span className="text-[9px] tracking-[.12em] uppercase ml-2" style={{ color: '#333' }}>
+        <span className="text-[9px] tracking-[.12em] uppercase ml-2" style={{ color: '#555' }}>
           Click any row to edit
         </span>
       </div>
