@@ -551,7 +551,7 @@ export function DashboardClient({
                         style={{ color: STATUS_COLORS[item.status] ?? '#555', background: `${STATUS_COLORS[item.status] ?? '#555'}18`, border: `1px solid ${STATUS_COLORS[item.status] ?? '#555'}44`, padding: '1px 6px' }}>
                     {item.status}
                   </span>
-                  <span className="text-[9px] font-light" style={{ color: '#333' }}>#{idx + 1}</span>
+                  <span className="text-[9px] font-light" style={{ color: '#555' }}>#{idx + 1}</span>
                 </div>
                 <p className="text-[12px] font-light overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 228 }}>{item.title}</p>
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -642,7 +642,7 @@ export function DashboardClient({
                 { label: 'Avg CPM',       value: cpmAvg > 0 ? fmtMon(cpmAvg) : '—', sub: 'Cost per 1K impressions' },
               ].map(({ label, value, sub }) => (
                 <div key={label} style={{ background: '#0a0a0a', padding: '22px 20px' }}>
-                  <p className="text-[8px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#333' }}>{label}</p>
+                  <p className="text-[8px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#555' }}>{label}</p>
                   <p className="font-jakarta font-light" style={{ fontSize: 'clamp(22px,2.4vw,34px)', color: '#f2ede4', lineHeight: 1 }}>{value}</p>
                   <p className="text-[10px] mt-2" style={{ color: '#444' }}>{sub}</p>
                 </div>
@@ -717,20 +717,25 @@ export function DashboardClient({
                 className="flex items-center gap-3"
                 style={{
                   width: '100%',
-                  padding: '12px 0',
+                  padding: '10px 8px',
                   border: 'none',
                   borderBottom: '1px solid #121212',
                   background: 'transparent',
                   cursor: 'pointer',
                   textAlign: 'left',
+                  borderRadius: 3,
+                  margin: '0 -8px',
+                  transition: 'background .12s',
                 }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#0d0d0d' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
               >
                 <span className="text-[10px] font-medium" style={{ color: '#c9a96e', fontFamily: 'monospace', width: 70 }}>{item.post_id}</span>
                 <span className="text-[12px] flex-1 overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{item.title}</span>
                 <span className="text-[7px] font-medium tracking-[.12em] uppercase px-2 py-1" style={{ color: STATUS_COLORS[item.status] ?? '#555', border: `1px solid ${(STATUS_COLORS[item.status] ?? '#555')}55`, background: '#080808' }}>{item.status}</span>
               </button>
             ))}
-            {!filteredPipeline.length && <p className="text-[11px] py-10 text-center" style={{ color: '#333' }}>No pipeline items in this view.</p>}
+            {!filteredPipeline.length && <p className="text-[11px] py-10 text-center" style={{ color: '#555' }}>No pipeline items in this view.</p>}
           </div>
         </div>
       </section>
