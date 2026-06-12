@@ -16,12 +16,22 @@
 }
 
 /* ── Base ─────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
 body {
   background: #060606;
   color: #f2ede4;
   font-family: "DM Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern" 1, "liga" 1;
 }
+
+/* All buttons pointer by default */
+button { cursor: pointer; }
 
 /* Ensure interactive / code elements have no glow */
 input, textarea, select, button, code, pre, [data-radix-popper-content-wrapper] {
@@ -67,6 +77,41 @@ h1, h2, h3 {
 }
 .kpi-bar.bar-lit::after { width: 100%; }
 
+/* ── Custom scrollbar ────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e1e1e;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2e2e2e;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Selection ───────────────────────── */
+::selection {
+  background: rgba(201,169,110,0.22);
+  color: #f2ede4;
+}
+
+/* ── Focus ring ──────────────────────── */
+:focus-visible {
+  outline: 1px solid rgba(201,169,110,0.55);
+  outline-offset: 2px;
+}
+/* Remove default focus ring when using mouse (keep for keyboard) */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* ── AI Modal cinematic entrance ─────────── */
 @keyframes aiModalIn {
   from { opacity: 0; transform: scale(0.94) translateY(10px); }
@@ -76,4 +121,14 @@ h1, h2, h3 {
 @keyframes aiSkeletonPulse {
   0%, 100% { opacity: 0.35; }
   50%       { opacity: 0.7; }
+}
+
+/* ── Prefers reduced motion ──────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
