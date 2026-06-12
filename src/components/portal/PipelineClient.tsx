@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems } from '@/app/(dashboard)/edit-actions'
+import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems, bulkCreatePipelineItems } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
@@ -1427,6 +1427,9 @@ export function PipelineClient({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [bulkDeleting,      setBulkDeleting    ] = useState(false)
   const [hoveredCardKey,    setHoveredCardKey  ] = useState<FilterKey | null>(null)
+  const [captureOpen,       setCaptureOpen     ] = useState(false)
+  const [captureText,       setCaptureText     ] = useState('')
+  const [captureSaving,     setCaptureSaving   ] = useState(false)
 
   const { platform, scope, from, to, setFilters } = usePortalFilters()
   const pillarColors = usePillarColors(useMemo(() => items.map(i => i.pillar ?? ''), [items]))
@@ -1652,6 +1655,110 @@ export function PipelineClient({
         />
       )}
 
+      {/* Capture Ideas modal */}
+      {captureOpen && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={e => { if (e.target === e.currentTarget) setCaptureOpen(false) }}
+        >
+          <div style={{
+            background: '#0a0a0a', border: '1px solid #1e1e1e',
+            borderTop: '3px solid #c9a96e', padding: '28px 32px',
+            width: 520, maxWidth: '90vw', maxHeight: '80vh', overflow: 'auto',
+          }}>
+            <p style={{ fontSize: 10, letterSpacing: '.2em', textTransform: 'uppercase', color: '#c9a96e', marginBottom: 4 }}>
+              Quick Capture
+            </p>
+            <p style={{ fontSize: 13, color: '#f2ede4', marginBottom: 16, fontWeight: 300 }}>
+              Type one idea per line — each becomes a draft pipeline card.
+            </p>
+            <textarea
+              value={captureText}
+              onChange={e => setCaptureText(e.target.value)}
+              placeholder={"Solar panel installation timelapse\nCustomer testimonial — John D.\nBefore/after roof comparison\n..."}
+              style={{
+                width: '100%', minHeight: 180, resize: 'vertical',
+                background: '#111', border: '1px solid #1e1e1e', borderRadius: 4,
+                padding: '12px 14px', fontSize: 12, lineHeight: 1.65,
+                color: '#f2ede4', fontFamily: 'DM Sans, sans-serif',
+              }}
+              onFocus={e => (e.target.style.borderColor = '#c9a96e')}
+              onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
+            />
+            {(() => {
+              const lines = captureText.split('\n').map(l => l.trim()).filter(Boolean)
+              const count = Math.min(lines.length, 50)
+              return (
+                <>
+                  <p style={{ fontSize: 10, color: '#555', marginTop: 8, marginBottom: 16 }}>
+                    {count} idea{count !== 1 ? 's' : ''} to add{count > 50 ? ' (max 50)' : ''}
+                  </p>
+                  {count > 0 && (
+                    <div style={{
+                      maxHeight: 140, overflowY: 'auto',
+                      border: '1px solid #1a1a1a', borderRadius: 3,
+                      marginBottom: 16,
+                    }}>
+                      {lines.slice(0, 50).map((line, i) => (
+                        <div key={i} style={{
+                          padding: '6px 10px', fontSize: 10, color: '#999',
+                          borderBottom: i < count - 1 ? '1px solid #111' : 'none',
+                          display: 'flex', gap: 8,
+                        }}>
+                          <span style={{ color: '#555', fontFamily: 'monospace', minWidth: 18 }}>{i + 1}</span>
+                          <span style={{ color: '#f2ede4' }}>{line}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <button onClick={() => { setCaptureOpen(false); setCaptureText('') }} style={{
+                      padding: '9px 20px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase',
+                      background: 'transparent', border: '1px solid #1e1e1e', color: '#666', cursor: 'pointer',
+                    }}>
+                      Cancel
+                    </button>
+                    <button
+                      disabled={count === 0 || captureSaving}
+                      onClick={async () => {
+                        setCaptureSaving(true)
+                        const ideasToCreate = lines.slice(0, 50).map((line, i) => ({
+                          postId: `idea-${Date.now()}-${i}`,
+                          title: line,
+                          platform: [] as string[],
+                          pillar: null,
+                          week: null,
+                        }))
+                        const { count: created, error } = await bulkCreatePipelineItems(ideasToCreate)
+                        setCaptureSaving(false)
+                        if (error) { toast(error, 'error'); return }
+                        toast(`${created} idea${(created ?? 0) > 1 ? 's' : ''} added to pipeline`)
+                        setCaptureText('')
+                        setCaptureOpen(false)
+                        router.refresh()
+                      }}
+                      style={{
+                        padding: '9px 24px', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase',
+                        background: count > 0 ? 'rgba(201,169,110,.12)' : 'rgba(201,169,110,.04)',
+                        border: '1px solid rgba(201,169,110,.5)', color: '#c9a96e',
+                        cursor: count > 0 ? 'pointer' : 'default',
+                        opacity: count === 0 || captureSaving ? 0.5 : 1, fontWeight: 600,
+                      }}
+                    >
+                      {captureSaving ? 'Adding...' : `Add ${count} Idea${count !== 1 ? 's' : ''}`}
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* Mark as Posted modal */}
       {markPostedItem && (
         <MarkAsPostedModal
@@ -1717,6 +1824,28 @@ export function PipelineClient({
         >
           <span style={{ fontSize: 12, lineHeight: 1 }}>⇪</span>
           Bulk Import
+        </button>
+        <button
+          onClick={() => setCaptureOpen(true)}
+          style={{
+            padding: '9px 16px', fontSize: 10, fontWeight: 500,
+            letterSpacing: '.1em', textTransform: 'uppercase',
+            background: 'transparent', border: '1px solid #1e1e1e',
+            color: '#555', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+            transition: 'all .15s',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = '#333'
+            ;(e.currentTarget as HTMLButtonElement).style.color = '#888'
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.borderColor = '#1e1e1e'
+            ;(e.currentTarget as HTMLButtonElement).style.color = '#555'
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M8 1v2M8 13v2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M1 8h2M13 8h2M3.5 12.5l1.4-1.4M11.1 4.9l1.4-1.4"/><circle cx="8" cy="8" r="3"/></svg>
+          Capture Ideas
         </button>
         <button
           onClick={() => setAddModalOpen(true)}
