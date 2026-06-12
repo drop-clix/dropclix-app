@@ -41,8 +41,22 @@ const PRIORITY_CFG: Record<number, { stripe: string; row: string }> = {
 
 const PLAT_CFG: Record<string, { label: string; color: string; bg: string }> = {
   ig: { label: 'IG', color: '#c9a96e', bg: 'rgba(201,169,110,.1)' },
-  tt: { label: 'TT', color: '#a78bfa', bg: 'rgba(167,139,250,.1)' },
+  tt: { label: 'TT', color: '#2dd4bf', bg: 'rgba(45,212,191,.1)'  },
   yt: { label: 'YT', color: '#4cc9ff', bg: 'rgba(76,201,255,.1)'  },
+}
+
+// Phase card color coding — per-status colors for active/hover states
+const PHASE_CARD_COLORS: Record<string, { text: string; bg: string; border: string }> = {
+  ACTIVE:    { text: '#c9a96e', bg: 'rgba(201,169,110,0.07)', border: 'rgba(201,169,110,0.40)' },
+  SCRIPTED:  { text: '#c9a96e', bg: 'rgba(201,169,110,0.07)', border: 'rgba(201,169,110,0.40)' },
+  PLANNED:   { text: '#4cc9ff', bg: 'rgba(76,201,255,0.07)',  border: 'rgba(76,201,255,0.40)'  },
+  FILMING:   { text: '#fbbf24', bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.40)'  },
+  EDITING:   { text: '#fbbf24', bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.40)'  },
+  REVIEWING: { text: '#ff3b5f', bg: 'rgba(255,59,95,0.07)',   border: 'rgba(255,59,95,0.40)'   },
+  SCHEDULED: { text: '#4cc9ff', bg: 'rgba(76,201,255,0.07)',  border: 'rgba(76,201,255,0.40)'  },
+  POSTED:    { text: '#39ff88', bg: 'rgba(57,255,136,0.07)',  border: 'rgba(57,255,136,0.40)'  },
+  CANCELLED: { text: '#555555', bg: 'rgba(100,100,100,0.07)', border: 'rgba(100,100,100,0.30)' },
+  ALL:       { text: '#888888', bg: 'rgba(136,136,136,0.07)', border: 'rgba(136,136,136,0.30)' },
 }
 
 const ACTIVE_STATUSES = new Set(['SCRIPTED','PLANNED','FILMING','EDITING','REVIEWING','SCHEDULED'])
@@ -1363,6 +1377,7 @@ export function PipelineClient({
   const [selectedIds,      setSelectedIds     ] = useState<Set<string>>(new Set())
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [bulkDeleting,      setBulkDeleting    ] = useState(false)
+  const [hoveredCardKey,    setHoveredCardKey  ] = useState<FilterKey | null>(null)
 
   const { platform, scope, from, to, setFilters } = usePortalFilters()
   const pillarColors = usePillarColors(useMemo(() => items.map(i => i.pillar ?? ''), [items]))
@@ -1518,14 +1533,17 @@ export function PipelineClient({
     )
   }
 
-  const phaseCards: { key: FilterKey; label: string; color: string }[] = [
-    { key: 'ACTIVE',    label: 'Active',    color: '#c9a96e' },
-    { key: 'SCRIPTED',  label: 'Scripted',  color: STATUS_CFG.SCRIPTED.color },
-    { key: 'PLANNED',   label: 'Planned',   color: STATUS_CFG.PLANNED.color  },
-    { key: 'FILMING',   label: 'Filming',   color: STATUS_CFG.FILMING.color  },
-    { key: 'REVIEWING', label: 'Reviewing', color: STATUS_CFG.REVIEWING.color },
-    { key: 'POSTED',    label: 'Posted',    color: STATUS_CFG.POSTED.color   },
-    { key: 'ALL',       label: 'All',       color: '#444' },
+  const phaseCards: { key: FilterKey; label: string }[] = [
+    { key: 'ACTIVE',    label: 'Active'    },
+    { key: 'SCRIPTED',  label: 'Scripted'  },
+    { key: 'PLANNED',   label: 'Planned'   },
+    { key: 'FILMING',   label: 'Filming'   },
+    { key: 'EDITING',   label: 'Editing'   },
+    { key: 'REVIEWING', label: 'Reviewing' },
+    { key: 'SCHEDULED', label: 'Scheduled' },
+    { key: 'POSTED',    label: 'Posted'    },
+    { key: 'CANCELLED', label: 'Cancelled' },
+    { key: 'ALL',       label: 'All'       },
   ]
 
   return (
@@ -1675,51 +1693,69 @@ export function PipelineClient({
         </button>
       </div>
 
-      {/* ── Phase stat cards (Feature 5) ─────────────────────────── */}
+      {/* ── Phase stat cards ─────────────────────────────────────── */}
       <div
-        className="grid gap-px mb-8"
-        style={{ gridTemplateColumns: `repeat(${phaseCards.length}, 1fr)`, background: '#141414' }}
+        className="mb-8"
+        style={{ overflowX: 'auto' }}
       >
-        {phaseCards.map(pc => {
-          const active = filter === pc.key
-          const count  = counts[pc.key] ?? 0
-          return (
-            <button
-              key={pc.key}
-              onClick={() => { setFilter(pc.key); setWeekFilter(null) }}
-              className="flex flex-col items-center py-4 px-3 transition-colors"
-              style={{
-                background: active ? 'rgba(201,169,110,.06)' : '#0a0a0a',
-                border: active ? '1px solid rgba(201,169,110,.35)' : '1px solid transparent',
-                cursor: 'pointer',
-                position: 'relative',
-              }}
-            >
-              <span
-                className="font-jakarta font-light mb-1"
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${phaseCards.length}, 1fr)`,
+            gap: '1px',
+            background: '#141414',
+            minWidth: 600,
+          }}
+        >
+          {phaseCards.map(pc => {
+            const active      = filter === pc.key
+            const hovered     = hoveredCardKey === pc.key
+            const highlighted = active || hovered
+            const pcColors    = PHASE_CARD_COLORS[pc.key] ?? PHASE_CARD_COLORS.ALL
+            const count       = counts[pc.key] ?? 0
+            return (
+              <button
+                key={pc.key}
+                onClick={() => { setFilter(pc.key); setWeekFilter(null) }}
+                onMouseEnter={() => setHoveredCardKey(pc.key)}
+                onMouseLeave={() => setHoveredCardKey(null)}
                 style={{
-                  fontSize: 26,
-                  lineHeight: 1,
-                  color: active ? '#c9a96e' : 'rgba(255,255,255,0.52)',
-                  textShadow: active
-                    ? '0 0 14px rgba(201,169,110,0.45)'
-                    : '0 0 10px rgba(255,255,255,0.12)',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  padding: '12px 6px 10px',
+                  background: highlighted ? pcColors.bg : '#0a0a0a',
+                  border: `1px solid ${highlighted ? pcColors.border : 'transparent'}`,
+                  cursor: 'pointer',
+                  transition: 'background .12s, border-color .12s',
                 }}
               >
-                {count}
-              </span>
-              <span
-                className="text-[7px] font-medium tracking-[.14em] uppercase"
-                style={{
-                  color: active ? '#c9a96e' : 'rgba(255,255,255,0.3)',
-                  textShadow: active ? '0 0 8px rgba(201,169,110,0.3)' : 'none',
-                }}
-              >
-                {pc.label}
-              </span>
-            </button>
-          )
-        })}
+                <span
+                  className="font-jakarta font-light mb-1"
+                  style={{
+                    fontSize: 22,
+                    lineHeight: 1,
+                    color: highlighted ? pcColors.text : 'rgba(255,255,255,0.45)',
+                    textShadow: highlighted ? `0 0 14px ${pcColors.text}55` : 'none',
+                    transition: 'color .12s',
+                  }}
+                >
+                  {count}
+                </span>
+                <span
+                  style={{
+                    fontSize: 7,
+                    fontWeight: 600,
+                    letterSpacing: '.12em',
+                    textTransform: 'uppercase',
+                    color: highlighted ? pcColors.text : 'rgba(255,255,255,0.28)',
+                    transition: 'color .12s',
+                  }}
+                >
+                  {pc.label}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* ── Platform pills ───────────────────────────────────────── */}
