@@ -531,6 +531,24 @@ function ClientCard({
 }) {
   const [hovered, setHovered] = useState(false)
   const isActive = client.postCount > 0
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [notesShared, setNotesShared] = useState(false)
+  const [notesLoaded, setNotesLoaded] = useState(false)
+
+  useEffect(() => {
+    if (notesOpen && !notesLoaded) {
+      import('@/app/(dashboard)/edit-actions').then(mod => {
+        mod.getClientNotes(client.id).then(res => {
+          if (!res.error) {
+            setNotes(res.content ?? '')
+            setNotesShared(res.shared ?? false)
+            setNotesLoaded(true)
+          }
+        })
+      })
+    }
+  }, [notesOpen, notesLoaded, client.id])
 
   return (
     <div
@@ -606,12 +624,58 @@ function ClientCard({
           <button onClick={onImport} style={btnGhost}>Import</button>
           <ResendButton email={client.email} />
           <button onClick={onEdit} style={btnGhost}>Edit</button>
+          <button onClick={() => setNotesOpen(o => !o)} style={{
+            ...btnGhost,
+            color: notesOpen ? '#c9a96e' : btnGhost.color,
+            borderColor: notesOpen ? 'rgba(201,169,110,.3)' : btnGhost.borderColor,
+          }}>Notes</button>
           <form action={impersonateClient}>
             <input type="hidden" name="clientId" value={client.id} />
             <button type="submit" style={btnGold}>View Portal →</button>
           </form>
         </div>
       </div>
+
+      {notesOpen && notesLoaded && (
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 8, letterSpacing: '.16em', textTransform: 'uppercase', color: '#555' }}>Client Notes</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, color: '#666', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={notesShared}
+                onChange={e => {
+                  const shared = e.target.checked
+                  setNotesShared(shared)
+                  import('@/app/(dashboard)/edit-actions').then(mod => {
+                    mod.saveClientNotes(notes, shared, client.id)
+                  })
+                }}
+                style={{ accentColor: '#c9a96e' }}
+              />
+              Share with client
+            </label>
+          </div>
+          <textarea
+            value={notes}
+            onChange={e => {
+              setNotes(e.target.value)
+            }}
+            onBlur={() => {
+              import('@/app/(dashboard)/edit-actions').then(mod => {
+                mod.saveClientNotes(notes, notesShared, client.id)
+              })
+            }}
+            placeholder="Internal notes about this client..."
+            style={{
+              width: '100%', minHeight: 80, resize: 'vertical',
+              background: '#111', border: '1px solid #1e1e1e', borderRadius: 4,
+              padding: '10px 12px', fontSize: 11, lineHeight: 1.6,
+              color: '#f2ede4', fontFamily: 'DM Sans, sans-serif',
+            }}
+          />
+        </div>
+      )}
     </div>
   )
 }

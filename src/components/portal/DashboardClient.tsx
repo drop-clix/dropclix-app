@@ -7,7 +7,8 @@ import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePo
 import { EmptyState } from '@/components/portal/EmptyState'
 import { OnboardingBanner } from '@/components/portal/OnboardingBanner'
 import { AISuggestionsModal } from '@/components/portal/AISuggestionsModal'
-import { submitApproval } from '@/app/(dashboard)/edit-actions'
+import { submitApproval, getClientNotes, saveClientNotes } from '@/app/(dashboard)/edit-actions'
+import { RichTextEditor } from '@/components/portal/RichTextEditor'
 import { useToast } from '@/components/portal/Toast'
 import type { AISuggestion } from '@/components/portal/AISuggestionsModal'
 import type { PlatformFilter } from '@/hooks/usePortalFilters'
@@ -931,6 +932,9 @@ export function DashboardClient({
         </div>
       )}
 
+      {/* Client Notes */}
+      <ClientNotesPanel />
+
       <AISuggestionsModal
         isOpen={aiModalOpen}
         onClose={() => setAiModalOpen(false)}
@@ -940,5 +944,64 @@ export function DashboardClient({
         loading={loadingAi}
       />
     </div>
+  )
+}
+
+function ClientNotesPanel() {
+  const [open, setOpen] = useState(false)
+  const [content, setContent] = useState('')
+  const [shared, setShared] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    if (open && !loaded) {
+      getClientNotes().then(res => {
+        if (!res.error) {
+          setContent(res.content ?? '')
+          setShared(res.shared ?? false)
+          setLoaded(true)
+        }
+      })
+    }
+  }, [open, loaded])
+
+  async function handleSave(html: string) {
+    setContent(html)
+    setSaving(true)
+    const { error } = await saveClientNotes(html, shared)
+    setSaving(false)
+    if (error) toast(error, 'error')
+  }
+
+  return (
+    <section className="mt-8" style={{ borderTop: '1px solid #141414', paddingTop: 16 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'transparent', border: 'none', color: '#555',
+          fontSize: 9, fontWeight: 500, letterSpacing: '.2em',
+          textTransform: 'uppercase', cursor: 'pointer',
+          padding: '4px 0',
+        }}
+      >
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}><path d="M6 4l4 4-4 4"/></svg>
+        Notes
+        {saving && <span style={{ color: '#c9a96e', marginLeft: 4 }}>saving...</span>}
+      </button>
+      {open && loaded && (
+        <div className="mt-3">
+          <RichTextEditor
+            content={content}
+            onChange={handleSave}
+            placeholder="Add notes about this client..."
+            debounceMs={1500}
+            minHeight={100}
+          />
+        </div>
+      )}
+    </section>
   )
 }
