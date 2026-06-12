@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import type { WeekGrade, MonthGrade, PostSummary } from '@/app/(dashboard)/report-card/page'
 
 type View = 'monthly' | 'weekly'
@@ -72,14 +72,55 @@ function PostsTable({ posts }: { posts: PostSummary[] }) {
 }
 
 export function ReportCardClient({
-  weekGrades, monthGrades,
+  weekGrades, monthGrades, clientName = 'Client',
 }: {
   weekGrades: WeekGrade[]
   monthGrades: MonthGrade[]
+  clientName?: string
 }) {
   const [view, setView]       = useState<View>('monthly')
   const [selMonth, setSelMonth] = useState(Math.max(0, monthGrades.length - 1))
   const [selWeek, setSelWeek]   = useState(Math.max(0, weekGrades.length - 1))
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = useCallback(async () => {
+    setExporting(true)
+    try {
+      const [{ pdf }, { ReportPDFDocument }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('@/components/portal/ReportPDF'),
+      ])
+      const isM = view === 'monthly'
+      const idx = isM ? selMonth : selWeek
+      const periods = isM ? monthGrades : weekGrades
+      const period = periods[idx]
+      if (!period) return
+
+      const doc = ReportPDFDocument({
+        clientName,
+        monthGrades,
+        weekGrades,
+        view,
+        selectedIdx: idx,
+      })
+      if (!doc) return
+
+      const blob = await pdf(doc).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const periodLabel = period.label.replace(/\s+/g, '-')
+      a.href = url
+      a.download = `${clientName.replace(/\s+/g, '-')}-Report-${periodLabel}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('PDF export failed:', err)
+    } finally {
+      setExporting(false)
+    }
+  }, [view, selMonth, selWeek, monthGrades, weekGrades, clientName])
 
   const isMonthly = view === 'monthly'
   const periods   = isMonthly ? monthGrades : weekGrades
@@ -191,16 +232,40 @@ export function ReportCardClient({
                 {current.score}/100
               </span>
             </div>
-            <div>
-              <h2 style={{
-                fontSize: 22, fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontWeight: 300, color: '#f2ede4', margin: 0,
-              }}>
-                {current.label}
-              </h2>
-              <p style={{ fontSize: 12, color: gradeColor(current.grade), margin: '4px 0 8px' }}>
-                {current.gradeLabel}
-              </p>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div>
+                  <h2 style={{
+                    fontSize: 22, fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontWeight: 300, color: '#f2ede4', margin: 0,
+                  }}>
+                    {current.label}
+                  </h2>
+                  <p style={{ fontSize: 12, color: gradeColor(current.grade), margin: '4px 0 8px' }}>
+                    {current.gradeLabel}
+                  </p>
+                </div>
+                <button
+                  onClick={handleExport}
+                  disabled={exporting}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '7px 14px',
+                    fontSize: 9, fontWeight: 500,
+                    letterSpacing: '.12em', textTransform: 'uppercase',
+                    color: exporting ? '#555' : '#c9a96e',
+                    background: 'rgba(201,169,110,.06)',
+                    border: '1px solid rgba(201,169,110,.25)',
+                    borderRadius: 4,
+                    opacity: exporting ? .6 : 1,
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 2v8M5 7l3 3 3-3M3 12h10" />
+                  </svg>
+                  {exporting ? 'Generating...' : 'Export PDF'}
+                </button>
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 10, color: '#555' }}>
                 <span><span style={{ color: '#f2ede4' }}>{current.posts}</span> posts</span>
                 <span><span style={{ color: '#f2ede4' }}>{fmtN(current.views)}</span> views</span>

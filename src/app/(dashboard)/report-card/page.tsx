@@ -276,6 +276,13 @@ export default async function ReportCardPage() {
   const { supabase, clientId } = await getPortalContext()
   const cid = clientId ?? '00000000-0000-0000-0000-000000000000'
 
+  const { data: clientRow } = await supabase
+    .from('clients')
+    .select('name')
+    .eq('id', cid)
+    .single()
+  const clientName = (clientRow?.name as string | null) ?? 'Client'
+
   type RawGoal = { metric: string; target: number; period: string }
   type RawPost = {
     post_id: string; title: string; date: string | null
@@ -376,7 +383,7 @@ export default async function ReportCardPage() {
       </div>
 
       <FilterBar />
-      <ReportCardClient weekGrades={weekGrades} monthGrades={monthGrades} />
+      <ReportCardClient weekGrades={weekGrades} monthGrades={monthGrades} clientName={clientName} />
     </div>
   )
 }
