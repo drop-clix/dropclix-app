@@ -21,6 +21,32 @@ body {
   color: #f2ede4;
   font-family: "DM Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-shadow: 0 0 4px rgba(242,237,228,0.28);
+}
+
+/* Reset glow on interactive / code elements so it doesn't look muddy */
+input, textarea, select, button, code, pre, [data-radix-popper-content-wrapper] {
+  text-shadow: none;
+}
+
+/* Hero / section headings — stronger internal glow */
+h1, h2, h3 {
+  text-shadow: 0 0 8px rgba(242,237,228,0.45);
+}
+
+/* Font-Jakarta large numbers (KPI cards, phase counts) */
+.font-jakarta {
+  text-shadow: 0 0 12px rgba(242,237,228,0.35);
+}
+
+/* Gold text — warm internal glow */
+.text-gold, [style*="color: #c9a96e"], [style*="color:#c9a96e"] {
+  text-shadow: 0 0 6px rgba(201,169,110,0.38);
+}
+
+/* Cards / bordered boxes — very subtle lift off black */
+.glow-box {
+  box-shadow: 0 0 8px rgba(242,237,228,0.06);
 }
 
 /* ── Gold gradient text ───────────────── */

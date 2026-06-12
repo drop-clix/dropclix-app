@@ -221,6 +221,23 @@ function formatDisplayId(postId: string, platform: string[]): string {
   return `#${prefix}${numMatch[1].padStart(4, '0')}`
 }
 
+// Filter pipe-separated IDs to show only the segment matching the active platform filter
+function idForPlatform(postId: string, activePlatform: string): string {
+  if (activePlatform === 'all') return postId
+  if (!postId.includes('|')) return postId // single-platform ID, show as-is
+
+  const parts = postId.split('|').map(p => p.trim())
+  const match = parts.find(p => {
+    const lower = p.toLowerCase()
+    if (activePlatform === 'ig')  return lower.startsWith('#ig')
+    if (activePlatform === 'tt')  return lower.startsWith('#tt')
+    if (activePlatform === 'yt')  return lower.startsWith('#yt')
+    if (activePlatform === 'lf')  return lower.startsWith('#lf')
+    return false
+  })
+  return match ?? '—'
+}
+
 // Convert ISO/UTC string → datetime-local input value (local time)
 function isoToLocal(iso: string | null | undefined): string {
   if (!iso) return ''
@@ -518,24 +535,17 @@ function ItemEditPanel({
           </select>
         </div>
 
-        {/* Priority */}
+        {/* Priority — auto-derived from status, never editable */}
         <div>
-          <label style={labelStyle}>
-            Priority (1–6) <SaveDot state={fieldState('priority')} />
-          </label>
-          <input
-            type="number"
-            min={1} max={6}
-            style={inputStyle}
-            value={priority}
-            onChange={e => {
-              setPriority(e.target.value)
-              const n = parseInt(e.target.value, 10)
-              if (n >= 1 && n <= 6) schedule('priority', n, { priority: n })
-            }}
-            onFocus={e => (e.target.style.borderColor = '#c9a96e')}
-            onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
-          />
+          <label style={labelStyle}>Priority</label>
+          <div style={{
+            ...inputStyle, cursor: 'default', display: 'flex', alignItems: 'center', gap: 6,
+            color: PRIORITY_CFG[parseInt(priority, 10)]?.stripe ?? '#555',
+            fontWeight: 600, fontSize: 13, userSelect: 'none',
+          }}>
+            {priority}
+            <span style={{ fontSize: 9, color: '#2a2a2a', fontWeight: 400, letterSpacing: '.1em', textTransform: 'uppercase' }}>auto</span>
+          </div>
         </div>
 
         {/* Week */}
@@ -989,7 +999,6 @@ function AddVideoModal({
   const [title,    setTitle   ] = useState('')
   const [platforms,setPlatforms] = useState<string[]>([])
   const [status,   setStatus  ] = useState('PLANNED')
-  const [priority, setPriority] = useState('3')
   const [pillar,   setPillar  ] = useState('')
   const [week,     setWeek    ] = useState('')
   const [script,   setScript  ] = useState('')
@@ -1014,12 +1023,13 @@ function AddVideoModal({
     if (!title.trim())    { setErr('Title is required'); return }
     if (!platforms.length){ setErr('Select at least one platform'); return }
     setSaving(true); setErr('')
+    const autoPri = STATUS_PRIORITY[status] ?? 4
     const result = await createPipelineItem({
       postId:        computedId,
       title:         title.trim(),
       platform:      platforms,
       status,
-      priority:      parseInt(priority, 10) || 3,
+      priority:      autoPri,
       pillar:        pillar.trim() || null,
       week:          week.trim() || null,
       scriptContent: script.trim() || null,
@@ -1034,7 +1044,7 @@ function AddVideoModal({
       platform:      platforms,
       pillar:        pillar.trim() || '—',
       status,
-      priority:      parseInt(priority, 10) || 3,
+      priority:      autoPri,
       week:          week.trim() || '—',
       scheduledDate: null,
       postedAt:      null,
@@ -1127,22 +1137,16 @@ function AddVideoModal({
               onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
           </div>
 
-          {/* Status + Priority row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <div>
-              <label style={lbl}>Status</label>
-              <select style={{ ...inp, appearance: 'none', cursor: 'pointer' }} value={status}
-                onChange={e => setStatus(e.target.value)}>
-                {ALL_STATUSES.map(s => <option key={s} value={s} style={{ background: '#0a0a0a' }}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>Priority (1–6)</label>
-              <input type="number" min={1} max={6} style={inp} value={priority}
-                onChange={e => setPriority(e.target.value)}
-                onFocus={e => (e.target.style.borderColor = '#c9a96e')}
-                onBlur={e  => (e.target.style.borderColor = '#1e1e1e')} />
-            </div>
+          {/* Status — priority auto-derives from this */}
+          <div>
+            <label style={lbl}>Status</label>
+            <select style={{ ...inp, appearance: 'none', cursor: 'pointer' }} value={status}
+              onChange={e => setStatus(e.target.value)}>
+              {ALL_STATUSES.map(s => <option key={s} value={s} style={{ background: '#0a0a0a' }}>{s}</option>)}
+            </select>
+            <p style={{ fontSize: 8, color: '#2a2a2a', marginTop: 4, letterSpacing: '.08em' }}>
+              Priority auto-set: {STATUS_PRIORITY[status] ?? 4}
+            </p>
           </div>
 
           {/* Pillar + Week row */}
@@ -1871,9 +1875,14 @@ export function PipelineClient({
 
                       {/* ID */}
                       <td className="px-4 py-4">
-                        <span className="text-[10px] font-medium" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
-                          {formatDisplayId(item.postId, item.platform)}
-                        </span>
+                        {(() => {
+                          const displayId = idForPlatform(formatDisplayId(item.postId, item.platform), platform)
+                          return (
+                            <span className="text-[10px] font-medium" style={{ fontFamily: 'monospace', color: displayId === '—' ? '#2a2a2a' : '#c9a96e' }}>
+                              {displayId}
+                            </span>
+                          )
+                        })()}
                       </td>
 
                       {/* Title */}
