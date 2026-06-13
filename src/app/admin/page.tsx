@@ -143,6 +143,7 @@ export default async function AdminPage() {
               <AdminTikTokSection
                 clients={clients.map(c => ({ id: c.id, name: c.name }))}
                 connections={ttSectionConnections}
+                tiktokConfigured={!!(process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET)}
               />
             </div>
           </>

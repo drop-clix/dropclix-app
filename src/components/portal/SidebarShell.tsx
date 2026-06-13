@@ -136,7 +136,9 @@ export function SidebarShell({
   const path = usePathname()
 
   const visibleNavItems = NAV_ITEMS.filter(item => {
-    if ('adminOnly' in item && (item as { adminOnly?: boolean }).adminOnly && !isAdmin) return false
+    const adminOnly = 'adminOnly' in item && (item as { adminOnly?: boolean }).adminOnly
+    if (adminOnly && !isAdmin) return false
+    if (adminOnly && isAdmin) return true  // admin-only items always visible to admins
     const tabKey = Object.entries(TAB_HREFS).find(([, href]) => href === item.href)?.[0]
     return tabKey ? enabledTabs.includes(tabKey) : true
   })

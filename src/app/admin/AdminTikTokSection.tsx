@@ -24,16 +24,18 @@ function fmtDate(iso: string | null) {
 export function AdminTikTokSection({
   clients,
   connections,
+  tiktokConfigured,
 }: {
   clients: { id: string; name: string }[]
   connections: TikTokConn[]
+  tiktokConfigured: boolean
 }) {
   const [notice, setNotice] = useState('')
   const connMap = new Map(connections.map(c => [c.clientId, c]))
 
   function handleConnect(clientId: string) {
-    if (!process.env.NEXT_PUBLIC_TT_APP_CONFIGURED) {
-      setNotice('Add TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET to .env.local to enable TikTok OAuth.')
+    if (!tiktokConfigured) {
+      setNotice('Add TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET to environment variables to enable TikTok OAuth.')
       return
     }
     window.location.href = `/api/auth/tiktok?client_id=${clientId}`
