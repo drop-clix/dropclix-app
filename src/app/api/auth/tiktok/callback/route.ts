@@ -25,27 +25,41 @@ export async function GET(req: NextRequest) {
     }),
   })
 
+  const rawText = await tokenRes.text()
+  console.log('[TikTok callback] token response status:', tokenRes.status)
+  console.log('[TikTok callback] token response raw:', rawText)
+
   if (!tokenRes.ok) {
-    console.error('TikTok token exchange failed:', await tokenRes.text())
+    console.error('[TikTok callback] token exchange HTTP error:', tokenRes.status)
     return NextResponse.redirect(`${adminBase}?tt_error=token_failed`)
   }
 
-  const tokenData = await tokenRes.json() as {
-    data?: {
-      access_token:  string
-      refresh_token?: string
-      expires_in:    number
-      open_id:       string
-    }
-    error?: { code: string; message: string }
-  }
-
-  if (tokenData.error?.code || !tokenData.data?.access_token) {
-    console.error('TikTok token error:', tokenData.error)
+  let tokenData: Record<string, unknown>
+  try {
+    tokenData = JSON.parse(rawText)
+  } catch {
+    console.error('[TikTok callback] failed to parse token JSON')
     return NextResponse.redirect(`${adminBase}?tt_error=token_failed`)
   }
 
-  const { access_token, refresh_token, expires_in, open_id } = tokenData.data
+  // TikTok returns either { access_token, open_id, ... } or { data: { access_token, open_id, ... } }
+  const nested = tokenData.data as Record<string, unknown> | undefined
+  const access_token: string | undefined =
+    (nested?.access_token as string) ?? (tokenData.access_token as string)
+  const refresh_token: string | undefined =
+    (nested?.refresh_token as string) ?? (tokenData.refresh_token as string)
+  const expires_in: number =
+    Number((nested?.expires_in) ?? tokenData.expires_in ?? 86400)
+  const open_id: string | undefined =
+    (nested?.open_id as string) ?? (tokenData.open_id as string)
+
+  const apiError = tokenData.error as Record<string, unknown> | undefined
+
+  if (apiError?.code || !access_token || !open_id) {
+    console.error('[TikTok callback] token error:', apiError ?? 'missing access_token or open_id')
+    return NextResponse.redirect(`${adminBase}?tt_error=token_failed`)
+  }
+
   const expiry = new Date(Date.now() + expires_in * 1000).toISOString()
 
   // Fetch user profile
@@ -84,7 +98,7 @@ export async function GET(req: NextRequest) {
     .upsert(upsertPayload, { onConflict: 'client_id,platform' })
 
   if (dbErr) {
-    console.error('Failed to save TikTok connection:', dbErr.message)
+    console.error('[TikTok callback] failed to save connection:', dbErr.message)
     return NextResponse.redirect(`${adminBase}?tt_error=db_failed`)
   }
 
