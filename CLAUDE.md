@@ -6,191 +6,174 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 
 ## Session Scope
 
-Every session must be labeled with one of two scopes before any work begins:
+**GLOBAL** — any code/UI/feature/backend change; affects ALL clients.
+**CLIENT: [Name]** — data-only; zero code changes (.tsx/.ts/.js/.css forbidden).
 
-**GLOBAL** — changes to codebase, UI, features, or backend
-- Affects ALL clients
-- Any code change = global by default
-- Examples: new feature, UI update, bug fix in shared component, schema migration
-
-**CLIENT: [Name]** — data only, no code changes
-- Affects ONE client's Supabase data only
-- Zero code changes allowed in client-specific sessions
-- Examples: import posts, fix data, update goals, correct pipeline items
-
-### Rules:
-- Every Claude Code prompt must declare scope in the first line: `SCOPE: GLOBAL` or `SCOPE: CLIENT: Nick`
-- If scope is CLIENT, Claude Code must not touch any .tsx, .ts, .js, or .css files
-- If scope is GLOBAL, changes apply to all clients — verify nothing breaks Nick's existing data
-- If unsure, default to GLOBAL and flag it
-- Bug fixes: if the bug affects only one client's data → CLIENT scope. If it affects the UI or logic → GLOBAL scope
+Rules:
+- First line of every prompt: `SCOPE: GLOBAL` or `SCOPE: CLIENT: Nick`
+- GLOBAL: verify Nick's existing data unaffected
+- Default to GLOBAL if unsure; UI/logic bug = GLOBAL, one client's data bug = CLIENT
 
 ## Sessions (completed)
 
-- **Sessions 1–3**: Scaffold, Supabase SSR auth, gold/black login + dashboard. Auth via `src/proxy.ts` (not middleware.ts). Tailwind 4 `@theme` tokens in `globals.css`.
-- **Session 4**: Analytics tab — sortable table, platform/window filters, ER% formula, tier + decision badges, KPI strip.
-- **Session 5**: Pipeline tab — phase cards, inline status dropdown with optimistic updates, script expand, `admin.ts` for RLS bypass.
-- **Session 6**: Ads tab — 4 KPI cards, sortable campaign table, creatives expand. `effectiveRevenue = roas * spend`; end dates inferred from next campaign start.
-- **Session 6.5**: Calendar tab — 42-cell grid, agenda view, event pills. Notes is JSON string in text column; `pipeline_item_id` is null, join via `notes.post_id`.
-- **Session 6.6**: Angles tab — ER breakdown by pillar/hook/format, breakdown bars, Top/Bottom 5 tables.
-- **Session 6.7**: Goals tab — 9 seeded goals (5 monthly + 4 weekly), pace projection, editable targets via `GoalsClient`.
-- **Session 7**: Report Card + Studio tabs — weekly/monthly grades, wins/misses, studio phase funnel + script expand.
-- **Session 8**: Nick data migration via `scripts/migrate-nick.mjs` — 43 posts, 176 analytics rows, 93 pipeline items, 6 campaigns, 48 calendar events.
-- **Session 9**: Admin impersonation — `getPortalContext()` in `portal.ts`, cookie `dropclix_impersonate_client_id` (8h httpOnly), "← Exit Portal" button.
-- **Session 9b**: Created Supabase auth user nick@spartasolar.com (temp pw: `DropClix2026!`).
-- **Session 10**: Vercel deploy to `dropclix-app.vercel.app` + custom domain `portal.drop-clix.com`. DNS: Cloudflare A `portal → 76.76.21.21`, proxy OFF.
-- **Session 11**: Inline editing across all tabs — `edit-actions.ts` centralized CRUD, 2s debounce auto-save, SaveDot indicator. `useRef<T | undefined>(undefined)` required in React 19.
-- **Session 12**: HTML portal audit (50 gaps) — report in `memory/project_html_portal_audit.md`. Note: HTML `reach` = DB `views`.
-- **Session 13**: Design system spacing pass — KPI cards `28px 24px 22px`, table rows `py-4`, section gaps `mb-8`. No new features.
-- **Session 14**: Recharts charts (`recharts@3.8.1`) + collapsible sidebar via `SidebarShell.tsx` (56px collapsed / 220px expanded). `PortalNav.tsx` is unused.
-- **Session 14b**: Forgot password + reset-password page at `auth/reset-password/page.tsx`. Proxy always lets `/auth/` through unauthenticated.
-- **Session 14c**: eom backfill audit — all pre-May posts already had complete eom rows. `scripts/backfill-eom.mjs` written (0 rows needed).
-- **Session 14d**: Post ID rename — all 43 IDs renamed `#ig0001`–`#ig0043` (date ASC). Script: `scripts/rename-post-ids.mjs`.
-- **Session 14e/f**: HTML vs Supabase audit (0 metric diffs, 1 missing post). Inserted `#ig0044` "Everyone can sell" with all 4 windows.
-- **Session 15a**: May 2026 posts (#ig0045–#ig0052) inserted + EOM analytics ingested. `skip_rate numeric` column added (`supabase/migrations/add_skip_rate.sql`).
-- **Session 15b**: Pipeline + calendar auto-sync on ingest — `ingest-eom-csv.mjs` syncs both; `sync-pipeline-calendar.mjs` added as standalone backfill. Idempotent.
-- **Session 16**: Bidirectional pipeline↔calendar sync in `edit-actions.ts`, posted datetime picker (auto-flips POSTED/SCHEDULED by date), draggable calendar (mouse + touch). Added `pipeline_items.posted_at timestamptz` (`supabase/migrations/add_posted_at.sql`).
-- **Session 17**: Studio importer (`createPost()` + `importPostsBatch()` server actions, CSV file upload → mapping → preview → batch), ER% formula audit (fixed dashboard to 4-component), smart popup for POSTED/SCRIPTED status, welcome overlay (`sessionStorage` per client).
-- **Session 18-pre**: Decision auto-calculation everywhere — `src/lib/decision.ts` shared utility (`erToDecision`, `computeDecision`). Decision updated on `createPost()`, `updateAnalyticsMetric()`, and every EOM ingest. Never hardcode 'Iterate' as default.
-- **Session 19**: YouTube import — 53 videos (39 Shorts `#yt0001`–`#yt0039`, 14 Long-form `#LF0001`–`#LF0014`) via `ingest-yt-csv.mjs`. YT ER% uses `subscribers_gained` stored in `post_analytics.followers`. `pipeline_items.yt_type` = Short/Long-form.
-- **Session 20**: Global `usePortalFilters` hook + URL-synced filters (`platform`, `win`, `scope`, `from`, `to`), `FilterBar` component, `Paginator.tsx`. Angles converted to client component.
-- **Session 21**: Major filter overhaul — FilterBar redesigned (no ALL pill, no custom range), Dashboard→DashboardClient, Goals→GoalsDashboard (Report Card merged in), Studio stats bar with pipeline deep links, Pipeline owns its own filter row.
-- **Session 22**: Dashboard full rewrite (toggle KPI cards, 30-day projections, AI suggestions drawer, 7-day calendar + pipeline snapshots). Analytics 4 chart cards below table. Pipeline `formatDisplayId()` fix for legacy `#0XXX` IDs.
-- **Session 23**: YouTube OAuth, `platform_connections` table (`create_platform_connections.sql`), Analytics sync (`sync-youtube.mjs` + `/api/admin/sync-youtube`), Pipeline YT linking (`YTLinkModal`), Admin YouTube section, Studio YT status bar.
-- **Session 24**: Client onboarding — `AdminClientsSection` with create/edit/resend invite modals, goals UPDATE RLS + `monthly_retainer` column (`session_24_onboarding.sql`), `seed-new-client.mjs`. New clients get 9 seeded goals + 1 welcome pipeline item (`post_id='#new0001'`).
-- **Session 25**: Multi-client — `enabled_platforms`/`enabled_tabs` per client (`session_25_client_config.sql`), `ClientConfigProvider` + `useClientConfig()`, `EmptyState.tsx` for all 8 tabs, admin CSV import (`AdminImportModal`), `OnboardingBanner` (postCount < 5, not admin).
-- **Bug Fix (post-S29, round 2)**: YouTube sync returning 0 windows — 4 bugs in the upsert: (1) `er_pct` column doesn't exist in `post_analytics`; (2) `client_id` (NOT NULL) and `platform` missing from upsert payload; (3) `onConflict: 'post_id,metric_window'` didn't match actual constraint `unique(post_id, platform, metric_window)`; (4) stray `dimensions: ''` param in YT Analytics API call. Also added `posts.yt_id` column (migration: `add_posts_yt_id.sql`) so sync queries `posts WHERE yt_id IS NOT NULL` directly instead of joining through `post_analytics`. `ingest-yt-csv.mjs` now writes `yt_id` to posts rows. **PENDING**: Run `supabase/migrations/add_posts_yt_id.sql` in the Supabase SQL Editor.
-- **Bug Fix (post-S29, round 3)**: YouTube sync "0 windows synced, 332 skipped" — sync was never creating new rows, only skipping. Fix: (1) replaced fixed `['w24','w3','w7','eom']` loop with age-based `windowsForPost()` — eom always; w7 if ≤6 days old; w3 if ≤3 days; w24 if ≤2 days; (2) eom end date changed from end-of-publish-month to **today**, so old posts get current all-time totals; (3) skip condition changed from `!m || m.views === 0` to `!m` only — zero-view rows are now written; (4) removed "has data → skip" check entirely — always attempt API and upsert. Impressions/CTR added as secondary API call (`dimensions=video`) — gracefully falls back to 0 if unavailable. **Root cause of 403s**: YouTube Analytics API NOT ENABLED in GCP project `338389725982`. Enable at: console.developers.google.com/apis/api/youtubeanalytics.googleapis.com/overview?project=338389725982. After enabling, all posts with yt_ids owned by the connected channel will sync. Token must match the channel that owns the videos.
-- **Bug Fix (post-S29)**: YouTube sync "Unauthorized" — `AdminYouTubeSection` sent `NEXT_PUBLIC_SUPABASE_SERVICE_KEY` (doesn't exist, always empty) as auth header. Fix: sync route now validates Supabase session + admin role via cookie instead of comparing service key. Removed auth header from client. Also: protected callback from wiping stored `refresh_token` with null on reconnect, fixed `YouTubeConnection` type (`connected_at` → `created_at`).
-- **Bug Fix (post-S25)**: Admin "No clients" — root cause: wrong `SUPABASE_SECRET_KEY` in Vercel (publishable key, not service role). Fix: synced correct env vars, set `app_metadata.role='admin'` via `setup-admin.mjs`, updated `get_my_role()` to use JWT claim, rewrote clients fetch to raw `fetch()` bypassing Supabase JS client entirely. **`SUPABASE_SECRET_KEY` prefix must be `sb_secret_*`, not `sb_publishable_*`.**
-- **Session 26**: Admin layer rebuilt correctly — `createAdminClient()` now uses `persistSession:false, autoRefreshToken:false`; `admin/page.tsx` uses it for all 3 queries (clients, connections, posts); `AdminClientsSection` rebuilt with premium card UI (hover border, breathing room, gold CTAs); `session_26_rls_fix.sql` drops redundant admin policy on `clients` (service role bypasses RLS automatically).
-- **Session 27**: Pipeline Add Video modal (gold "+ Add Video" button, platform-aware ID auto-fill using `#ig|#tt|#yt` pipe-separated IDs, read-only ID field computed from next available per platform); AI command bar (floating gold sparkle button, slide-up chat panel, `/api/ai-command` route with Claude context — add pipeline/update analytics/bulk status via confirmation cards, voice-to-text via SpeechRecognition API); legibility pass across all components (table headers #2a2a2a→#555, label text-[7px]→text-[9px], secondary text #252525/#1e1e1e→#555/#444); `scripts/fix-week-format.mjs` for normalising week values to MonWk# format.
-- **Session 29 (GLOBAL)**: 10 global UI enhancements — Toast system (`Toast.tsx`, `ToastProvider` in layout), PostSlideOver panel (`PostSlideOver.tsx`, row clicks on Analytics/Angles open right slide-over with sparkline + decision badge), Cmd+K global shortcut + ⌘K hint label (AICommandBar), sticky thead on Pipeline/Analytics/Angles (`position:sticky`, `background:#060606` on every `<th>`), pillar color coding (`usePillarColors.ts`, 3px `<td>` stripe on all 3 tables), pipeline phase card gold border on active, pipeline hover preview popover (800ms debounce, fixed position), pipeline 6-week calendar mini-map (status dots, week filter, current week gold border), dashboard "This Week" strip (MonWk# label, priority-sorted status cards), contextual empty state in pipeline. TypeScript: 0 errors.
-- **Session 30 (GLOBAL)**: 8-feature upgrade — (1) Pipeline text glow: white `textShadow` on phase card counts/labels and week strip, gold glow on active; hero H1 shadow in pipeline/page.tsx; (2) Platform pill stat accuracy: `platFiltered` memo feeds both phase card `counts` AND `rows` — counts change when IG/YT/TT/LF pill changes; (3) Text overflow: title column ellipsis + glow confirmed; (4) Calendar pillar colors: `pillar` joined from `pipeline_items` in calendar/page.tsx, `usePillarColors` in CalendarClient, EventPill left-border uses pillar color, right-side slide-over panel on event click (status/pillar badges, detail fields, edit CTA); (5) Mark as Posted button: hover `✓` on non-POSTED pipeline rows, `MarkAsPostedModal` with date/time + optional URL paste, URL parser extracts YT/IG/TT video IDs, saves `video_url` + `posted_at` + `status=POSTED`, migration `add_video_url.sql`; (6) Ads charts: Recharts `ComposedChart` (Spend bars + ROAS line) and (CTR line + CPM area) above campaign table, only renders ≥2 campaigns; (7) Dashboard ad KPI strip: 4-card row (Total Spend 30d, Top ROAS, Top CTR, Avg CPM), `RawDashCampaign` type exported from DashboardClient, dashboard/page.tsx fetches `ad_campaigns` last 30 days; (8) Jarvis AI orb: React Three Fiber `Canvas` replaces CSS arc-reactor — `MeshDistortMaterial` liquid sphere + bloom postprocessing + 3 Torus orbital rings, speed/distort/emissive animate on `open` state. Also: Bulk Pipeline Import modal + ⇪ Bulk Import button added (Session 29b). CLIENT: inserted 2 calendar events for 2026-06-11 ("Text Coach Wood", "Rebuild Sparta Contract") for client Day 1. New packages: `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`, `three`, `maath`.
-- **Session 34 (GLOBAL)**: Comprehensive contrast/legibility polish across ALL pages — zero data logic changes, zero schema changes. Core fix: every `#333`, `#252525`, `#2a2a2a`, `#2e2e2e` text color raised to `#555`–`#666` for WCAG-acceptable contrast on `#060606` background. Covers: globals.css base styles, SidebarShell nav links, FilterBar platform pills + scope dropdown, Analytics (KPI labels, window selector, pillar chips, tier legend, sort headers), Pipeline (STATUS_DOT, section labels, cancel buttons, platform toggles), Calendar (status colors, view toggle, platform toggle, day numbers), Ads (KPI labels, sort headers, status filter, zero-value cells), Studio (drag-drop hints, section labels, platform toggles), Goals (labels, pace notes, grade text), Report Card, Angles, Admin (all 5 admin section files), PostSlideOver, AICommandBar, AISuggestionsModal, PipelineBulkImportModal, OnboardingBanner, Toast, EmptyState, DashboardCharts, reset-password page. Also: custom scrollbar (5px thumb, `#1e1e1e`/`#2e2e2e`), `::selection` with gold tint, `:focus-visible` gold ring, `color-scheme: dark`, `prefers-reduced-motion` block, `button { cursor: pointer }`. All 11 commits pushed + deployed to production.
-- **Session 33 (GLOBAL)**: 4 fixes — (1) Global text glow removed from `body` in `globals.css` — body text is now fully opaque with no bloom; h1/h2/h3 keep a very subtle shadow (10% opacity); `.font-jakarta` and `.text-gold` glows intentionally preserved; (2) Pipeline phase cards: added missing EDITING, SCHEDULED, CANCELLED cards (full 10-card set in one scrollable row); hover+active states now color-coded per status via `PHASE_CARD_COLORS` constant; also fixed `PLAT_CFG.tt` color from wrong `#a78bfa` (purple) to correct `#2dd4bf` (teal) per design tokens; (3) Pipeline link columns: `showIG/showTT/showYT` booleans computed from active platform pill — only the matching column renders (`ig`→IG only, `tt`→TT only, `yt/lf`→YT only, `all`→all three); `colCount` computed for `colSpan` on empty row + edit panel; (4) Row border color fix: root cause was `PLAT_CFG.tt` wrong color (fixed in item 2 above) — `primaryPlatColor = PLAT_CFG[item.platform[0]].color` logic itself was already correct.
-
-- **Session 32 (GLOBAL)**: 8 features — (1) Pipeline platform ID display filter: `idForPlatform()` shows only the matching pipe-segment when a platform pill is active; (2) Global text glow via `globals.css` — `body { text-shadow }` with resets on interactive elements, gold glow on `.text-gold`; (3) Priority auto-derive: removed manual priority editing, `STATUS_PRIORITY` mapping (REVIEWING→1…CANCELLED→6), `scripts/backfill-priorities.mjs`; (4) Calendar: fixed 100px cell height, native tooltip on truncated text, `SlideOverPanel` component with date/time/platform/status/link/pillar/notes/delete fields, analytics snapshot for POSTED events, `updatePipelineByPostId` server action; (5) AI suggestions: replaced 4-card grid + slide-over with centered glassmorphism modal (`AISuggestionsModal.tsx`), "View Insights" button on Dashboard, "AI Insights" button on Ads, `/api/ai-suggestions` extended with `mode: 'ads'` for campaign-specific recommendations; (6) Instagram OAuth: `/api/auth/instagram` + callback, `AdminInstagramSection`, stores in `platform_connections` (platform='instagram'), env: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_REDIRECT_URI`; (7) TikTok OAuth: `/api/auth/tiktok` + callback (TikTok Login Kit v2), `AdminTikTokSection`, redirect URI `https://portal.drop-clix.com/api/auth/tiktok/callback`, env: `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`; (8) Platform link buttons: pipeline row stripe = primary platform color, single YT column → IG|TT|YT columns, `PlatformLinkModal` for IG/TT URL linking, `isPlatLinked()` detects linked state from `video_url`, `videoUrl` added to `PipelineItem` type.
-- **Session 28 (GLOBAL + CLIENT: Nick)**:
-  - *GLOBAL*: Platform visibility bug — `enabled_platforms` defaulted to `['ig']` for non-admin clients when null; changed fallback to `['ig','tt','yt','lf']` in `layout.tsx` so all platforms are visible by default.
-  - *CLIENT: Nick*: `scripts/fix-nick-data.mjs` applied — 154 week format fixes (M2 WK4→FebWk4, Mar WK3→MarWk3, etc.); 5 ID renames (SL001–SL005 → #ig0118–#ig0122); `enabled_platforms` updated to `['ig','tt','yt','lf']`. Also fixed `scripts/fix-week-format.mjs` to use readFileSync (was using broken dotenv).
+- S1–3: Scaffold + SSR auth + gold/black login/dashboard; auth via `src/proxy.ts`; Tailwind 4 `@theme` in globals.css
+- S4: Analytics tab — sortable table, ER%, tier + decision badges, KPI strip
+- S5: Pipeline tab — phase cards, status dropdown, `admin.ts` RLS bypass
+- S6: Ads tab — KPI cards, campaign table; `effectiveRevenue = roas * spend`; end dates inferred from next campaign start
+- S6.5: Calendar tab — 42-cell grid, agenda, JSON notes; `pipeline_item_id` null, join via `notes.post_id`
+- S6.6: Angles tab — ER by pillar/hook/format, Top/Bottom 5
+- S6.7: Goals tab — 9 seeded goals, pace projection
+- S7: Report Card + Studio tabs
+- S8: Nick data migration — 43 posts, 176 analytics, 93 pipeline, 6 campaigns, 48 calendar events
+- S9: Admin impersonation — `getPortalContext()`, cookie `dropclix_impersonate_client_id` (8h httpOnly)
+- S9b: Created nick@spartasolar.com (pw: `DropClix2026!`)
+- S10: Vercel deploy + `portal.drop-clix.com`; DNS: Cloudflare A `portal → 76.76.21.21`, proxy OFF
+- S11: Inline editing — `edit-actions.ts` CRUD, 2s debounce, SaveDot; `useRef<T | undefined>(undefined)` for React 19
+- S12: HTML portal audit (50 gaps); HTML `reach` = DB `views`
+- S13: Design system spacing — KPI `28px 24px 22px`, rows `py-4`, gaps `mb-8`
+- S14: Recharts (`recharts@3.8.1`) + collapsible sidebar `SidebarShell.tsx` (56px/220px); `PortalNav.tsx` unused
+- S14b: Forgot password + `auth/reset-password/page.tsx`; proxy passes `/auth/` unauthenticated
+- S14c: eom backfill audit — 0 rows needed; `backfill-eom.mjs` written
+- S14d: Post IDs renamed `#ig0001`–`#ig0043` date-ASC
+- S14e/f: HTML vs Supabase audit (0 diffs); inserted `#ig0044` "Everyone can sell"
+- S15a: May 2026 posts `#ig0045`–`#ig0052` + EOM ingest; `skip_rate numeric` added (`add_skip_rate.sql`)
+- S15b: Pipeline + calendar auto-sync on ingest; `sync-pipeline-calendar.mjs` added
+- S16: Bidirectional pipeline↔calendar sync, posted datetime picker, draggable calendar; `pipeline_items.posted_at` (`add_posted_at.sql`)
+- S17: Studio importer (`createPost()` + `importPostsBatch()`), ER% formula audit, smart popup, welcome overlay
+- S18-pre: Decision auto-calc — `src/lib/decision.ts` (`erToDecision`,`computeDecision`); never hardcode 'Iterate'
+- S19: YouTube import — 53 videos (`#yt0001`–`#yt0039` Shorts, `#LF0001`–`#LF0014` LF); `yt_type` in pipeline_items
+- S20: `usePortalFilters` hook + URL-synced filters (`platform`,`win`,`scope`,`from`,`to`), `FilterBar`, `Paginator.tsx`
+- S21: FilterBar redesign (no ALL pill, no custom range), Dashboard→DashboardClient, Goals→GoalsDashboard, Studio stats bar
+- S22: Dashboard rewrite — toggle KPI cards, 30-day projections, AI suggestions, 7-day calendar+pipeline snapshots; `formatDisplayId()` fix
+- S23: YouTube OAuth, `platform_connections` table, `/api/admin/sync-youtube`, `YTLinkModal`, Admin YT section, Studio YT status bar
+- S24: Client onboarding — `AdminClientsSection`, goals UPDATE RLS, `monthly_retainer` col, `seed-new-client.mjs`
+- S25: Multi-client — `enabled_platforms`/`enabled_tabs`, `ClientConfigProvider`, `EmptyState.tsx`, `AdminImportModal`, `OnboardingBanner`
+- Bug (post-S25): Admin "No clients" — wrong `SUPABASE_SECRET_KEY` (must be `sb_secret_*`); admin role via JWT claim; `createAdminClient()` for all admin queries
+- S26: `createAdminClient()` rebuilt (`persistSession:false, autoRefreshToken:false`); premium clients card UI; `session_26_rls_fix.sql`
+- S27: Pipeline Add Video modal (pipe-separated IDs); AI command bar (`/api/ai-command`, voice-to-text); legibility pass; `fix-week-format.mjs`
+- S28 GLOBAL: `enabled_platforms` default fixed to `['ig','tt','yt','lf']` in `layout.tsx`
+- S28 CLIENT Nick: `fix-nick-data.mjs` — 154 week fixes, SL001–SL005 → #ig0118–#ig0122, platforms updated; `fix-week-format.mjs` uses readFileSync
+- Bug (post-S29): YT sync "Unauthorized" — route uses session cookie auth; fixed refresh_token wipe on reconnect; `connected_at`→`created_at`
+- Bug (post-S29, r2): YT sync 0 windows — upsert missing `client_id`/`platform`; wrong onConflict key; `posts.yt_id` added (`add_posts_yt_id.sql`); no `dimensions:''`
+- Bug (post-S29, r3): YT sync 0 synced — `windowsForPost()` age-based; eom end=today; skip only if `!m`; always upsert. 403 = YT Analytics API not enabled in GCP `338389725982`
+- S29: Toast system, PostSlideOver, Cmd+K, sticky thead, pillar color stripes, pipeline phase card gold border, hover preview popover (800ms), 6-week calendar mini-map, "This Week" strip
+- S29b: Bulk Pipeline Import modal + ⇪ Bulk Import button
+- S30: Pipeline text glow, platform pill stat accuracy (`platFiltered` feeds counts+rows), calendar pillar colors+slide-over, MarkAsPostedModal (`add_video_url.sql`), Ads Recharts charts, Dashboard ad KPI strip, Jarvis AI orb (R3F + GLSL); packages: `@react-three/fiber`,`@react-three/drei`,`@react-three/postprocessing`,`three`,`maath`
+- S31: Pipeline priority auto-update, mass delete (`DeleteConfirmModal`), calendar analytics snapshot (animated BarChart), Jarvis orb Tier 3 GLSL
+- S32: Pipeline ID display filter, priority auto-derive (`STATUS_PRIORITY`+`backfill-priorities.mjs`), calendar `SlideOverPanel`, `AISuggestionsModal.tsx`, Instagram OAuth, TikTok OAuth, `PlatformLinkModal`
+- S33: Body text-glow removed from globals.css; full 10-card pipeline set (`PHASE_CARD_COLORS`); link column visibility (`showIG/showTT/showYT`); `PLAT_CFG.tt` fixed to `#2dd4bf`
+- S34: Contrast/legibility polish — all `#333`/`#252525`/`#2a2a2a`/`#2e2e2e` text → `≥#555`; custom scrollbar (5px), `::selection` gold, `:focus-visible` gold ring, `color-scheme:dark`, `prefers-reduced-motion`, `button { cursor:pointer }`
 
 ## Key decisions / gotchas
 
-- **PLAT_CFG.tt color**: `#2dd4bf` (teal) NOT `#a78bfa` (purple). Corrected in Session 33. Used for TT platform stripe, TT badges, TT link columns. The `#a78bfa` purple is only for `STATUS_CFG.EDITING` badge — it's a status color, not a platform color.
-- **Pipeline phase cards**: Full 10-card set: Active, Scripted, Planned, Filming, Editing, Reviewing, Scheduled, Posted, Cancelled, All. `PHASE_CARD_COLORS` constant defines per-status `text/bg/border` values. `hoveredCardKey` state drives hover color. Container uses `overflow-x:auto` + `minWidth:600` so cards never wrap. Grid template: `repeat(10, 1fr)`.
-- **Pipeline link column visibility**: `showIG/showTT/showYT` booleans computed after `usePortalFilters()`. `colCount = 10 + showIG + showTT + showYT`. Both the empty-row and edit-panel `colSpan` use `{colCount}`. When `platform === 'lf'`, `showYT = true` (LF is YouTube).
-- **Body text-shadow removed**: `globals.css` no longer has `text-shadow` on `body`. Any inline `textShadow` on specific elements is intentional (hero titles, gold text, phase card counts). Never re-add a global body text-shadow.
-- **Contrast floor**: `#060606` background. Minimum readable text: `#555` for labels/secondary, `#666` for inactive toggles/buttons, `#3a3a3a` for intentional "no data" placeholders. Never use `#333`, `#252525`, or `#2a2a2a` for text — these are ~1.6:1 contrast (WCAG fail). Borders can still use `#1e1e1e`/`#1a1a1a`.
-- **AISuggestionsModal**: `src/components/portal/AISuggestionsModal.tsx`. Props: `isOpen, onClose, title, subtitle, suggestions, loading`. Exports `AISuggestion` type. Animation: `@keyframes aiModalIn` in globals.css. Used by DashboardClient (monthly + projection) and AdsClient (ads mode).
-- **AI suggestions ads mode**: `/api/ai-suggestions` accepts `{ mode: 'ads', campaigns: ContextCampaign[], posts: [], platform: 'all' }`. Returns 4 campaign-specific recommendations.
-- **Instagram OAuth**: env `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_REDIRECT_URI`. Route: `/api/auth/instagram`. Callback stores `platform='instagram'` in `platform_connections`. Admin section: `AdminInstagramSection`.
-- **TikTok OAuth**: env `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`. Route: `/api/auth/tiktok`. Redirect URI **must** be `https://portal.drop-clix.com/api/auth/tiktok/callback`. Admin section: `AdminTikTokSection`.
-- **Pipeline platform link buttons**: `isPlatLinked(videoUrl, 'ig'|'tt')` detects link from URL patterns. `PlatformLinkModal` saves URL to `video_url`. `PipelineItem.videoUrl` added; pipeline/page.tsx queries `video_url` from DB.
-- **Pipeline row stripe = platform color**: first `<td>` uses `PLAT_CFG[item.platform[0]].color` (not pillar color). `colSpan` updated to 13 (IG+TT+YT added 2 columns).
-- **Next.js 16 proxy**: `middleware.ts` is deprecated. Use `src/proxy.ts` with `export function proxy()`.
-- **`/auth/` routes**: Always let through unauthenticated — recovery token is in URL hash (client-only).
-- **cookies() is async**: Always `const cookieStore = await cookies()` in server components.
-- **Env var names**: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY), `SUPABASE_SECRET_KEY` (not SERVICE_ROLE_KEY). Service role prefix: `sb_secret_*`.
-- **Role check in proxy AND page/layout**: Proxy handles redirect; layout re-checks to be safe.
-- **Login redirect**: After sign-in, role fetched client-side → admin goes `/admin`, client goes `/`.
-- **No `app/page.tsx`**: Deleted — `app/(dashboard)/page.tsx` owns `/` via route group.
-- **Admin on dashboard**: Layout redirects admin role to `/admin`; `/` is client-only.
-- **getPortalContext()**: Import from `@/lib/supabase/portal`. Use in ALL dashboard pages — do NOT use separate `createClient()` + profile fetch.
-- **Admin impersonation**: Cookie `dropclix_impersonate_client_id`, 8h TTL, httpOnly. Only cleared via "Exit Portal" action.
-- **Dashboard queries**: Use `metric_window = 'eom'` for aggregate totals. Pipeline active = not POSTED/CANCELLED.
-- **Analytics data join**: `posts.select('..., post_analytics(...)')` returns analytics as nested array keyed by `metric_window`.
-- **ER formula (IG/TT)**: `(likes + comments + shares + saves) / views × 100`.
-- **ER formula (YouTube)**: `(likes + comments + shares + subscribers_gained) / views × 100`. `subscribers_gained` stored in `post_analytics.followers`; `saves` is `null` for all YT rows. Same decision thresholds.
-- **YT post IDs**: `#yt0001`–`#yt0039` (Shorts), `#LF0001`–`#LF0014` (Long-form). `pipeline_items.yt_type` = 'Short' or 'Long-form'. `post_analytics.yt_id` = YouTube Video ID.
-- **Decision auto-calculation**: Derived from ER% when any window has `views > 0`. Thresholds: ≥12% → Double Down, 4–11.9% → Iterate, <4% → Kill. Utility: `src/lib/decision.ts`. Never hardcode 'Iterate' — leave null if no data.
-- **State naming**: Use `win` not `window` for WindowKey state variables (avoids browser global shadowing).
-- **Global filters via URL params**: `platform`, `win`, `scope`, `from`, `to`. All client components read same params — no new DB queries on filter change.
-- **EditableCell must use post's own platform**: Pass `post.platform[0] ?? 'ig'` not the filter's `platform` value — filter may be 'all' which is not valid for DB writes.
-- **LF filter requires `format` field**: Analytics query must select `format`; `filterByPlatform` receives `getFormat` callback for Long-form YT.
-- **Angles is now a client component**: `angles/page.tsx` is minimal server fetch; all computation in `AnglesClient.tsx`.
-- **Default platform is 'ig'**: `usePortalFilters` defaults to `platform='ig'`. All tabs open with IG selected.
-- **FilterBar exports**: `PlatformPills` and `ScopeDropdown` exported separately for pages that compose their own filter UI (DashboardClient, PipelineClient, GoalsDashboard).
-- **filterByPlatform signature**: 2-3 args only: `(items, platform, getFormat?)`. Item type must extend `{ platform: string[] }` natively.
-- **Pipeline phase URL param**: PipelineClient reads `?phase=STATUS` on mount. Studio stats tiles navigate to `/pipeline?phase=SCRIPTED` etc.
-- **Goals page is GoalsDashboard**: All logic in `GoalsDashboard` (GoalsClient.tsx). Types `RawGoalPost` + `RawGoal` exported from `goals/page.tsx`. Report card grades computed client-side; WeekGrade/MonthGrade types imported from `report-card/page.tsx`.
-- **Supabase untyped rows**: Cast with `as unknown as RawRow[]` — no generated DB types.
-- **Pipeline RLS**: Clients have SELECT only. Updates use `edit-actions.ts` + `admin.ts`.
-- **admin.ts**: ONLY import in server actions / server components. Never in `'use client'` files.
-- **Ads revenue**: `revenue` column is 0 in DB. Use `effectiveRevenue = roas * spend`. End dates inferred as day before next campaign start.
-- **Goals actuals**: From eom analytics window per post, grouped by month. Falls back to most recent data month if current month empty.
-- **Pace status**: `(actual / daysElapsed) * daysInMonth` → ≥110%=Ahead, ≥80%=On Track, <80%=Behind.
-- **Calendar notes**: JSON string in text column. Parse with `try { JSON.parse(notes) } catch {}`.
-- **Calendar pipeline link**: `pipeline_item_id` is null for all events. Join via `notes.post_id` → `pipeline_items.post_id`.
-- **Calendar grid**: 42-cell fixed (6 rows × 7 cols). Leading/trailing cells from adjacent months.
-- **React Fragment key**: Use `<Fragment key={id}>` (imported), not `<>`.
-- **Recharts v3 types**: `content` prop in `<Tooltip>`: `(props: any) => ...`. Tooltip `payload` is `readonly any[]`.
-- **Studio importer**: `studio/actions.ts` is 'use server'. `createPost()` revalidates 8 paths. `post_analytics.post_id` is UUID FK — always use `posts.id` (not text `post_id`) when inserting analytics.
-- **Welcome overlay**: `sessionStorage` keyed by `dropclix_welcomed_${clientName}`. Rendered in dashboard layout, not inside SidebarShell.
-- **Smart popup trigger**: Intercepts status → POSTED/SCRIPTED only when both `item.scheduledDate` AND `item.postedAt` are null.
-- **Tailwind 4 theme**: Colors in `globals.css` `@theme {}` block, not `tailwind.config.js`.
-- **Port**: Dev server falls back; check `.next/dev/logs/next-development.log` for actual port.
-- **Pipeline ID display**: Use `formatDisplayId(postId, platform[])` in PipelineClient — never render `item.postId` raw (45 legacy `#0XXX` items exist).
-- **Pipeline phase counts vs rows**: `platFiltered` memo applies platform filter first; `counts` and `rows` both derive from it. Never compute counts from raw `items` — they won't reflect the active platform pill.
-- **video_url in pipeline_items**: Added in migration `add_video_url.sql`. Whitelist entry in `VALID_PIPE` set in `edit-actions.ts`. Parsed from pasted URL via `parseVideoUrl()` in PipelineClient.
-- **R3F / Three.js in Next.js**: `AICommandBar` is `'use client'` — Canvas renders fine without `dynamic`. `@react-three/fiber`, `@react-three/drei`, `@react-three/postprocessing`, `three`, `maath` installed. Do not use `ssr: false` dynamic import unless rendering issues occur.
-- **Pipeline priority auto-update**: `STATUS_PRIORITY` constant in `PipelineClient.tsx` maps status → priority (1–6). Always save `priority` + `status` together in one `updatePipelineItem` call when status changes. Pattern used in: dropdown onChange, date popup confirm, MarkAsPostedModal.
-- **Pipeline mass delete**: `bulkDeletePipelineItems` in `edit-actions.ts` — uses `.in('id', itemIds)` + `.eq('client_id', cid)` for non-admin. `selectedIds: Set<string>` state in PipelineClient. IDs are never renumbered after deletion.
-- **Calendar analytics snapshot**: `getPostAnalyticsSnapshot(postTextId)` in `edit-actions.ts` returns `{ windows, platform }`. CalendarClient fetches on POSTED event slide-over open via `useEffect` watching `slideOverEv?.id`. `showChart` state delays Recharts render by 200ms for cinematic animation. Use `isAnimationActive` (default true) in Recharts for entrance animation.
-- **Jarvis orb GLSL**: Custom vertex/fragment shaders inline in `AICommandBar.tsx`. `VERTEX_SHADER` uses `IcosahedronGeometry(0.72, 20)` + 3D simplex noise via inline GLSL functions. `FRAGMENT_SHADER` uses rim lighting + displacement for gold/cream color variation. Uniforms: `u_time`, `u_intensity`, `u_errorState`. Glow shell = second `IcosahedronGeometry(0.72, 4)` mesh with `THREE.BackSide + THREE.AdditiveBlending`. `OrbState` = 'idle' | 'active' | 'thinking' | 'error'. `ChromaticAberration` offset scales with state. `orbError` state pulses error color for 1.8s on connection failure.
-- **CalendarEvent.pillar**: Joined from `pipeline_items.pillar` via `post_id` lookup in calendar/page.tsx. EventPill left border uses pillar color (falls back to platform color if no pillar).
-- **Recharts tooltip formatter type**: Use `(v: unknown, n: unknown)` — not `(v: number, n: string)`. Cast to `Number(v)` inside.
-- **Dashboard types**: `RawDashPost`, `RawDashPipeline`, `RawDashCalendar`, `RawDashGoal` all exported from `DashboardClient.tsx`.
-- **AI Suggestions API**: DashboardClient calls `/api/ai-suggestions` (NOT `/api/suggestions`). Body: `{ posts, platform, mode, projectionMetric?, goalsSummary? }`. Needs `ANTHROPIC_API_KEY`.
-- **Admin clients fetch**: Uses `createAdminClient()` (service role, `persistSession:false, autoRefreshToken:false`) for ALL admin queries — clients, connections, posts. Service role bypasses RLS entirely. `get_my_role() = NULL in SQL Editor` is expected; not a bug.
-- **ClientConfigProvider**: `src/lib/client-config-context.tsx` wraps dashboard layout. `useClientConfig()` returns `{ enabledPlatforms, enabledTabs, isAdmin }`.
-- **enabled_platforms default**: All platforms `['ig','tt','yt','lf']` when `clients.enabled_platforms` is null. Applies to all users including non-admin. To restrict a client to fewer platforms, set the column explicitly.
-- **OnboardingBanner**: Never shows to admin users even when `postCount < 5`.
-- **AdminImportModal CSV**: Parses using locked 36-column Drop CLIX format. `buildPostFromRow` maps `hook` (not `hookType`), `watch_pct` (not `watchPct`), `cta: ''`.
-- **Pipeline post_id multi-platform**: Items added via Add Video modal store pipe-separated IDs like `#ig0053 | #tt0048` in `post_id`. `formatDisplayId()` returns pipe-separated strings as-is (checks for `|` first). IDs computed server-side in `pipeline/page.tsx` from max across `posts` + `pipeline_items`.
-- **AI command bar**: Floating button at `position:fixed; bottom:28px; right:28px`. Mounted in dashboard layout. Calls `/api/ai-command` (server-auth'd). Returns `{type:'text'|'action', ...}`. Actions: `add_pipeline`, `update_analytics`, `bulk_update_status`. Executes via server actions + `router.refresh()`. SpeechRecognition uses `window.SpeechRecognition ?? window.webkitSpeechRecognition`.
-- **sync-youtube route auth**: Uses Supabase session cookie (admin role check), NOT the `SUPABASE_SECRET_KEY` bearer header. Never pass service keys from client components — they can't read non-`NEXT_PUBLIC_` env vars. Client fetch to `/api/admin/sync-youtube` needs no Authorization header; session cookie handles it.
-- **post_analytics upsert**: Always include `client_id`, `platform`, and use `onConflict: 'post_id,platform,metric_window'`. The unique constraint is `unique(post_id, platform, metric_window)`. Missing any of these causes silent insert failures.
-- **posts.yt_id**: YouTube video ID lives on the `posts` row (not just `post_analytics.yt_id`). Migration: `supabase/migrations/add_posts_yt_id.sql`. Both sync scripts and the YT CSV importer use/write this column.
-- **YT Analytics API**: Do NOT include `dimensions: ''` in params — it's invalid. Metrics order: views[0], likes[1], comments[2], shares[3], estimatedMinutesWatched[4], averageViewPercentage[5], subscribersGained[6].
-- **Week format**: Pipeline weeks should use MonWk# (e.g. JunWk1). Migration: `node scripts/fix-week-format.mjs [--run]`.
-- **Toast system**: `ToastProvider` wraps the dashboard layout. Any child calls `useToast()` → `toast(message, variant)`. Variant: `'success'` (gold), `'error'` (red), `'info'` (grey). Auto-dismiss 3s.
-- **PostSlideOver**: Right-side slide-over panel. Takes `SlideOverPost` shape with w24/w3/w7/eom windows. Used in Analytics, Angles (Top/Bottom 5). Use `e.stopPropagation()` on any `<td>` onClick inside the row to prevent bubbling to the slide-over handler.
-- **Pillar color stripe**: `usePillarColors(pillars)` returns `Map<string, string>`. Use `${color}cc` for stripe td background (80% alpha). Stripe td is `width:3, padding:0` — first column before data.
-- **Sticky thead with overflow-x**: Give every `<th>` an explicit `background:'#060606'` so content doesn't bleed through. The `<thead>` itself gets `position:'sticky', top:0, zIndex:10`.
-- **border-collapse + row borders**: `borderLeft` on `<tr>` with `borderCollapse:'collapse'` doesn't render. Use a narrow `<td>` for left-border stripe effect instead.
+- **PLAT_CFG.tt color**: `#2dd4bf` (teal) NOT `#a78bfa` (purple). `#a78bfa` = `STATUS_CFG.EDITING` only.
+- **Pipeline phase cards**: 10-card set: Active, Scripted, Planned, Filming, Editing, Reviewing, Scheduled, Posted, Cancelled, All. `PHASE_CARD_COLORS` per-status. `overflow-x:auto` + `minWidth:600`. Grid: `repeat(10, 1fr)`.
+- **Pipeline link columns**: `showIG/showTT/showYT` from `usePortalFilters()`. `colCount = 10 + showIG + showTT + showYT`. `lf` → `showYT = true`.
+- **Body text-shadow**: REMOVED from `globals.css`. Inline `textShadow` on specific elements only (hero titles, gold text, phase card counts). Never re-add global body text-shadow.
+- **Contrast floor**: bg `#060606`. Min readable: `#555` labels/secondary, `#666` inactive toggles, `#3a3a3a` no-data. Never use `#333`/`#252525`/`#2a2a2a` for text (WCAG fail ~1.6:1). Borders: `#1e1e1e`/`#1a1a1a` OK.
+- **AISuggestionsModal**: `src/components/portal/AISuggestionsModal.tsx`. Props: `isOpen, onClose, title, subtitle, suggestions, loading`. Animation: `@keyframes aiModalIn` in globals.css. Used by DashboardClient + AdsClient.
+- **AI suggestions ads mode**: `/api/ai-suggestions` accepts `{ mode: 'ads', campaigns: ContextCampaign[], posts: [], platform: 'all' }`. Returns 4 recommendations.
+- **Instagram OAuth**: env `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_REDIRECT_URI`. Route: `/api/auth/instagram`. Stores `platform='instagram'` in `platform_connections`.
+- **TikTok OAuth**: env `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`. Route: `/api/auth/tiktok`. Redirect URI must be `https://portal.drop-clix.com/api/auth/tiktok/callback`.
+- **Pipeline platform link buttons**: `isPlatLinked(videoUrl, 'ig'|'tt')`. `PlatformLinkModal` saves to `video_url`. `PipelineItem.videoUrl` added.
+- **Pipeline row stripe**: first `<td>` = `PLAT_CFG[item.platform[0]].color`. `colSpan` = 13.
+- **Next.js 16 proxy**: `middleware.ts` deprecated. Use `src/proxy.ts` with `export function proxy()`.
+- **`/auth/` routes**: always pass unauthenticated — recovery token is in URL hash (client-only).
+- **cookies() is async**: `const cookieStore = await cookies()` in server components.
+- **Env vars**: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY), `SUPABASE_SECRET_KEY` (not SERVICE_ROLE_KEY, prefix `sb_secret_*`).
+- **Role check**: proxy AND page/layout. Login: admin → `/admin`, client → `/`. Layout redirects admin to `/admin`; `/` is client-only.
+- **No `app/page.tsx`**: `app/(dashboard)/page.tsx` owns `/` via route group.
+- **getPortalContext()**: import from `@/lib/supabase/portal`. Use in ALL dashboard pages — never separate `createClient()` + profile fetch.
+- **Admin impersonation**: cookie `dropclix_impersonate_client_id`, 8h httpOnly. Only cleared via "Exit Portal".
+- **Dashboard queries**: `metric_window = 'eom'` for totals. Pipeline active = not POSTED/CANCELLED.
+- **Analytics data join**: `posts.select('..., post_analytics(...)')` — nested array keyed by `metric_window`.
+- **ER formula (IG/TT)**: `(likes + comments + shares + saves) / views × 100`. Thresholds: ≥12% Double Down, 4–11.9% Iterate, <4% Kill.
+- **ER formula (YT)**: `(likes + comments + shares + subscribers_gained) / views × 100`. `subscribers_gained` → `post_analytics.followers`; `saves` null for YT. Same thresholds.
+- **YT post IDs**: `#yt0001`–`#yt0039` (Shorts), `#LF0001`–`#LF0014` (LF). `pipeline_items.yt_type` = Short/Long-form. `post_analytics.yt_id` = YouTube Video ID.
+- **Decision auto-calc**: `src/lib/decision.ts`. ≥12% Double Down, 4–11.9% Iterate, <4% Kill. Never hardcode 'Iterate' — null if no data.
+- **State naming**: `win` not `window` (avoids browser global).
+- **Global filters**: URL params `platform`,`win`,`scope`,`from`,`to`. No DB query on filter change.
+- **EditableCell**: pass `post.platform[0] ?? 'ig'` not filter platform (filter may be 'all', invalid for DB writes).
+- **LF filter**: analytics query must select `format`; `filterByPlatform` needs `getFormat` callback.
+- **Angles**: `angles/page.tsx` is minimal server fetch; all computation in `AnglesClient.tsx` (client component).
+- **Default platform**: `'ig'` in `usePortalFilters`. All tabs open with IG.
+- **FilterBar exports**: `PlatformPills` + `ScopeDropdown` exported separately for DashboardClient, PipelineClient, GoalsDashboard.
+- **filterByPlatform**: 2-3 args: `(items, platform, getFormat?)`. Item must extend `{ platform: string[] }`.
+- **Pipeline phase URL param**: `?phase=STATUS`. Studio tiles → `/pipeline?phase=SCRIPTED`.
+- **Goals page**: `GoalsDashboard` in GoalsClient.tsx. Types `RawGoalPost`+`RawGoal` from `goals/page.tsx`. WeekGrade/MonthGrade from `report-card/page.tsx`.
+- **Supabase untyped rows**: cast `as unknown as RawRow[]`.
+- **Pipeline RLS**: clients SELECT only. Updates via `edit-actions.ts` + `admin.ts`.
+- **admin.ts**: server actions/components ONLY. Never in `'use client'`.
+- **Ads revenue**: `effectiveRevenue = roas * spend`. End dates = day before next campaign start.
+- **Goals actuals**: eom window per post by month. Falls back to most recent data month.
+- **Pace status**: `(actual / daysElapsed) * daysInMonth` → ≥110% Ahead, ≥80% On Track, <80% Behind.
+- **Calendar notes**: JSON string. `try { JSON.parse(notes) } catch {}`.
+- **Calendar pipeline link**: `pipeline_item_id` null. Join via `notes.post_id` → `pipeline_items.post_id`.
+- **Calendar grid**: 42-cell (6×7). Leading/trailing cells from adjacent months.
+- **React Fragment key**: `<Fragment key={id}>` (imported), not `<>`.
+- **Recharts v3 types**: `<Tooltip content={(props: any) => ...}>`. Payload: `readonly any[]`. Formatter: `(v: unknown, n: unknown)` → cast `Number(v)` inside.
+- **Studio importer**: `studio/actions.ts` is `'use server'`. `createPost()` revalidates 8 paths. `post_analytics.post_id` = UUID FK — use `posts.id` (not text `post_id`).
+- **Welcome overlay**: `sessionStorage` keyed `dropclix_welcomed_${clientName}`. In dashboard layout, not SidebarShell.
+- **Smart popup trigger**: intercepts POSTED/SCRIPTED only when both `scheduledDate` AND `postedAt` are null.
+- **Tailwind 4 theme**: colors in `globals.css` `@theme {}`, not `tailwind.config.js`.
+- **Port**: check `.next/dev/logs/next-development.log` for actual port.
+- **Pipeline ID display**: `formatDisplayId(postId, platform[])` — never render `item.postId` raw (45 legacy `#0XXX`).
+- **Pipeline phase counts**: `platFiltered` memo → both `counts` AND `rows`. Never compute counts from raw `items`.
+- **video_url**: migration `add_video_url.sql`. Whitelist in `VALID_PIPE` in `edit-actions.ts`. Parsed via `parseVideoUrl()`.
+- **R3F/Three.js**: `AICommandBar` is `'use client'`; no `ssr:false` needed. Packages: `@react-three/fiber`,`@react-three/drei`,`@react-three/postprocessing`,`three`,`maath`.
+- **Pipeline priority**: `STATUS_PRIORITY` in PipelineClient.tsx (REVIEWING→1, FILMING→2, SCRIPTED→3, PLANNED→4, EDITING/SCHEDULED→5, POSTED/CANCELLED→6). Always save `priority`+`status` together.
+- **Pipeline mass delete**: `bulkDeletePipelineItems` in `edit-actions.ts`. `.in('id', itemIds)` + `.eq('client_id', cid)`. `selectedIds: Set<string>`. IDs never renumbered.
+- **Calendar analytics snapshot**: `getPostAnalyticsSnapshot(postTextId)` in `edit-actions.ts`. `showChart` delays Recharts 200ms. `isAnimationActive` default true.
+- **Jarvis orb GLSL**: `VERTEX_SHADER` uses `IcosahedronGeometry(0.72, 20)` + simplex noise. `FRAGMENT_SHADER` rim lighting + gold/cream. Uniforms: `u_time`,`u_intensity`,`u_errorState`. Glow shell: `IcosahedronGeometry(0.72,4)` + `THREE.BackSide+THREE.AdditiveBlending`. `OrbState` = idle/active/thinking/error. `ChromaticAberration` scales with state. `orbError` clears after 1.8s.
+- **CalendarEvent.pillar**: joined from `pipeline_items.pillar` via `post_id` in calendar/page.tsx. EventPill left border = pillar color (fallback: platform color).
+- **Dashboard types**: `RawDashPost`,`RawDashPipeline`,`RawDashCalendar`,`RawDashGoal` exported from `DashboardClient.tsx`. `RawDashCampaign` also exported.
+- **AI Suggestions API**: `/api/ai-suggestions` (NOT `/api/suggestions`). Body: `{ posts, platform, mode, projectionMetric?, goalsSummary? }`. Needs `ANTHROPIC_API_KEY`.
+- **Admin clients fetch**: `createAdminClient()` (service role, `persistSession:false, autoRefreshToken:false`) for ALL admin queries. `get_my_role() = NULL in SQL Editor` is expected.
+- **ClientConfigProvider**: `src/lib/client-config-context.tsx`. `useClientConfig()` → `{ enabledPlatforms, enabledTabs, isAdmin }`.
+- **enabled_platforms default**: `['ig','tt','yt','lf']` when null. Set explicitly to restrict a client.
+- **OnboardingBanner**: never shows to admin. Shows when `postCount < 5`.
+- **AdminImportModal CSV**: locked 36-column format. `buildPostFromRow` maps `hook` (not `hookType`), `watch_pct` (not `watchPct`), `cta: ''`.
+- **Pipeline post_id multi-platform**: pipe-separated `#ig0053 | #tt0048`. `formatDisplayId()` detects `|` first. IDs computed server-side in `pipeline/page.tsx`.
+- **AI command bar**: `position:fixed; bottom:28px; right:28px`. In dashboard layout. `/api/ai-command`. Returns `{type:'text'|'action'}`. Actions: `add_pipeline`,`update_analytics`,`bulk_update_status`. `SpeechRecognition`: `window.SpeechRecognition ?? window.webkitSpeechRecognition`.
+- **sync-youtube route auth**: session cookie (admin role check), NOT `SUPABASE_SECRET_KEY` bearer. No Authorization header from client.
+- **post_analytics upsert**: always include `client_id`,`platform`; `onConflict: 'post_id,platform,metric_window'`. Missing any = silent failure.
+- **posts.yt_id**: YouTube video ID on `posts` row. Migration: `add_posts_yt_id.sql`. Both sync scripts and YT CSV importer write this column.
+- **YT Analytics API**: no `dimensions:''`. Metrics order: views[0], likes[1], comments[2], shares[3], estimatedMinutesWatched[4], averageViewPercentage[5], subscribersGained[6].
+- **Week format**: MonWk# (e.g. JunWk1). Fix: `node scripts/fix-week-format.mjs [--run]`.
+- **Toast system**: `ToastProvider` in dashboard layout. `useToast()` → `toast(msg, variant)`. Variants: success(gold)/error(red)/info(grey). 3s auto-dismiss.
+- **PostSlideOver**: `SlideOverPost` shape with w24/w3/w7/eom windows. Used in Analytics, Angles. `e.stopPropagation()` on inner `<td>` clicks.
+- **Pillar color stripe**: `usePillarColors(pillars)` → `Map<string,string>`. Use `${color}cc` (80% alpha). Stripe td: `width:3, padding:0` — first column.
+- **Sticky thead**: every `<th>` needs `background:'#060606'`. `<thead>`: `position:'sticky', top:0, zIndex:10`.
+- **border-collapse + stripes**: `borderLeft` on `<tr>` doesn't render with `borderCollapse:'collapse'`. Use narrow `<td>` instead.
 
 ## Nick client
 
-- **Email**: nick@spartasolar.com | **Password**: `DropClix2026!` *(temp)*
-- **Auth user ID**: `893475d0-f0ba-4570-a1f6-5110cd2c9e18`
-- **Client ID**: `913f1794-1506-4449-b56c-b683809cefc3`
-- **Test client**: `test@client.com` (role=client) linked to Nick's client_id
-- **YouTube data**: 53 videos (`#yt0001`–`#yt0039` Shorts, `#LF0001`–`#LF0014` Long-form). Re-import: `node scripts/ingest-yt-csv.mjs <csv> --run`.
+- Email: nick@spartasolar.com | Password: `DropClix2026!` *(temp)*
+- Auth user ID: `893475d0-f0ba-4570-a1f6-5110cd2c9e18`
+- Client ID: `913f1794-1506-4449-b56c-b683809cefc3`
+- Test client: test@client.com (role=client) linked to Nick's client_id
+- YouTube: 53 videos (`#yt0001`–`#yt0039` Shorts, `#LF0001`–`#LF0014` LF). Re-import: `node scripts/ingest-yt-csv.mjs <csv> --run`
 
 ## Deployment
 
-- **Production URL**: https://dropclix-app.vercel.app
-- **Custom domain**: https://portal.drop-clix.com
-- **Vercel project**: https://vercel.com/dropclix/dropclix-app
-- **GitHub auto-deploy**: NOT connected. After every `git push`, also run `npx vercel --prod` to deploy.
-
-## DNS (Cloudflare for portal.drop-clix.com)
-
-A record: `portal` → `76.76.21.21`, Proxy **OFF**. Or CNAME → `cname.vercel-dns.com`.
+- Production: https://dropclix-app.vercel.app
+- Custom domain: https://portal.drop-clix.com
+- Vercel project: https://vercel.com/dropclix/dropclix-app
+- GitHub auto-deploy: NOT connected. After `git push`, also run `npx vercel --prod`.
+- DNS: Cloudflare A `portal → 76.76.21.21`, Proxy OFF. Or CNAME → `cname.vercel-dns.com`.
 
 ## Design tokens
 
-- **Gold**: `#c9a96e` | **Background**: `#0a0a0a` | **Card bg**: `#0a0a0a` | **Grid lines**: `rgba(255,255,255,.04)` | **Tick**: `#333`
-- **Tier**: Elite `#39ff88`, Strong `#4cc9ff`, Avg `#fbbf24`, Kill `#ff3b5f`
-- **Platforms**: IG gold `#c9a96e`, YT blue `#4cc9ff`, TT purple `#2dd4bf`, Meta `#1778f2`
-- **Status badges**: SCRIPTED=gold, PLANNED=blue, FILMING=amber, REVIEWING=red, POSTED=green, CANCELLED=grey
-- **Tooltip**: bg `#0d0d0d`, border `#1e1e1e`
-- **KPI cards**: `28px 24px 22px` padding; value `clamp(26px, 4vw, 42px)` font size
-- **Table rows**: `py-4 px-4` (pipeline) / `py-4 px-5` (analytics/ads/angles/goals)
-- **Filter tabs**: `px-4 py-2.5 gap-2`; pillar chips: `px-3 py-2`
-- **Section gaps**: KPI grid `mb-8`; filter row `mb-6`; KPI-to-table `mb-8`
-- **Edit panels**: `28px 32px` padding
+- Gold: `#c9a96e` | Bg: `#0a0a0a` | Grid lines: `rgba(255,255,255,.04)` | Tick: `#333`
+- Tier: Elite `#39ff88`, Strong `#4cc9ff`, Avg `#fbbf24`, Kill `#ff3b5f`
+- Platforms: IG `#c9a96e`, YT `#4cc9ff`, TT `#2dd4bf`, Meta `#1778f2`
+- Status: SCRIPTED=gold, PLANNED=blue, FILMING=amber, REVIEWING=red, POSTED=green, CANCELLED=grey
+- Tooltip: bg `#0d0d0d`, border `#1e1e1e`
+- KPI cards: `28px 24px 22px` padding; value `clamp(26px, 4vw, 42px)`
+- Table rows: `py-4 px-4` (pipeline) / `py-4 px-5` (analytics/ads/angles/goals)
+- Filter tabs: `px-4 py-2.5 gap-2`; pillar chips: `px-3 py-2`
+- Section gaps: KPI grid `mb-8`; filter row `mb-6`; KPI-to-table `mb-8`
+- Edit panels: `28px 32px` padding
 
 ## File structure (src/)
 
@@ -198,45 +181,33 @@ A record: `portal` → `76.76.21.21`, Proxy **OFF**. Or CNAME → `cname.vercel-
 src/
   app/
     (auth)/login/page.tsx
-    auth/reset-password/page.tsx   ← PASSWORD_RECOVERY event → updateUser
+    auth/reset-password/page.tsx   ← PASSWORD_RECOVERY → updateUser
     (dashboard)/
       layout.tsx                 ← auth guard, ClientConfigProvider, SidebarShell
-      page.tsx                   ← dashboard (DashboardClient)
-      analytics/page.tsx
-      angles/page.tsx
-      pipeline/page.tsx + actions.ts
-      ads/page.tsx
-      calendar/page.tsx
-      goals/page.tsx
-      report-card/page.tsx
-      studio/page.tsx
+      page.tsx                   ← DashboardClient
+      analytics/ angles/ pipeline/ ads/ calendar/ goals/ report-card/ studio/
       edit-actions.ts            ← centralized CRUD server actions (all tabs)
     admin/
-      page.tsx                   ← client list (raw fetch for clients query)
-      actions.ts                 ← impersonateClient, exitImpersonation, createNewClient, etc.
+      page.tsx                   ← client list (raw fetch)
+      actions.ts                 ← impersonateClient, exitImpersonation, createNewClient
     api/
-      ai-suggestions/route.ts    ← Claude API suggestions
+      ai-suggestions/route.ts
       auth/youtube/route.ts + callback/route.ts
       admin/sync-youtube/route.ts
-    globals.css
-    layout.tsx
+    globals.css / layout.tsx
   components/portal/
-    SidebarShell.tsx             ← collapsible sidebar + all nav rendering
+    SidebarShell.tsx             ← collapsible sidebar + nav
     FilterBar.tsx                ← PlatformPills, ScopeDropdown, FilterBar
-    Paginator.tsx
-    EmptyState.tsx
+    Paginator.tsx / EmptyState.tsx
     AnalyticsClient.tsx / PipelineClient.tsx / AdsClient.tsx
     CalendarClient.tsx / GoalsClient.tsx / ReportCardClient.tsx
     StudioClient.tsx / AnglesClient.tsx
     PortalNav.tsx                ← UNUSED
-  hooks/
-    usePortalFilters.ts          ← URL-synced filters + filterByPlatform/filterByScope
-  lib/supabase/
-    client.ts / server.ts / admin.ts / portal.ts
-  lib/
-    decision.ts                  ← erToDecision(), computeDecision()
-    client-config-context.tsx    ← ClientConfigProvider, useClientConfig()
-    youtube-auth.ts
+  hooks/usePortalFilters.ts      ← URL-synced filters + filterByPlatform/filterByScope
+  lib/supabase/client.ts / server.ts / admin.ts / portal.ts
+  lib/decision.ts                ← erToDecision(), computeDecision()
+  lib/client-config-context.tsx  ← ClientConfigProvider, useClientConfig()
+  lib/youtube-auth.ts
   proxy.ts
 ```
 
@@ -251,23 +222,13 @@ Decision thresholds: ≥12% = Double Down, 4–11.9% = Iterate, <4% = Kill.
 `subscribers_gained` maps to `post_analytics.followers`. `saves` is `null` for all YT rows.
 Same decision thresholds. Use `ingest-yt-csv.mjs` for all future YouTube imports.
 
-- **Session 31 (GLOBAL)**: 4 new features + verified 6 existing — (3) Pipeline priority auto-update: `STATUS_PRIORITY` map (REVIEWING→1, FILMING→2, SCRIPTED→3, PLANNED→4, EDITING/SCHEDULED→5, POSTED/CANCELLED→6); status dropdown, date popup confirm, and MarkAsPostedModal all save `priority` + `status` in one DB call; (4) Pipeline mass delete: `bulkDeletePipelineItems` server action, `DeleteConfirmModal` component, checkbox column (hover opacity, select-all), red "Delete Selected" toolbar button; (6) Calendar analytics snapshot: `getPostAnalyticsSnapshot` server action, CalendarClient fetches on POSTED slide-over open, 6-KPI grid + animated Recharts BarChart (draws itself via `showChart` delay); (10) Jarvis orb Tier 3: `IcosahedronGeometry(0.72,20)` + inline GLSL simplex noise vertex shader + fragment shader (gold/cream/error-orange + rim lighting), glow shell via back-face additive mesh, `OrbState` (idle/active/thinking/error) lerp transitions via `useFrame`, `ChromaticAberration` offset scales with state, `orbError` auto-clears after 1.8s.
-
-## Next sessions
-
-- **Session 32**: Ads sub-views
-  - Audience tab + Monthly Summary tab inside Ads
-  - Charts (ROAS trend, spend breakdown), auto-suggestion banner
-  - Add Campaign / Add Audience buttons
-
 ## CSV Import Standard
 
 **This format is locked. Never change column order or names without explicit instruction.**
 
-Template file: `scripts/templates/dropclix-import-template.csv`
+Template: `scripts/templates/dropclix-import-template.csv`
 
 ### Column order (exact)
-
 ```
 post_id, title, platform, date, pillar, hook_type, format, decision,
 views_24h, likes_24h, comments_24h, shares_24h, saves_24h, watch_pct_24h, skip_rate_24h, followers_24h,
@@ -278,30 +239,29 @@ eom_views, eom_likes, eom_comments, eom_shares, eom_saves, eom_watch_pct, eom_sk
 
 ### Rules
 - **platform**: pipe-separated — `ig|tt|yt` (not comma-separated)
-- **decision**: always left blank — the importer auto-calculates from ER%
-- **Smart window detection**: a window row is only inserted if `views_*` > 0. Blank or zero = skip that window.
-- **Any blank column is silently skipped** — you don't need to fill all 36 columns.
-- **Source of truth**: `sell_the_situation_24hr_v2.csv` format (Downloads folder)
-- **Download Template button** in Studio → Import → CSV Import generates this template client-side.
+- **decision**: always blank — auto-calculated from ER%
+- Window row only inserted if `views_*` > 0. Blank/zero = skip.
+- Blank columns silently skipped.
+- Source of truth: `sell_the_situation_24hr_v2.csv` format
+- Download Template button in Studio → Import → CSV Import generates client-side.
 
-### ER% and Decision auto-calculation
-ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision picked from best window (eom→w7→w3→w24). Thresholds: ≥12% = Double Down, 4–11.9% = Iterate, <4% = Kill.
-
----
+### ER% auto-calculation
+ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision from best window (eom→w7→w3→w24). Thresholds: ≥12% Double Down, 4–11.9% Iterate, <4% Kill.
 
 ## Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/migrate-nick.mjs` | Initial data seed for Nick/Sparta Solar. `--run` to insert, `--force` to wipe+re-insert. |
-| `scripts/backfill-eom.mjs` | Fill missing eom rows for pre-May posts (w7→w3→w24 fallback). `--run` to apply. |
-| `scripts/rename-post-ids.mjs` | Rename post_id labels to `#igNNNN` sequential format. Idempotent, `--run` to apply. |
-| `scripts/ingest-eom-csv.mjs` | **Generic EOM ingest.** `node scripts/ingest-eom-csv.mjs <csv> [--run]`. Upserts eom+w7, inserts missing post stubs, auto-syncs pipeline+calendar. Use for all future monthly imports. |
-| `scripts/sync-pipeline-calendar.mjs` | **Pipeline+calendar backfill.** `[#igXXXX ...] [--run]`. Creates missing pipeline_items + calendar_events. Idempotent. |
-| `scripts/ingest-yt-csv.mjs` | **YouTube video ingest.** `node scripts/ingest-yt-csv.mjs <csv> [--run]`. Maps YT tracker CSV → posts + post_analytics. Auto-computes YT ER% decision. |
-| `scripts/setup-admin.mjs` | **Admin bootstrap.** Sets `app_metadata.role='admin'` + upserts users row. Idempotent, `--run`. Run once per environment. |
-| `scripts/seed-new-client.mjs` | Seeds 9 default goals + welcome pipeline item. `<client_id> [--run]`. Use when client created manually. |
-| `scripts/sync-youtube.mjs` | CLI YouTube Analytics sync. Reads tokens from `platform_connections`, calls YT Analytics API, upserts `post_analytics`. Window selection is age-based (eom always; w7 ≤6d; w3 ≤3d; w24 ≤2d). eom end date = today. `[--run] [--force]`. Impressions/CTR via secondary `dimensions=video` call. Token must match the video owner's channel (403 = wrong channel). |
-| `scripts/fix-week-format.mjs` | Normalise `pipeline_items.week` to MonWk# format (ALL clients). Unrecognisable values → `MayWk2`. `[--run]` to apply. |
-| `scripts/fix-nick-data.mjs` | **CLIENT: Nick** data cleanup — week formats, SL### IDs → #ig0118–#ig0122, enabled_platforms. Already applied. Idempotent. |
-| `scripts/diagnose-nick.mjs` | Diagnostic: prints Nick's enabled_platforms, post platform distribution, pipeline platform distribution. |
+| `scripts/migrate-nick.mjs` | Nick/Sparta Solar initial seed. `--run` insert, `--force` wipe+re-insert. |
+| `scripts/backfill-eom.mjs` | Fill missing eom rows (w7→w3→w24 fallback). `--run`. |
+| `scripts/rename-post-ids.mjs` | Rename to `#igNNNN` sequential. Idempotent, `--run`. |
+| `scripts/ingest-eom-csv.mjs` | Generic EOM ingest. `node ... <csv> [--run]`. Upserts eom+w7, stubs missing posts, syncs pipeline+calendar. |
+| `scripts/sync-pipeline-calendar.mjs` | Pipeline+calendar backfill. `[#igXXXX ...] [--run]`. Idempotent. |
+| `scripts/ingest-yt-csv.mjs` | YouTube video ingest. `node ... <csv> [--run]`. YT ER% decision auto-computed. Writes `yt_id` to posts. |
+| `scripts/setup-admin.mjs` | Sets `app_metadata.role='admin'` + upserts users row. `--run`. Once per env. |
+| `scripts/seed-new-client.mjs` | 9 default goals + welcome pipeline item (`#new0001`). `<client_id> [--run]`. |
+| `scripts/sync-youtube.mjs` | CLI YT Analytics sync. Age-based windows (eom always; w7 ≤6d; w3 ≤3d; w24 ≤2d). eom end=today. `[--run] [--force]`. 403 = wrong channel or YT Analytics API not enabled (GCP `338389725982`). |
+| `scripts/fix-week-format.mjs` | Normalise `pipeline_items.week` to MonWk# (ALL clients). Unrecognisable → `MayWk2`. `[--run]`. |
+| `scripts/fix-nick-data.mjs` | CLIENT:Nick cleanup — week fixes, ID renames, platforms. Already applied. Idempotent. |
+| `scripts/diagnose-nick.mjs` | Prints Nick's enabled_platforms + post/pipeline platform distribution. |
+| `scripts/backfill-priorities.mjs` | Backfill pipeline priorities from STATUS_PRIORITY map. |

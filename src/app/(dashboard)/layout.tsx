@@ -72,6 +72,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           userEmail={userEmail}
           isImpersonating={isImpersonating}
           enabledTabs={enabledTabs}
+          isAdmin={profile?.role === 'admin'}
         >
           {children}
         </SidebarShell>

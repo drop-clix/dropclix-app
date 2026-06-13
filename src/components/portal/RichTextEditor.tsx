@@ -3,6 +3,7 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
+import Placeholder from '@tiptap/extension-placeholder'
 import { useEffect, useRef, useCallback } from 'react'
 
 const GOLD = '#c9a96e'
@@ -64,6 +65,7 @@ export function RichTextEditor({
         heading: { levels: [1, 2, 3] },
       }),
       Link.configure({ openOnClick: false }),
+      Placeholder.configure({ placeholder }),
     ],
     content,
     editable: !readOnly,

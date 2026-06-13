@@ -62,6 +62,17 @@ const NAV_ITEMS = [
     label: 'Goals',
     icon: <Ico d="M8 2a6 6 0 100 12A6 6 0 008 2zM8 5a3 3 0 100 6 3 3 0 000-6zM8 7.5a.5.5 0 110 1 .5.5 0 010-1z" />,
   },
+  {
+    href: '/docs',
+    label: 'Docs',
+    icon: <Ico d="M4 2h6l4 4v8H4zM9 2v4h4" />,
+    adminOnly: true,
+  },
+  {
+    href: '/inbox',
+    label: 'Inbox',
+    icon: <Ico d="M2 5l6 4 6-4M2 5v7h12V5" />,
+  },
 ]
 
 // ── Hamburger icon ────────────────────────────────────────────────────────
@@ -100,6 +111,8 @@ const TAB_HREFS: Record<string, string> = {
   ads:       '/ads',
   calendar:  '/calendar',
   goals:     '/goals',
+  docs:      '/docs',
+  // inbox intentionally omitted — not gated by enabled_tabs while stub
 }
 
 export function SidebarShell({
@@ -107,12 +120,14 @@ export function SidebarShell({
   userEmail,
   isImpersonating,
   enabledTabs,
+  isAdmin = false,
   children,
 }: {
   clientName: string
   userEmail: string | null
   isImpersonating: boolean
   enabledTabs: string[]
+  isAdmin?: boolean
   children: React.ReactNode
 }) {
   const [pinned,  setPinned ] = useState(false)
@@ -121,6 +136,7 @@ export function SidebarShell({
   const path = usePathname()
 
   const visibleNavItems = NAV_ITEMS.filter(item => {
+    if ('adminOnly' in item && (item as { adminOnly?: boolean }).adminOnly && !isAdmin) return false
     const tabKey = Object.entries(TAB_HREFS).find(([, href]) => href === item.href)?.[0]
     return tabKey ? enabledTabs.includes(tabKey) : true
   })
