@@ -188,6 +188,41 @@ export type PollablePipelineItem = {
   ig_video_id: string | null
 }
 
+// ── Resolve posts UUID from a pipeline item (3 strategies) ───────────────
+//
+// 1. Exact post_id match (simple IDs like "#yt0087")
+// 2. Pipe-split match (multi-platform items like "#ig0037 | #tt0007 | #yt0087")
+// 3. yt_id fallback (matches posts.yt_id = yt_video_id — most reliable for YT)
+
+async function resolvePostsUUID(
+  admin: SupabaseAdmin,
+  item: PollablePipelineItem,
+): Promise<string | null> {
+  // Strategy 1: exact post_id
+  const { data: exact } = await admin.from('posts').select('id')
+    .eq('post_id', item.post_id).eq('client_id', item.client_id).maybeSingle()
+  if (exact) return (exact as any).id
+
+  // Strategy 2: pipe-split (admin entered "#ig0037 | #tt0007 | #yt0087" as post_id)
+  if (item.post_id.includes('|')) {
+    const parts = item.post_id.split('|').map((s: string) => s.trim()).filter(Boolean)
+    for (const part of parts) {
+      const { data } = await admin.from('posts').select('id')
+        .eq('post_id', part).eq('client_id', item.client_id).maybeSingle()
+      if (data) { console.log(`[poll] resolved ${item.post_id} → ${part} via pipe-split`); return (data as any).id }
+    }
+  }
+
+  // Strategy 3: yt_id fallback
+  if (item.yt_video_id) {
+    const { data } = await admin.from('posts').select('id')
+      .eq('yt_id', item.yt_video_id).eq('client_id', item.client_id).maybeSingle()
+    if (data) { console.log(`[poll] resolved ${item.post_id} → yt_id=${item.yt_video_id} via yt_id fallback`); return (data as any).id }
+  }
+
+  return null
+}
+
 // ── Poll a single pipeline item ───────────────────────────────────────────
 //
 // Source of truth: yt_video_id on pipeline_items (set by admin via Mark as Posted modal or YT link modal).
@@ -210,22 +245,17 @@ export async function pollPipelineItem(
     return { polled: false, reason: 'yt_api_null' }
   }
 
-  // Resolve posts UUID for post_analytics FK
-  const { data: postRow } = await admin
-    .from('posts')
-    .select('id')
-    .eq('post_id', item.post_id)
-    .eq('client_id', item.client_id)
-    .single()
+  // Resolve posts UUID for post_analytics FK (3-strategy)
+  const postUUID = await resolvePostsUUID(admin, item)
 
-  if (!postRow) {
+  if (!postUUID) {
     // Stats were fetched but we can't write to post_analytics without a posts row.
-    // Admin must import the post via Studio CSV import to enable analytics persistence.
-    console.log(`[poll] ${item.post_id}: no posts row — stats fetched (views=${stats.views}) but post_analytics write skipped`)
+    // Admin must import the post via Studio CSV import, or the Mark as Posted flow
+    // will auto-create a stub posts row (ensureYTPostsRow in edit-actions.ts).
+    console.log(`[poll] ${item.post_id}: no posts row found (tried exact, pipe-split, yt_id) — skipping`)
     return { polled: false, reason: 'no_posts_row' }
   }
 
-  const postUUID = (postRow as any).id
   console.log(`[poll] ${item.post_id} → posts UUID=${postUUID} — writing to post_analytics eom`)
 
   await upsertPolledStats(admin, postUUID, item.client_id, 'yt', 'eom', stats)

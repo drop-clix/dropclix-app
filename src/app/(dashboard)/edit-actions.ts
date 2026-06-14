@@ -670,6 +670,77 @@ export async function linkYouTubeVideo(
   return { ytId, note }
 }
 
+// ── Ensure posts row exists for a YT-linked pipeline item ────────────────────
+//
+// Called from MarkAsPostedModal when yt_video_id is set.
+// Uses 3-strategy lookup (exact, pipe-split, yt_id). If no posts row found,
+// creates a stub row so the cron can write to post_analytics immediately.
+// Returns: { postId: text id, created: true } or {} if row already exists.
+
+export async function ensureYTPostsRow(
+  pipelineItemId: string,
+): Promise<{ error?: string; postId?: string; created?: boolean }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+
+  const { data: raw } = await c.admin
+    .from('pipeline_items')
+    .select('id, post_id, title, platform, posted_at, yt_video_id')
+    .eq('id', pipelineItemId)
+    .single()
+  if (!raw) return { error: 'Pipeline item not found' }
+
+  const item = raw as any
+  if (!item.yt_video_id) return {}
+
+  // Strategy 1: exact post_id match
+  const { data: exact } = await c.admin.from('posts').select('id, post_id')
+    .eq('post_id', item.post_id).eq('client_id', c.cid).maybeSingle()
+  if (exact) return { postId: (exact as any).post_id, created: false }
+
+  // Strategy 2: pipe-split
+  if (typeof item.post_id === 'string' && item.post_id.includes('|')) {
+    for (const part of item.post_id.split('|').map((s: string) => s.trim()).filter(Boolean)) {
+      const { data } = await c.admin.from('posts').select('id, post_id')
+        .eq('post_id', part).eq('client_id', c.cid).maybeSingle()
+      if (data) return { postId: (data as any).post_id, created: false }
+    }
+  }
+
+  // Strategy 3: yt_id match
+  const { data: byYt } = await c.admin.from('posts').select('id, post_id')
+    .eq('yt_id', item.yt_video_id).eq('client_id', c.cid).maybeSingle()
+  if (byYt) return { postId: (byYt as any).post_id, created: false }
+
+  // No posts row — create stub with auto-incremented #ytNNNN
+  const { data: lastYt } = await c.admin.from('posts').select('post_id')
+    .eq('client_id', c.cid).like('post_id', '#yt%').order('post_id', { ascending: false }).limit(1)
+
+  let nextNum = 1
+  if (lastYt && (lastYt as any[]).length > 0) {
+    const n = parseInt(((lastYt as any[])[0].post_id as string).replace('#yt', ''), 10)
+    if (!isNaN(n)) nextNum = n + 1
+  }
+  const newPostId = `#yt${String(nextNum).padStart(4, '0')}`
+
+  const platform: string[] = Array.isArray(item.platform) && item.platform.length > 0
+    ? (item.platform as string[])
+    : ['yt']
+
+  const { error: insErr } = await c.admin.from('posts').insert({
+    client_id: c.cid,
+    post_id:   newPostId,
+    title:     item.title ?? '(YouTube video)',
+    platform,
+    date:      item.posted_at ? (item.posted_at as string).slice(0, 10) : null,
+    yt_id:     item.yt_video_id,
+  })
+  if (insErr) return { error: insErr.message }
+
+  console.log(`[ensureYTPostsRow] created stub posts row ${newPostId} for pipeline item ${pipelineItemId} yt=${item.yt_video_id}`)
+  return { postId: newPostId, created: true }
+}
+
 // ── Content Approval Workflow ────────────────────────────────────────────────
 
 export async function submitApproval(

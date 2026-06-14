@@ -14,6 +14,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  console.log('[cron-fresh] env check:', {
+    hasYTKey: !!process.env.YOUTUBE_API_KEY,
+    keyStart: process.env.YOUTUBE_API_KEY?.slice(0, 6) ?? 'MISSING',
+    nodeEnv: process.env.NODE_ENV,
+  })
   console.log('[cron/fresh] starting poll — tier: <24h')
   const admin = createAdminClient()
   const items = await getPostableItemsInAgeRange(admin, 0, 1)

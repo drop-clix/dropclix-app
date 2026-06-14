@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems, bulkCreatePipelineItems } from '@/app/(dashboard)/edit-actions'
+import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems, bulkCreatePipelineItems, ensureYTPostsRow } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
@@ -1199,6 +1199,11 @@ function MarkAsPostedModal({
     if (parsedIds.yt) update.yt_video_id = parsedIds.yt
 
     await updatePipelineItem(item.id, update)
+
+    // Ensure a posts row exists so the cron can write to post_analytics.
+    // Handles multi-platform items (pipe-separated post_id) via 3-strategy lookup.
+    if (parsedIds.yt) await ensureYTPostsRow(item.id)
+
     setSaving(false)
     onPosted(iso, parsedIds)
     onClose()
