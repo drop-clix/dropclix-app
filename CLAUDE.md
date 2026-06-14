@@ -63,6 +63,7 @@ Rules:
 - S32: Pipeline ID display filter, priority auto-derive (`STATUS_PRIORITY`+`backfill-priorities.mjs`), calendar `SlideOverPanel`, `AISuggestionsModal.tsx`, Instagram OAuth, TikTok OAuth, `PlatformLinkModal`
 - S33: Body text-glow removed from globals.css; full 10-card pipeline set (`PHASE_CARD_COLORS`); link column visibility (`showIG/showTT/showYT`); `PLAT_CFG.tt` fixed to `#2dd4bf`
 - S34: Contrast/legibility polish — all `#333`/`#252525`/`#2a2a2a`/`#2e2e2e` text → `≥#555`; custom scrollbar (5px), `::selection` gold, `:focus-visible` gold ring, `color-scheme:dark`, `prefers-reduced-motion`, `button { cursor:pointer }`
+- S35: TikTok OAuth callback raw-text logging + flat/nested token shape handling; `force_reauth=1` + `prompt=consent` added to OAuth URL; TikTok Disconnect button on admin panel (`disconnectTikTok` server action); Pipeline empty-platform fix — shows "No items for X" + "Show all platforms" button when `platFiltered.length === 0` but `items.length > 0`
 
 ## Key decisions / gotchas
 
@@ -74,7 +75,8 @@ Rules:
 - **AISuggestionsModal**: `src/components/portal/AISuggestionsModal.tsx`. Props: `isOpen, onClose, title, subtitle, suggestions, loading`. Animation: `@keyframes aiModalIn` in globals.css. Used by DashboardClient + AdsClient.
 - **AI suggestions ads mode**: `/api/ai-suggestions` accepts `{ mode: 'ads', campaigns: ContextCampaign[], posts: [], platform: 'all' }`. Returns 4 recommendations.
 - **Instagram OAuth**: env `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_REDIRECT_URI`. Route: `/api/auth/instagram`. Stores `platform='instagram'` in `platform_connections`.
-- **TikTok OAuth**: env `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`. Route: `/api/auth/tiktok`. Redirect URI must be `https://portal.drop-clix.com/api/auth/tiktok/callback`.
+- **TikTok OAuth**: env `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`. Route: `/api/auth/tiktok`. Redirect URI must be `https://portal.drop-clix.com/api/auth/tiktok/callback`. OAuth URL includes `force_reauth=1` + `prompt=consent` — always shows account selection screen.
+- **TikTok disconnect**: `disconnectTikTok(clientId)` server action in `admin/actions.ts`. Deletes `platform_connections` row where `client_id` + `platform='tiktok'`. Disconnect button shown next to Reconnect in `AdminTikTokSection.tsx`.
 - **Pipeline platform link buttons**: `isPlatLinked(videoUrl, 'ig'|'tt')`. `PlatformLinkModal` saves to `video_url`. `PipelineItem.videoUrl` added.
 - **Pipeline row stripe**: first `<td>` = `PLAT_CFG[item.platform[0]].color`. `colSpan` = 13.
 - **Next.js 16 proxy**: `middleware.ts` deprecated. Use `src/proxy.ts` with `export function proxy()`.
@@ -119,6 +121,7 @@ Rules:
 - **Port**: check `.next/dev/logs/next-development.log` for actual port.
 - **Pipeline ID display**: `formatDisplayId(postId, platform[])` — never render `item.postId` raw (45 legacy `#0XXX`).
 - **Pipeline phase counts**: `platFiltered` memo → both `counts` AND `rows`. Never compute counts from raw `items`.
+- **Pipeline platform empty state**: when `platFiltered.length === 0` but `initialItems.length > 0`, render an inline empty state (not `EmptyState` component) with "No items for [PLATFORM]" + "Show all platforms" button that calls `setFilters({ platform: 'all' })`. Prevents blank table when client has no IG content but default filter is 'ig'.
 - **video_url**: migration `add_video_url.sql`. Whitelist in `VALID_PIPE` in `edit-actions.ts`. Parsed via `parseVideoUrl()`.
 - **R3F/Three.js**: `AICommandBar` is `'use client'`; no `ssr:false` needed. Packages: `@react-three/fiber`,`@react-three/drei`,`@react-three/postprocessing`,`three`,`maath`.
 - **Pipeline priority**: `STATUS_PRIORITY` in PipelineClient.tsx (REVIEWING→1, FILMING→2, SCRIPTED→3, PLANNED→4, EDITING/SCHEDULED→5, POSTED/CANCELLED→6). Always save `priority`+`status` together.
