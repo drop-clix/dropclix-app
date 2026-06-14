@@ -234,3 +234,18 @@ export async function adminCheckExistingPostIds(clientId: string, postIds: strin
   if (!await assertAdmin()) return []
   return checkExistingPostIdsForClient(clientId, postIds)
 }
+
+// ── TikTok disconnect ──────────────────────────────────────────────────────────
+
+export async function disconnectTikTok(clientId: string): Promise<{ error?: string }> {
+  if (!await assertAdmin()) return { error: 'Unauthorized' }
+  const adm = createAdminClient()
+  const { error } = await adm
+    .from('platform_connections')
+    .delete()
+    .eq('client_id', clientId)
+    .eq('platform', 'tiktok')
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return {}
+}

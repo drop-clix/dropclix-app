@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
+import { disconnectTikTok } from '@/app/admin/actions'
 
 type TikTokConn = {
   clientId: string
@@ -31,6 +32,8 @@ export function AdminTikTokSection({
   tiktokConfigured: boolean
 }) {
   const [notice, setNotice] = useState('')
+  const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
   const connMap = new Map(connections.map(c => [c.clientId, c]))
 
   function handleConnect(clientId: string) {
@@ -104,18 +107,42 @@ export function AdminTikTokSection({
                 {/* Buttons */}
                 <div className="flex items-center gap-3">
                   {conn ? (
-                    <button
-                      type="button"
-                      onClick={() => handleConnect(client.id)}
-                      className="text-[9px] tracking-[.14em] uppercase px-3 py-1.5 font-medium cursor-pointer"
-                      style={{
-                        background: 'rgba(45,212,191,.06)',
-                        color: '#2dd4bf',
-                        border: '1px solid rgba(45,212,191,.2)',
-                      }}
-                    >
-                      Reconnect
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleConnect(client.id)}
+                        className="text-[9px] tracking-[.14em] uppercase px-3 py-1.5 font-medium cursor-pointer"
+                        style={{
+                          background: 'rgba(45,212,191,.06)',
+                          color: '#2dd4bf',
+                          border: '1px solid rgba(45,212,191,.2)',
+                        }}
+                      >
+                        Reconnect
+                      </button>
+                      <button
+                        type="button"
+                        disabled={disconnecting === client.id}
+                        onClick={() => {
+                          if (!confirm(`Disconnect TikTok for ${client.name}?`)) return
+                          setDisconnecting(client.id)
+                          startTransition(async () => {
+                            const result = await disconnectTikTok(client.id)
+                            setDisconnecting(null)
+                            if (result.error) setNotice(`Disconnect failed: ${result.error}`)
+                          })
+                        }}
+                        className="text-[9px] tracking-[.14em] uppercase px-3 py-1.5 font-medium cursor-pointer"
+                        style={{
+                          background: 'rgba(255,59,95,.06)',
+                          color: disconnecting === client.id ? '#555' : '#ff3b5f',
+                          border: '1px solid rgba(255,59,95,.2)',
+                          opacity: disconnecting === client.id ? 0.5 : 1,
+                        }}
+                      >
+                        {disconnecting === client.id ? 'Disconnecting…' : 'Disconnect'}
+                      </button>
+                    </>
                   ) : (
                     <button
                       type="button"
