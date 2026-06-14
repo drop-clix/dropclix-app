@@ -244,9 +244,10 @@ for (const row of csvRows) {
       status:         'POSTED',
       week:           deriveWeek(row.date),
       scheduled_date: row.date || null,
+      yt_video_id:    row.yt_video_id || null,
     })
   } else if (existingP.status !== 'POSTED') {
-    pipeToUpdate.push({ id: existingP.id, post_id: row.post_id, oldStatus: existingP.status })
+    pipeToUpdate.push({ id: existingP.id, post_id: row.post_id, oldStatus: existingP.status, ytVideoId: row.yt_video_id || null })
   }
 
   if (!calCoveredPostIds.has(row.post_id)) {
@@ -388,10 +389,12 @@ if (pipeToInsert.length) {
   console.log(`✓ Created ${pipeToInsert.length} pipeline item(s) with status=POSTED`)
 }
 
-// 7. Pipeline update
+// 7. Pipeline update (status + yt_video_id)
 let pipeUpdated = 0
-for (const { id, post_id } of pipeToUpdate) {
-  const { error } = await sb.from('pipeline_items').update({ status: 'POSTED' }).eq('id', id)
+for (const { id, post_id, ytVideoId } of pipeToUpdate) {
+  const patch = { status: 'POSTED' }
+  if (ytVideoId) patch.yt_video_id = ytVideoId
+  const { error } = await sb.from('pipeline_items').update(patch).eq('id', id)
   if (error) console.error(`Pipeline update failed for ${post_id}:`, error.message)
   else pipeUpdated++
 }
