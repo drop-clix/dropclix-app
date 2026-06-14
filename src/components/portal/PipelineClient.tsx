@@ -1592,6 +1592,30 @@ export function PipelineClient({
     )
   }
 
+  // Platform filter is active but no items match — show helpful inline state
+  if (platFiltered.length === 0) {
+    const platLabel = platform === 'lf' ? 'Long-form' : platform.toUpperCase()
+    return (
+      <div style={{ textAlign: 'center', padding: '80px 24px' }}>
+        <p style={{ fontSize: 11, color: '#555', marginBottom: 12, letterSpacing: '.06em' }}>
+          No pipeline items for <span style={{ color: '#888' }}>{platLabel}</span>
+        </p>
+        <button
+          onClick={() => setFilters({ platform: 'all' })}
+          style={{
+            padding: '8px 20px', fontSize: 9, fontWeight: 600,
+            letterSpacing: '.14em', textTransform: 'uppercase',
+            background: 'rgba(201,169,110,.08)',
+            border: '1px solid rgba(201,169,110,.3)',
+            color: '#c9a96e', cursor: 'pointer',
+          }}
+        >
+          Show all platforms
+        </button>
+      </div>
+    )
+  }
+
   const phaseCards: { key: FilterKey; label: string }[] = [
     { key: 'ACTIVE',    label: 'Active'    },
     { key: 'SCRIPTED',  label: 'Scripted'  },
