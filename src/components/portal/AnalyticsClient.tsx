@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { useInterpolatedStat } from '@/hooks/useInterpolatedStat'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -76,6 +77,133 @@ const WINDOWS: { key: WindowKey; label: string }[] = [
 // ── Editable metric cell ───────────────────────────────────────────────────
 
 type EditableField = 'views' | 'likes' | 'comments' | 'shares' | 'saves' | 'watch_pct'
+
+// ── Per-row component so useInterpolatedStat can be called as a hook ───────
+
+function AnalyticsTableRow({
+  post,
+  index,
+  activeWin,
+  pillarColors,
+  onOpen,
+  onSave,
+}: {
+  post: PostRow
+  index: number
+  activeWin: WindowKey
+  pillarColors: Map<string, string>
+  onOpen: (post: PostRow) => void
+  onSave: (uuid: string, field: EditableField, val: number, decision?: string) => void
+}) {
+  const w           = post[activeWin]
+  const er          = calcER(w, post.platform)
+  const t           = tier(er, w.views > 0)
+  const ts          = TIER_STYLES[t]
+  const ds          = DECISION_STYLES[post.decision] ?? { color: '#666' }
+  const hasData     = w.views > 0
+  const pillarColor = pillarColors.get(post.pillar ?? '') ?? '#1a1a1a'
+
+  // Interpolate view count for recently polled videos (within 7 days)
+  const liveViews = useInterpolatedStat(
+    w.views,
+    w.prevViews ?? null,
+    w.lastPolledAt ?? w.recordedAt,
+    w.prevRecordedAt,
+    7,
+  )
+
+  return (
+    <tr
+      style={{
+        background:   index % 2 === 0 ? '#060606' : '#070707',
+        borderBottom: '1px solid #0e0e0e',
+        transition:   'background .15s',
+        cursor: 'pointer',
+      }}
+      onClick={() => onOpen(post)}
+      onMouseEnter={e => (e.currentTarget.style.background = '#0d0d0d')}
+      onMouseLeave={e => (e.currentTarget.style.background = index % 2 === 0 ? '#060606' : '#070707')}
+    >
+      <td style={{ width: 3, padding: 0, background: `${pillarColor}cc` }} />
+      <td className="px-5 py-4">
+        <span className="text-[10px] font-medium tracking-[.08em]" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
+          {post.postId}
+        </span>
+      </td>
+      <td className="px-5 py-4" style={{ maxWidth: 200 }}>
+        <span
+          className="text-[12px] font-light block overflow-hidden"
+          style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 200 }}
+          title={post.title}
+        >
+          {post.title}
+        </span>
+      </td>
+      <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#666', whiteSpace: 'nowrap' }}>
+        {post.date || '—'}
+      </td>
+      <td className="px-5 py-4">
+        <span
+          className="text-[8px] font-medium tracking-[.1em] uppercase px-2 py-1"
+          style={{ color: '#555', background: '#0d0d0d', border: '1px solid #1a1a1a', whiteSpace: 'nowrap' }}
+        >
+          {post.pillar}
+        </span>
+      </td>
+      {/* Views — interpolated for recently polled videos */}
+      <EditableCell
+        value={w.views} displayValue={hasData ? fmt(liveViews) : '—'} color={hasData ? '#f2ede4' : '#3a3a3a'}
+        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="views" isPercent={false}
+        onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
+      />
+      <EditableCell
+        value={w.likes} displayValue={hasData ? fmt(w.likes) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
+        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="likes" isPercent={false}
+        onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
+      />
+      <EditableCell
+        value={w.comments} displayValue={hasData ? fmt(w.comments) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
+        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="comments" isPercent={false}
+        onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
+      />
+      <EditableCell
+        value={w.saves} displayValue={hasData ? fmt(w.saves) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
+        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="saves" isPercent={false}
+        onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
+      />
+      <EditableCell
+        value={w.shares} displayValue={hasData ? fmt(w.shares) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
+        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="shares" isPercent={false}
+        onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
+      />
+      <td className="px-5 py-4">
+        <div className="flex items-center gap-2 justify-end">
+          <span className="text-[12px] font-light" style={{ color: hasData ? ts.color : '#3a3a3a' }}>
+            {hasData ? er.toFixed(1) + '%' : '—'}
+          </span>
+          {hasData && (
+            <span
+              className="text-[7px] font-medium tracking-[.1em] uppercase px-1.5 py-0.5"
+              style={{ color: ts.color, background: ts.bg, border: `1px solid ${ts.border}` }}
+            >
+              {ts.label}
+            </span>
+          )}
+        </div>
+      </td>
+      <EditableCell
+        value={w.watch_pct} displayValue={hasData ? pct(w.watch_pct) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
+        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="watch_pct" isPercent={true}
+        onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
+      />
+      <td className="px-5 py-4">
+        <span className="text-[9px] font-medium tracking-[.1em] uppercase" style={{ color: ds.color }}>
+          {post.decision || '—'}
+        </span>
+      </td>
+    </tr>
+  )
+}
 
 function EditableCell({
   value,
@@ -791,122 +919,17 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                 </td>
               </tr>
             ) : (
-              pagedRows.map((post, i) => {
-                const w       = post[activeWin]
-                const er      = calcER(w, post.platform)
-                const t       = tier(er, w.views > 0)
-                const ts      = TIER_STYLES[t]
-                const ds      = DECISION_STYLES[post.decision] ?? { color: '#666' }
-                const hasData = w.views > 0
-                const pillarColor = pillarColors.get(post.pillar ?? '') ?? '#1a1a1a'
-
-                return (
-                  <tr
-                    key={post.postId}
-                    style={{
-                      background:   i % 2 === 0 ? '#060606' : '#070707',
-                      borderBottom: '1px solid #0e0e0e',
-                      transition:   'background .15s',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => setSlidePost(post)}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#0d0d0d')}
-                    onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? '#060606' : '#070707')}
-                  >
-                    {/* Pillar color stripe (Feature 9) */}
-                    <td style={{ width: 3, padding: 0, background: `${pillarColor}cc` }} />
-                    {/* ID */}
-                    <td className="px-5 py-4">
-                      <span className="text-[10px] font-medium tracking-[.08em]" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
-                        {post.postId}
-                      </span>
-                    </td>
-
-                    {/* Title */}
-                    <td className="px-5 py-4" style={{ maxWidth: 200 }}>
-                      <span
-                        className="text-[12px] font-light block overflow-hidden"
-                        style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 200 }}
-                        title={post.title}
-                      >
-                        {post.title}
-                      </span>
-                    </td>
-
-                    {/* Date */}
-                    <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#666', whiteSpace: 'nowrap' }}>
-                      {post.date || '—'}
-                    </td>
-
-                    {/* Pillar */}
-                    <td className="px-5 py-4">
-                      <span
-                        className="text-[8px] font-medium tracking-[.1em] uppercase px-2 py-1"
-                        style={{ color: '#555', background: '#0d0d0d', border: '1px solid #1a1a1a', whiteSpace: 'nowrap' }}
-                      >
-                        {post.pillar}
-                      </span>
-                    </td>
-
-                    {/* Editable metric cells */}
-                    <EditableCell
-                      value={w.views} displayValue={hasData ? fmt(w.views) : '—'} color={hasData ? '#f2ede4' : '#3a3a3a'}
-                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="views" isPercent={false}
-                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
-                    />
-                    <EditableCell
-                      value={w.likes} displayValue={hasData ? fmt(w.likes) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="likes" isPercent={false}
-                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
-                    />
-                    <EditableCell
-                      value={w.comments} displayValue={hasData ? fmt(w.comments) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="comments" isPercent={false}
-                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
-                    />
-                    <EditableCell
-                      value={w.saves} displayValue={hasData ? fmt(w.saves) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="saves" isPercent={false}
-                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
-                    />
-                    <EditableCell
-                      value={w.shares} displayValue={hasData ? fmt(w.shares) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="shares" isPercent={false}
-                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
-                    />
-
-                    {/* ER % + tier (computed, not directly editable) */}
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2 justify-end">
-                        <span className="text-[12px] font-light" style={{ color: hasData ? ts.color : '#3a3a3a' }}>
-                          {hasData ? er.toFixed(1) + '%' : '—'}
-                        </span>
-                        {hasData && (
-                          <span
-                            className="text-[7px] font-medium tracking-[.1em] uppercase px-1.5 py-0.5"
-                            style={{ color: ts.color, background: ts.bg, border: `1px solid ${ts.border}` }}
-                          >
-                            {ts.label}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <EditableCell
-                      value={w.watch_pct} displayValue={hasData ? pct(w.watch_pct) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-                      postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="watch_pct" isPercent={true}
-                      onSave={(f, v, d) => handleMetricSave(post.uuid, f, v, d)}
-                    />
-
-                    {/* Decision */}
-                    <td className="px-5 py-4">
-                      <span className="text-[9px] font-medium tracking-[.1em] uppercase" style={{ color: ds.color }}>
-                        {post.decision || '—'}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })
+              pagedRows.map((post, i) => (
+                <AnalyticsTableRow
+                  key={post.postId}
+                  post={post}
+                  index={i}
+                  activeWin={activeWin}
+                  pillarColors={pillarColors}
+                  onOpen={setSlidePost}
+                  onSave={handleMetricSave}
+                />
+              ))
             )}
           </tbody>
         </table>

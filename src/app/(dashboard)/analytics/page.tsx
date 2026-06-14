@@ -11,6 +11,10 @@ export type WindowData = {
   saves: number
   followers: number
   watch_pct: number
+  prevViews: number | null
+  prevRecordedAt: string | null
+  lastPolledAt: string | null
+  recordedAt: string | null
 }
 
 export type PostRow = {
@@ -32,6 +36,7 @@ export type PostRow = {
 const EMPTY_WIN: WindowData = {
   views: 0, likes: 0, comments: 0, shares: 0,
   saves: 0, followers: 0, watch_pct: 0,
+  prevViews: null, prevRecordedAt: null, lastPolledAt: null, recordedAt: null,
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────
@@ -44,7 +49,7 @@ export default async function AnalyticsPage() {
     .from('posts')
     .select(`
       id, post_id, title, platform, pillar, hook, format, date, decision,
-      post_analytics(metric_window, views, likes, comments, shares, saves, followers, watch_pct)
+      post_analytics(metric_window, views, likes, comments, shares, saves, followers, watch_pct, prev_views, prev_recorded_at, last_polled_at, recorded_at)
     `)
     .eq('client_id', clientId ?? fallback)
     .order('date', { ascending: false })
@@ -58,13 +63,17 @@ export default async function AnalyticsPage() {
     const byWindow: Record<string, WindowData> = {}
     for (const a of p.post_analytics ?? []) {
       byWindow[a.metric_window] = {
-        views:     a.views     ?? 0,
-        likes:     a.likes     ?? 0,
-        comments:  a.comments  ?? 0,
-        shares:    a.shares    ?? 0,
-        saves:     a.saves     ?? 0,
-        followers: a.followers ?? 0,
-        watch_pct: a.watch_pct ?? 0,
+        views:          a.views           ?? 0,
+        likes:          a.likes           ?? 0,
+        comments:       a.comments        ?? 0,
+        shares:         a.shares          ?? 0,
+        saves:          a.saves           ?? 0,
+        followers:      a.followers       ?? 0,
+        watch_pct:      a.watch_pct       ?? 0,
+        prevViews:      (a as any).prev_views       ?? null,
+        prevRecordedAt: (a as any).prev_recorded_at ?? null,
+        lastPolledAt:   (a as any).last_polled_at   ?? null,
+        recordedAt:     (a as any).recorded_at      ?? null,
       }
     }
     return {
