@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { getYouTubeConnection } from '@/lib/youtube-auth'
+import { getYouTubeConnection, fetchChannelInfo } from '@/lib/youtube-auth'
 
 type SyncResult = {
   synced: number
@@ -229,11 +229,20 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString()
   result.lastSyncedAt = now
 
+  // Refresh subscriber count while we have an active token — same OAuth call used at connect time.
+  let subscriberCount: number | null = null
+  const channelInfo = await fetchChannelInfo(conn.access_token)
+  if (channelInfo) subscriberCount = channelInfo.subscriberCount
+
   await admin
     .from('platform_connections')
-    .update({ last_synced_at: now, updated_at: now })
+    .update({
+      last_synced_at:   now,
+      updated_at:       now,
+      ...(subscriberCount !== null ? { subscriber_count: subscriberCount } : {}),
+    })
     .eq('client_id', clientId)
     .eq('platform', 'youtube')
 
-  return NextResponse.json(result)
+  return NextResponse.json({ ...result, subscriberCount })
 }

@@ -32,6 +32,10 @@ export function AdminYouTubeSection({
 }) {
   const [syncStates, setSyncStates] = useState<Record<string, 'idle' | 'syncing' | 'done' | 'error'>>({})
   const [syncResults, setSyncResults] = useState<Record<string, string>>({})
+  // Track subscriber counts in state so Sync Now updates the display without a reload
+  const [subCounts, setSubCounts] = useState<Record<string, number | null>>(
+    Object.fromEntries(connections.map(c => [c.clientId, c.subscriberCount ?? null]))
+  )
 
   const connMap = new Map(connections.map(c => [c.clientId, c]))
 
@@ -48,6 +52,10 @@ export function AdminYouTubeSection({
       if (!res.ok) throw new Error(data.error ?? 'Sync failed')
       setSyncResults(r => ({ ...r, [clientId]: `${data.synced} windows synced · ${data.skipped} skipped` }))
       setSyncStates(s => ({ ...s, [clientId]: 'done' }))
+      // Update subscriber count if the route returned a fresh value
+      if (data.subscriberCount != null) {
+        setSubCounts(s => ({ ...s, [clientId]: data.subscriberCount }))
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
       setSyncResults(r => ({ ...r, [clientId]: msg }))
@@ -120,13 +128,13 @@ export function AdminYouTubeSection({
                         {conn.channelName ?? conn.channelId ?? '—'}
                       </p>
                     </div>
-                    {conn.subscriberCount != null && (
+                    {(subCounts[conn.clientId] ?? conn.subscriberCount) != null && (
                       <div>
                         <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>
                           Subscribers
                         </p>
                         <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>
-                          {fmt(conn.subscriberCount)}
+                          {fmt(subCounts[conn.clientId] ?? conn.subscriberCount ?? 0)}
                         </p>
                       </div>
                     )}
