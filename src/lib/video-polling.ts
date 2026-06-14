@@ -1,39 +1,44 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getYouTubeConnection } from '@/lib/youtube-auth'
 import { erToDecision } from '@/lib/decision'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 
-// ── YouTube Data API v3 (public stats, no OAuth needed) ───────────────────
+// ── YouTube Data API v3 (public stats — YOUTUBE_API_KEY, no OAuth) ────────
 
 export async function fetchYTPublicStats(videoId: string): Promise<{
   views: number; likes: number; comments: number
 } | null> {
   const key = process.env.YOUTUBE_API_KEY
   if (!key) {
-    console.warn('[poll] YOUTUBE_API_KEY not set')
+    console.warn('[poll] YOUTUBE_API_KEY not set — cannot poll')
     return null
   }
 
   const url = `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoId}&key=${key}`
+  console.log(`[poll] → YT Data API: ${videoId}`)
   const res = await fetch(url, { next: { revalidate: 0 } })
   if (!res.ok) {
-    console.error('[poll] YT Data API error:', res.status, await res.text())
+    console.error(`[poll] YT Data API HTTP ${res.status} for ${videoId}:`, await res.text())
     return null
   }
 
   const json = await res.json()
   const stats = json.items?.[0]?.statistics
-  if (!stats) return null
+  if (!stats) {
+    console.log(`[poll] YT Data API: no stats for ${videoId} (private, deleted, or invalid ID)`)
+    return null
+  }
 
-  return {
+  const result = {
     views:    parseInt(stats.viewCount    ?? '0', 10),
     likes:    parseInt(stats.likeCount    ?? '0', 10),
     comments: parseInt(stats.commentCount ?? '0', 10),
   }
+  console.log(`[poll] YT stats ${videoId}: views=${result.views} likes=${result.likes} comments=${result.comments}`)
+  return result
 }
 
-// ── Update post_analytics with latest stats (preserving prev data point) ──
+// ── Upsert post_analytics (preserves prev data point for interpolation) ───
 
 export async function upsertPolledStats(
   admin: SupabaseAdmin,
@@ -43,7 +48,6 @@ export async function upsertPolledStats(
   metricWindow: string,
   stats: { views: number; likes: number; comments: number },
 ): Promise<void> {
-  // Read existing row to preserve previous data point for interpolation
   const { data: existing } = await admin
     .from('post_analytics')
     .select('views, recorded_at')
@@ -86,14 +90,13 @@ export async function scheduleSnapshotsIfNew(
   pipelineItemId: string | null,
   postedAt: string,
 ): Promise<void> {
-  // Check if snapshot jobs already exist for this post
   const { data: existing } = await admin
     .from('snapshot_jobs')
     .select('id')
     .eq('post_id', postUUID)
     .limit(1)
 
-  if (existing && existing.length > 0) return // already scheduled
+  if (existing && existing.length > 0) return
 
   const base = new Date(postedAt)
   const jobs = [
@@ -123,7 +126,6 @@ function endOfMonth(d: Date): Date {
 export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
   const now = new Date().toISOString()
 
-  // Get due, uncaptured jobs
   const { data: jobs } = await admin
     .from('snapshot_jobs')
     .select('id, post_id, client_id, pipeline_item_id, window_type')
@@ -135,7 +137,6 @@ export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
 
   let captured = 0
   for (const job of jobs as any[]) {
-    // Read current stats from post_analytics (best window)
     const { data: rows } = await admin
       .from('post_analytics')
       .select('views, likes, comments, shares, saves, metric_window')
@@ -144,19 +145,17 @@ export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
 
     if (!rows || rows.length === 0) continue
 
-    // Pick best available window data
     const priority = ['eom', 'w7', 'w3', 'w24']
     const best = (rows as any[]).sort((a: any, b: any) =>
       priority.indexOf(a.metric_window) - priority.indexOf(b.metric_window)
     )[0]
-
     if (!best) continue
 
-    const views = best.views ?? 0
-    const likes = best.likes ?? 0
+    const views    = best.views    ?? 0
+    const likes    = best.likes    ?? 0
     const comments = best.comments ?? 0
-    const shares = best.shares ?? 0
-    const saves = best.saves ?? 0
+    const shares   = best.shares   ?? 0
+    const saves    = best.saves    ?? 0
     const erPct = views > 0 ? ((likes + comments + shares + saves) / views) * 100 : 0
 
     await admin.from('analytics_snapshots').upsert({
@@ -176,152 +175,74 @@ export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
   return captured
 }
 
-// ── Auto-discover new YT uploads for a client ────────────────────────────
-
-export async function autoDiscoverYTUploads(
-  admin: SupabaseAdmin,
-  clientId: string,
-): Promise<number> {
-  const conn = await getYouTubeConnection(clientId)
-  if (!conn?.channel_id || !conn.access_token) return 0
-
-  // Uploads playlist ID = channel ID with UC → UU
-  const uploadsPlaylistId = conn.channel_id.replace(/^UC/, 'UU')
-
-  const key = process.env.YOUTUBE_API_KEY
-  const params = new URLSearchParams({
-    part: 'snippet',
-    maxResults: '50',
-    playlistId: uploadsPlaylistId,
-    ...(key ? { key } : {}),
-  })
-
-  const res = await fetch(
-    `https://www.googleapis.com/youtube/v3/playlistItems?${params}`,
-    { headers: { Authorization: `Bearer ${conn.access_token}` } },
-  )
-  if (!res.ok) return 0
-
-  const json = await res.json()
-  const items: any[] = json.items ?? []
-  if (items.length === 0) return 0
-
-  // Get existing yt_ids from analytics AND pipeline_items for this client
-  const [{ data: analyticsRows }, { data: pipelineIdRows }] = await Promise.all([
-    admin.from('post_analytics').select('yt_id').eq('client_id', clientId).not('yt_id', 'is', null),
-    admin.from('pipeline_items').select('yt_video_id').eq('client_id', clientId).not('yt_video_id', 'is', null),
-  ])
-
-  const knownYtIds = new Set([
-    ...(analyticsRows as any[] ?? []).map((r: any) => r.yt_id).filter(Boolean),
-    ...(pipelineIdRows as any[] ?? []).map((r: any) => r.yt_video_id).filter(Boolean),
-  ])
-
-  // Get pipeline items for fuzzy date matching
-  const { data: pipeItems } = await admin
-    .from('pipeline_items')
-    .select('id, post_id, posted_at, scheduled_date')
-    .eq('client_id', clientId)
-    .eq('status', 'POSTED')
-    .not('posted_at', 'is', null)
-
-  let discovered = 0
-
-  for (const item of items) {
-    const videoId: string = item.snippet?.resourceId?.videoId
-    const publishedAt: string = item.snippet?.publishedAt
-    const title: string = item.snippet?.title ?? ''
-
-    if (!videoId || knownYtIds.has(videoId)) continue
-
-    // Try to fuzzy-match a pipeline item by date ±72h
-    const publishTime = new Date(publishedAt).getTime()
-    const matchedPipe = (pipeItems as any[] ?? []).find((p: any) => {
-      const pTime = new Date(p.posted_at).getTime()
-      return Math.abs(pTime - publishTime) < 72 * 3600_000
-    })
-
-    if (!matchedPipe) continue // don't create orphaned analytics rows
-
-    // Look up or create the posts row
-    const { data: postRow } = await admin
-      .from('posts')
-      .select('id')
-      .eq('client_id', clientId)
-      .eq('post_id', matchedPipe.post_id)
-      .single()
-
-    if (!postRow) continue
-
-    // Upsert analytics row with the discovered video ID
-    await admin.from('post_analytics').upsert({
-      post_id:       (postRow as any).id,
-      client_id:     clientId,
-      platform:      'yt',
-      metric_window: 'eom',
-      yt_id:         videoId,
-      yt_video_id:   videoId,
-      views: 0, likes: 0, comments: 0, shares: 0, saves: 0,
-      last_polled_at: null,
-      recorded_at:    new Date().toISOString(),
-    }, { onConflict: 'post_id,platform,metric_window', ignoreDuplicates: true })
-
-    // Mark the pipeline item with the discovered YT video ID
-    await admin.from('pipeline_items')
-      .update({ yt_video_id: videoId })
-      .eq('id', matchedPipe.id)
-
-    knownYtIds.add(videoId)
-    discovered++
-    console.log(`[poll] Auto-discovered YT video ${videoId} → ${matchedPipe.post_id}`)
-  }
-
-  return discovered
-}
-
-// ── Main poll function for a single pipeline item ─────────────────────────
+// ── Pipeline item type ────────────────────────────────────────────────────
 
 export type PollablePipelineItem = {
   id: string
   post_id: string
   client_id: string
   platform: string[]
-  posted_at: string
+  posted_at: string | null
   yt_video_id: string | null
   tt_video_id: string | null
   ig_video_id: string | null
 }
 
+// ── Poll a single pipeline item ───────────────────────────────────────────
+//
+// Source of truth: yt_video_id on pipeline_items (set by admin via Mark as Posted modal or YT link modal).
+// No auto-discover. No fuzzy matching. If yt_video_id is not set, skip.
+
 export async function pollPipelineItem(
   admin: SupabaseAdmin,
   item: PollablePipelineItem,
-  postUUID: string | null,
-  pipelineItemId: string,
-): Promise<{ polled: boolean; error?: string }> {
-  if (!postUUID) return { polled: false, error: 'no post UUID' }
-
-  let polled = false
-
-  // YouTube
-  if (item.yt_video_id) {
-    const stats = await fetchYTPublicStats(item.yt_video_id)
-    if (stats) {
-      await upsertPolledStats(admin, postUUID, item.client_id, 'yt', 'eom', stats)
-      await scheduleSnapshotsIfNew(admin, postUUID, item.client_id, pipelineItemId, item.posted_at)
-      polled = true
-    }
+): Promise<{ polled: boolean; reason?: string }> {
+  if (!item.yt_video_id) {
+    console.log(`[poll] skip ${item.post_id} (${item.id}): yt_video_id not set`)
+    return { polled: false, reason: 'no_yt_video_id' }
   }
 
-  // TikTok (stub — requires video.list scope + approved app)
-  // if (item.tt_video_id) { ... }
+  console.log(`[poll] polling ${item.post_id} (pipeline ${item.id}) yt_video_id=${item.yt_video_id}`)
 
-  // Instagram (stub — requires media API scope)
-  // if (item.ig_video_id) { ... }
+  const stats = await fetchYTPublicStats(item.yt_video_id)
+  if (!stats) {
+    console.log(`[poll] skip ${item.post_id}: YT API returned no data`)
+    return { polled: false, reason: 'yt_api_null' }
+  }
 
-  return { polled }
+  // Resolve posts UUID for post_analytics FK
+  const { data: postRow } = await admin
+    .from('posts')
+    .select('id')
+    .eq('post_id', item.post_id)
+    .eq('client_id', item.client_id)
+    .single()
+
+  if (!postRow) {
+    // Stats were fetched but we can't write to post_analytics without a posts row.
+    // Admin must import the post via Studio CSV import to enable analytics persistence.
+    console.log(`[poll] ${item.post_id}: no posts row — stats fetched (views=${stats.views}) but post_analytics write skipped`)
+    return { polled: false, reason: 'no_posts_row' }
+  }
+
+  const postUUID = (postRow as any).id
+  console.log(`[poll] ${item.post_id} → posts UUID=${postUUID} — writing to post_analytics eom`)
+
+  await upsertPolledStats(admin, postUUID, item.client_id, 'yt', 'eom', stats)
+
+  if (item.posted_at) {
+    await scheduleSnapshotsIfNew(admin, postUUID, item.client_id, item.id, item.posted_at)
+  }
+
+  console.log(`[poll] ✓ ${item.post_id} written — views=${stats.views} likes=${stats.likes} comments=${stats.comments}`)
+  return { polled: true }
 }
 
 // ── Query helpers for cron routes ─────────────────────────────────────────
+//
+// Only returns POSTED items where yt_video_id IS NOT NULL.
+// Archive tier (maxAgeDays=null) includes items with posted_at IS NULL
+// so historical imports without a posted date still get polled.
 
 export async function getPostableItemsInAgeRange(
   admin: SupabaseAdmin,
@@ -329,44 +250,40 @@ export async function getPostableItemsInAgeRange(
   maxAgeDays: number | null,
 ): Promise<PollablePipelineItem[]> {
   const now = Date.now()
-  const minDate = new Date(now - (maxAgeDays ?? 36500) * 86400_000).toISOString()
   const maxDate = new Date(now - minAgeDays * 86400_000).toISOString()
 
-  let q = admin
+  // Cast to any to avoid TS2589 (Supabase query builder type chain too deep)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q: any = admin
     .from('pipeline_items')
     .select('id, post_id, client_id, platform, posted_at, yt_video_id, tt_video_id, ig_video_id')
     .eq('status', 'POSTED')
-    .not('posted_at', 'is', null)
-    .gte('posted_at', minDate)
+    .not('yt_video_id', 'is', null)
 
-  if (maxAgeDays !== null) {
-    q = q.lte('posted_at', maxDate)
+  if (maxAgeDays === null) {
+    // Archive tier: posted_at older than minAgeDays OR posted_at IS NULL
+    q = q.or(`posted_at.lte.${maxDate},posted_at.is.null`)
+  } else {
+    // Fresh/recent tiers: items within the date window (posted_at must be set)
+    const minDate = new Date(now - maxAgeDays * 86400_000).toISOString()
+    q = q
+      .not('posted_at', 'is', null)
+      .gte('posted_at', minDate)
+      .lte('posted_at', maxDate)
   }
 
   const { data, error } = await q
   if (error) console.error('[poll] query error:', error.message)
-  return (data ?? []) as PollablePipelineItem[]
-}
 
-// Resolve pipeline_item.post_id (text like #ig0001) → posts.id (UUID)
-export async function resolvePostUUIDs(
-  admin: SupabaseAdmin,
-  items: PollablePipelineItem[],
-): Promise<Map<string, string>> {
-  if (items.length === 0) return new Map()
+  const items = (data ?? []) as PollablePipelineItem[]
+  const tierLabel = maxAgeDays === null
+    ? `${minAgeDays}d+`
+    : `${minAgeDays}–${maxAgeDays}d`
 
-  const textIds = [...new Set(items.map(i => i.post_id).filter(Boolean))]
-  const clientIds = [...new Set(items.map(i => i.client_id).filter(Boolean))]
-
-  const { data } = await admin
-    .from('posts')
-    .select('id, post_id, client_id')
-    .in('post_id', textIds)
-    .in('client_id', clientIds)
-
-  const map = new Map<string, string>()
-  for (const row of (data ?? []) as any[]) {
-    map.set(`${row.client_id}::${row.post_id}`, row.id)
+  console.log(`[poll] getPostableItemsInAgeRange(${tierLabel}): ${items.length} items with yt_video_id`)
+  for (const item of items) {
+    console.log(`[poll]   ${item.post_id} (${item.id}) yt_video_id=${item.yt_video_id} posted_at=${item.posted_at ?? 'NULL'}`)
   }
-  return map
+
+  return items
 }
