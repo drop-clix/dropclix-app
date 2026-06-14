@@ -63,7 +63,9 @@ Rules:
 - S32: Pipeline ID display filter, priority auto-derive (`STATUS_PRIORITY`+`backfill-priorities.mjs`), calendar `SlideOverPanel`, `AISuggestionsModal.tsx`, Instagram OAuth, TikTok OAuth, `PlatformLinkModal`
 - S33: Body text-glow removed from globals.css; full 10-card pipeline set (`PHASE_CARD_COLORS`); link column visibility (`showIG/showTT/showYT`); `PLAT_CFG.tt` fixed to `#2dd4bf`
 - S34: Contrast/legibility polish — all `#333`/`#252525`/`#2a2a2a`/`#2e2e2e` text → `≥#555`; custom scrollbar (5px), `::selection` gold, `:focus-visible` gold ring, `color-scheme:dark`, `prefers-reduced-motion`, `button { cursor:pointer }`
-- S35: TikTok OAuth callback raw-text logging + flat/nested token shape handling; `force_reauth=1` + `prompt=consent` added to OAuth URL; TikTok Disconnect button on admin panel (`disconnectTikTok` server action); Pipeline empty-platform fix — shows "No items for X" + "Show all platforms" button when `platFiltered.length === 0` but `items.length > 0`
+- S35: Approval workflow — `drive_file_id` + `approval_comment` cols on `pipeline_items`; `client_notes` table (one row per client); `agency_docs` table; all RLS enabled. Migration: `supabase/migrations/session_35_approval_workflow.sql` (must be applied manually to prod via SQL editor).
+- S36: TikTok OAuth callback raw-text logging + flat/nested token shape handling; TikTok Disconnect button on admin panel (`disconnectTikTok` server action in `admin/actions.ts`); Pipeline empty-platform fix — shows "No items for X" + "Show all platforms" button when `platFiltered.length === 0` but `items.length > 0`
+- Bug (post-S36): Pipeline empty ALL clients + TikTok Reconnect instant redirect. Root causes: (1) `pipeline/page.tsx` SELECT includes `drive_file_id`/`approval_comment` — missing columns → Supabase error → `data=null` → empty for everyone; fixed by applying session_35_approval_workflow.sql to prod. (2) `force_reauth=1` + `prompt=consent` are not valid TikTok v2 OAuth params — TikTok rejected and returned `access_denied`; fixed by removing both params from `/api/auth/tiktok/route.ts`.
 
 ## Key decisions / gotchas
 
@@ -75,8 +77,10 @@ Rules:
 - **AISuggestionsModal**: `src/components/portal/AISuggestionsModal.tsx`. Props: `isOpen, onClose, title, subtitle, suggestions, loading`. Animation: `@keyframes aiModalIn` in globals.css. Used by DashboardClient + AdsClient.
 - **AI suggestions ads mode**: `/api/ai-suggestions` accepts `{ mode: 'ads', campaigns: ContextCampaign[], posts: [], platform: 'all' }`. Returns 4 recommendations.
 - **Instagram OAuth**: env `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_REDIRECT_URI`. Route: `/api/auth/instagram`. Stores `platform='instagram'` in `platform_connections`.
-- **TikTok OAuth**: env `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`. Route: `/api/auth/tiktok`. Redirect URI must be `https://portal.drop-clix.com/api/auth/tiktok/callback`. OAuth URL includes `force_reauth=1` + `prompt=consent` — always shows account selection screen.
+- **TikTok OAuth**: env `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI`. Route: `/api/auth/tiktok`. Redirect URI must be `https://portal.drop-clix.com/api/auth/tiktok/callback`. Valid params only: `client_key`, `redirect_uri`, `scope`, `response_type`, `state`. Do NOT add `force_reauth`, `prompt`, or any non-standard params — TikTok v2 rejects them with `access_denied`.
 - **TikTok disconnect**: `disconnectTikTok(clientId)` server action in `admin/actions.ts`. Deletes `platform_connections` row where `client_id` + `platform='tiktok'`. Disconnect button shown next to Reconnect in `AdminTikTokSection.tsx`.
+- **pipeline_items columns**: `drive_file_id text`, `approval_comment text` added in session_35_approval_workflow.sql. Pipeline page SELECT includes these — if missing, Supabase returns error, `data=null`, all clients see empty pipeline. Always apply migration before deploying code that queries these cols.
+- **client_notes table**: one row per client (`client_id` unique). `agency_docs` table: global. Both have RLS enabled. Created in session_35_approval_workflow.sql.
 - **Pipeline platform link buttons**: `isPlatLinked(videoUrl, 'ig'|'tt')`. `PlatformLinkModal` saves to `video_url`. `PipelineItem.videoUrl` added.
 - **Pipeline row stripe**: first `<td>` = `PLAT_CFG[item.platform[0]].color`. `colSpan` = 13.
 - **Next.js 16 proxy**: `middleware.ts` deprecated. Use `src/proxy.ts` with `export function proxy()`.
