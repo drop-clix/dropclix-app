@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
     scope:         'user.info.basic,user.info.profile,user.info.stats,video.list',
     response_type: 'code',
     state:         clientId,
+    force_reauth:  '1',
+    prompt:        'consent',
   })
 
   return NextResponse.redirect(
