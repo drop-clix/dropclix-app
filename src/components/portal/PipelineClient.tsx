@@ -1000,24 +1000,80 @@ function ItemEditPanel({
 
 // ── Mark as Posted Modal ───────────────────────────────────────────────────
 
-function parseVideoUrl(url: string, platforms: string[]): string {
+function parsePlatformVideoId(url: string, plat: string): string {
   const s = url.trim()
   if (!s) return ''
-  // YT: youtu.be/ID or ?v=ID
-  const ytShort = s.match(/youtu\.be\/([A-Za-z0-9_-]{10,12})/)
-  if (ytShort) return ytShort[1]
-  const ytFull = s.match(/[?&]v=([A-Za-z0-9_-]{10,12})/)
-  if (ytFull) return ytFull[1]
-  // IG: /reel/ID or /p/ID or /tv/ID
-  const ig = s.match(/instagram\.com\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/)
-  if (ig) return ig[1]
-  // TT: /video/ID
-  const tt = s.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/)
-  if (tt) return tt[1]
-  // If it doesn't look like a URL, treat as raw ID
+  if (plat === 'yt' || plat === 'lf') {
+    const m = s.match(/youtu\.be\/([A-Za-z0-9_-]{10,12})/) ??
+              s.match(/[?&]v=([A-Za-z0-9_-]{10,12})/) ??
+              s.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{10,12})/)
+    if (m) return m[1]
+  }
+  if (plat === 'tt') {
+    const m = s.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/)
+    if (m) return m[1]
+  }
+  if (plat === 'ig') {
+    const m = s.match(/instagram\.com\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/)
+    if (m) return m[1]
+  }
   if (!s.startsWith('http')) return s
-  return s
+  return ''
 }
+
+function parseVideoUrl(url: string, platforms: string[]): string {
+  for (const p of platforms) {
+    const id = parsePlatformVideoId(url, p)
+    if (id) return id
+  }
+  if (!url.trim().startsWith('http')) return url.trim()
+  return url.trim()
+}
+
+// ── Platform logo SVGs (inline, accurate brand marks) ──────────────────────
+
+function IGLogo() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="ig-modal-lg" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#ffd600"/>
+          <stop offset="25%" stopColor="#ff7a00"/>
+          <stop offset="50%" stopColor="#ff0069"/>
+          <stop offset="75%" stopColor="#d300c5"/>
+          <stop offset="100%" stopColor="#7638fa"/>
+        </linearGradient>
+      </defs>
+      <path fill="url(#ig-modal-lg)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+    </svg>
+  )
+}
+
+function TTLogo() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path fill="#ffffff" d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
+    </svg>
+  )
+}
+
+function YTLogo() {
+  return (
+    <svg width="28" height="20" viewBox="0 0 24 17" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path fill="#FF0000" d="M23.5 2.64A3.01 3.01 0 0021.38.5C19.51 0 12 0 12 0S4.49 0 2.62.5A3.01 3.01 0 00.5 2.64C0 4.54 0 8.5 0 8.5s0 3.96.5 5.86a3.01 3.01 0 002.12 2.14C4.49 17 12 17 12 17s7.51 0 9.38-.5a3.01 3.01 0 002.12-2.14C24 12.46 24 8.5 24 8.5s0-3.96-.5-5.86z"/>
+      <path fill="#FFF" d="M9.55 12.07V4.93L15.82 8.5 9.55 12.07z"/>
+    </svg>
+  )
+}
+
+function PlatformLogo({ plat }: { plat: string }) {
+  if (plat === 'ig') return <IGLogo />
+  if (plat === 'tt') return <TTLogo />
+  if (plat === 'yt' || plat === 'lf') return <YTLogo />
+  return null
+}
+
+// ── Mark as Posted Modal ────────────────────────────────────────────────────
 
 function MarkAsPostedModal({
   item,
@@ -1033,19 +1089,64 @@ function MarkAsPostedModal({
     const pad = (n: number) => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   })
-  const [urlVal,  setUrlVal ] = useState('')
-  const [saving,  setSaving ] = useState(false)
+  const [urls,    setUrls  ] = useState<Record<string, string>>({})
+  const [active,  setActive] = useState<Set<string>>(new Set())
+  const [saving,  setSaving] = useState(false)
 
-  const parsedId = useMemo(() => parseVideoUrl(urlVal, item.platform), [urlVal, item.platform])
+  // Normalise lf → yt for display; only unique platform logos
+  const displayPlats = useMemo(() => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const p of item.platform) {
+      const key = p === 'lf' ? 'yt' : p
+      if (!seen.has(key)) { seen.add(key); out.push(key) }
+    }
+    return out
+  }, [item.platform])
+
+  function toggleActive(plat: string) {
+    setActive(prev => {
+      const next = new Set(prev)
+      if (next.has(plat)) next.delete(plat); else next.add(plat)
+      return next
+    })
+  }
+
+  const parsedIds = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const [p, url] of Object.entries(urls)) {
+      out[p] = parsePlatformVideoId(url, p)
+    }
+    return out
+  }, [urls])
+
+  const platColor = (p: string): string => PLAT_CFG[p]?.color ?? '#555'
+  const platBg    = (p: string): string => PLAT_CFG[p]?.bg    ?? 'rgba(100,100,100,.1)'
+
+  const platPlaceholder = (p: string) => {
+    if (p === 'yt') return 'youtube.com/watch?v=… or /shorts/…'
+    if (p === 'tt') return 'tiktok.com/@user/video/…'
+    if (p === 'ig') return 'instagram.com/reel/…'
+    return 'Paste URL…'
+  }
 
   async function handleConfirm() {
     setSaving(true)
     const iso = new Date(dateVal).toISOString()
     const update: Record<string, unknown> = { status: 'POSTED', posted_at: iso, priority: 6 }
-    if (parsedId) update.video_url = urlVal.trim()
+
+    // Primary video_url = first platform URL entered
+    const primaryUrl = Object.values(urls).find(u => u.trim())
+    if (primaryUrl) update.video_url = primaryUrl.trim()
+
+    // Per-platform IDs
+    if (parsedIds.ig) update.ig_video_id = parsedIds.ig
+    if (parsedIds.tt) update.tt_video_id = parsedIds.tt
+    if (parsedIds.yt) update.yt_video_id = parsedIds.yt
+
     await updatePipelineItem(item.id, update)
     setSaving(false)
-    onPosted(iso, parsedId)
+    onPosted(iso, parsedIds[displayPlats[0]] ?? '')
     onClose()
   }
 
@@ -1053,6 +1154,7 @@ function MarkAsPostedModal({
     background: '#080808', border: '1px solid #1e1e1e',
     color: '#f2ede4', padding: '8px 10px', fontSize: 12,
     fontFamily: 'DM Sans, sans-serif', outline: 'none', width: '100%',
+    boxSizing: 'border-box' as const,
   }
 
   return (
@@ -1060,30 +1162,95 @@ function MarkAsPostedModal({
       style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,.82)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{ background: '#070707', border: '1px solid #1e1e1e', borderTop: '2px solid #39ff88', padding: '32px 36px', width: 440, maxWidth: '94vw' }}>
+      <div style={{ background: '#070707', border: '1px solid #1e1e1e', borderTop: '2px solid #39ff88', padding: '32px 36px', width: 460, maxWidth: '94vw' }}>
+
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.22em', textTransform: 'uppercase', color: '#39ff88', marginBottom: 4 }}>Mark as Posted</p>
-            <p style={{ fontSize: 14, color: '#f2ede4', fontWeight: 300, maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</p>
+            <p style={{ fontSize: 14, color: '#f2ede4', fontWeight: 300, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</p>
             <p style={{ fontSize: 10, color: '#c9a96e', fontFamily: 'monospace', marginTop: 2 }}>{item.postId}</p>
           </div>
           <button onClick={onClose} style={{ fontSize: 18, color: '#555', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
 
-        <div style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 20 }}>
+          {/* Date/time */}
           <div>
             <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 6 }}>When was it posted?</p>
             <input type="datetime-local" style={inp} value={dateVal} onChange={e => setDateVal(e.target.value)}
               onFocus={e => (e.target.style.borderColor = '#39ff88')} onBlur={e => (e.target.style.borderColor = '#1e1e1e')} />
           </div>
+
+          {/* Platform URL section */}
           <div>
-            <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 6 }}>Video URL (optional)</p>
-            <input type="text" style={inp} value={urlVal} placeholder="https://youtu.be/… or instagram.com/reel/…"
-              onChange={e => setUrlVal(e.target.value)}
-              onFocus={e => (e.target.style.borderColor = '#39ff88')} onBlur={e => (e.target.style.borderColor = '#1e1e1e')} />
-            {parsedId && urlVal && (
-              <p style={{ fontSize: 9, color: '#39ff88', marginTop: 5 }}>Extracted ID: <span style={{ fontFamily: 'monospace' }}>{parsedId}</span></p>
-            )}
+            <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 12 }}>
+              Video links <span style={{ color: '#444', fontWeight: 400, letterSpacing: '.04em', textTransform: 'none' }}>(optional)</span>
+            </p>
+
+            {/* Platform logo toggle buttons */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+              {displayPlats.map(plat => {
+                const isOn = active.has(plat)
+                const color = platColor(plat)
+                return (
+                  <button
+                    key={plat}
+                    type="button"
+                    onClick={() => toggleActive(plat)}
+                    aria-label={`${plat.toUpperCase()} video URL`}
+                    aria-pressed={isOn}
+                    style={{
+                      width: 60, height: 60,
+                      borderRadius: 12,
+                      border: isOn ? `1px solid ${color}` : '1px solid #1c1c1c',
+                      background: isOn ? platBg(plat) : '#0d0d0d',
+                      opacity: isOn ? 1 : 0.3,
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: isOn ? `0 0 0 1px ${color}50, 0 0 16px ${color}30` : 'none',
+                      transition: 'opacity 150ms, box-shadow 150ms, border-color 150ms, background 150ms',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <PlatformLogo plat={plat} />
+                  </button>
+                )
+              })}
+              {displayPlats.length === 0 && (
+                <p style={{ fontSize: 10, color: '#444' }}>No platforms tagged on this item.</p>
+              )}
+            </div>
+
+            {/* URL inputs for active platforms */}
+            {displayPlats.filter(p => active.has(p)).map(plat => {
+              const color = platColor(plat)
+              const vid   = parsedIds[plat]
+              const label = plat === 'ig' ? 'Instagram' : plat === 'tt' ? 'TikTok' : 'YouTube'
+              return (
+                <div key={plat} style={{ marginBottom: 12 }}>
+                  <p style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color, marginBottom: 5 }}>{label} URL</p>
+                  <input
+                    type="text"
+                    style={{ ...inp, borderColor: urls[plat] ? color + '60' : '#1e1e1e' }}
+                    value={urls[plat] ?? ''}
+                    placeholder={platPlaceholder(plat)}
+                    onChange={e => setUrls(prev => ({ ...prev, [plat]: e.target.value }))}
+                    onFocus={e => (e.target.style.borderColor = color)}
+                    onBlur={e => (e.target.style.borderColor = urls[plat] ? color + '60' : '#1e1e1e')}
+                    autoFocus
+                  />
+                  {vid && (
+                    <p style={{ fontSize: 9, marginTop: 4, color: '#39ff88' }}>
+                      ID extracted: <span style={{ fontFamily: 'monospace', color }}>{vid}</span>
+                    </p>
+                  )}
+                  {urls[plat] && !vid && (
+                    <p style={{ fontSize: 9, marginTop: 4, color: '#666' }}>Paste a full {label} URL to auto-extract ID</p>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 
@@ -1236,6 +1403,9 @@ function AddVideoModal({
       ytType:          null,
       ytId:            null,
       videoUrl:        null,
+      igVideoId:       null,
+      ttVideoId:       null,
+      ytVideoId:       null,
       scriptContent:   script.trim() || null,
       notes:           null,
       driveFileId:     null,
