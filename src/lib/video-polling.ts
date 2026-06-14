@@ -1,5 +1,4 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { erToDecision } from '@/lib/decision'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 
@@ -65,10 +64,6 @@ export async function upsertPolledStats(
   const prevViews = (existing as any)?.views ?? null
   const prevRecordedAt = (existing as any)?.recorded_at ?? null
 
-  const er = stats.views > 0
-    ? ((stats.likes + stats.comments) / stats.views) * 100
-    : 0
-
   console.log('[poll] upserting post_analytics:', {
     postUUID,
     clientId,
@@ -89,7 +84,6 @@ export async function upsertPolledStats(
     prev_recorded_at: prevRecordedAt,
     last_polled_at:   now,
     recorded_at:      now,
-    decision:         erToDecision(er),
   }, { onConflict: 'post_id,platform,metric_window' })
 
   if (error) {
