@@ -47,8 +47,8 @@ export async function upsertPolledStats(
   platform: string,
   metricWindow: string,
   stats: { views: number; likes: number; comments: number },
-): Promise<void> {
-  const { data: existing } = await admin
+): Promise<boolean> {
+  const { data: existing, error: existingError } = await admin
     .from('post_analytics')
     .select('views, recorded_at')
     .eq('post_id', postUUID)
@@ -56,6 +56,10 @@ export async function upsertPolledStats(
     .eq('platform', platform)
     .eq('metric_window', metricWindow)
     .single()
+
+  if (existingError && existingError.code !== 'PGRST116') {
+    console.error('[poll] existing analytics lookup failed:', existingError.message, existingError.code, existingError.details)
+  }
 
   const now = new Date().toISOString()
   const prevViews = (existing as any)?.views ?? null
@@ -65,7 +69,15 @@ export async function upsertPolledStats(
     ? ((stats.likes + stats.comments) / stats.views) * 100
     : 0
 
-  await admin.from('post_analytics').upsert({
+  console.log('[poll] upserting post_analytics:', {
+    postUUID,
+    clientId,
+    platform,
+    metricWindow,
+    views: stats.views,
+  })
+
+  const { error } = await admin.from('post_analytics').upsert({
     post_id:          postUUID,
     client_id:        clientId,
     platform,
@@ -79,6 +91,14 @@ export async function upsertPolledStats(
     recorded_at:      now,
     decision:         erToDecision(er),
   }, { onConflict: 'post_id,platform,metric_window' })
+
+  if (error) {
+    console.error('[poll] upsert failed:', error.message, error.code, error.details)
+    return false
+  }
+
+  console.log('[poll] upsert ok:', { postUUID, platform, metricWindow })
+  return true
 }
 
 // ── Snapshot scheduling (T+24hr, T+72hr, T+168hr, EOM) ───────────────────
@@ -258,7 +278,10 @@ export async function pollPipelineItem(
 
   console.log(`[poll] ${item.post_id} → posts UUID=${postUUID} — writing to post_analytics eom`)
 
-  await upsertPolledStats(admin, postUUID, item.client_id, 'yt', 'eom', stats)
+  const didUpsert = await upsertPolledStats(admin, postUUID, item.client_id, 'yt', 'eom', stats)
+  if (!didUpsert) {
+    return { polled: false, reason: 'upsert_failed' }
+  }
 
   if (item.posted_at) {
     await scheduleSnapshotsIfNew(admin, postUUID, item.client_id, item.id, item.posted_at)
