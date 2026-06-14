@@ -1,7 +1,7 @@
 {
   "crons": [
-    { "path": "/api/cron/poll-fresh",   "schedule": "*/2 * * * *"  },
-    { "path": "/api/cron/poll-recent",  "schedule": "*/10 * * * *" },
-    { "path": "/api/cron/poll-archive", "schedule": "0 */6 * * *"  }
+    { "path": "/api/cron/poll-fresh",   "schedule": "0 0 * * *"  },
+    { "path": "/api/cron/poll-recent",  "schedule": "0 6 * * *"  },
+    { "path": "/api/cron/poll-archive", "schedule": "0 12 * * *" }
   ]
 }
