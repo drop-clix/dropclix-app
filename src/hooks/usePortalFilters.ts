@@ -107,7 +107,11 @@ export function usePortalFilters(): PortalFilters & {
   const router       = useRouter()
   const pathname     = usePathname()
 
-  const platform = (searchParams.get('platform') ?? 'ig') as PlatformFilter
+  // Read stored platform from localStorage when no URL param present
+  const storedPlatform = typeof window !== 'undefined'
+    ? (localStorage.getItem('dropclix_platform') as PlatformFilter | null) ?? 'ig'
+    : 'ig'
+  const platform = (searchParams.get('platform') ?? storedPlatform) as PlatformFilter
   const win      = (searchParams.get('win')      ?? 'eom') as WindowFilter
   const scope    = (searchParams.get('scope')    ?? 'all') as ScopeFilter
   const from     = searchParams.get('from')
@@ -115,7 +119,10 @@ export function usePortalFilters(): PortalFilters & {
 
   const setFilters = useCallback((update: FilterUpdate) => {
     const params = new URLSearchParams(searchParams.toString())
-    if (update.platform !== undefined) params.set('platform', update.platform)
+    if (update.platform !== undefined) {
+      params.set('platform', update.platform)
+      if (typeof window !== 'undefined') localStorage.setItem('dropclix_platform', update.platform)
+    }
     if (update.win      !== undefined) params.set('win',      update.win)
     if (update.scope    !== undefined) {
       params.set('scope', update.scope)

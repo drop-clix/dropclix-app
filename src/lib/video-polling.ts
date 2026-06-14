@@ -206,16 +206,16 @@ export async function autoDiscoverYTUploads(
   const items: any[] = json.items ?? []
   if (items.length === 0) return 0
 
-  // Get existing yt_ids for this client
-  const { data: existingRows } = await admin
-    .from('post_analytics')
-    .select('yt_id')
-    .eq('client_id', clientId)
-    .not('yt_id', 'is', null)
+  // Get existing yt_ids from analytics AND pipeline_items for this client
+  const [{ data: analyticsRows }, { data: pipelineIdRows }] = await Promise.all([
+    admin.from('post_analytics').select('yt_id').eq('client_id', clientId).not('yt_id', 'is', null),
+    admin.from('pipeline_items').select('yt_video_id').eq('client_id', clientId).not('yt_video_id', 'is', null),
+  ])
 
-  const knownYtIds = new Set(
-    (existingRows as any[] ?? []).map((r: any) => r.yt_id).filter(Boolean)
-  )
+  const knownYtIds = new Set([
+    ...(analyticsRows as any[] ?? []).map((r: any) => r.yt_id).filter(Boolean),
+    ...(pipelineIdRows as any[] ?? []).map((r: any) => r.yt_video_id).filter(Boolean),
+  ])
 
   // Get pipeline items for fuzzy date matching
   const { data: pipeItems } = await admin
@@ -234,11 +234,11 @@ export async function autoDiscoverYTUploads(
 
     if (!videoId || knownYtIds.has(videoId)) continue
 
-    // Try to fuzzy-match a pipeline item by date ±24h
+    // Try to fuzzy-match a pipeline item by date ±72h
     const publishTime = new Date(publishedAt).getTime()
     const matchedPipe = (pipeItems as any[] ?? []).find((p: any) => {
       const pTime = new Date(p.posted_at).getTime()
-      return Math.abs(pTime - publishTime) < 24 * 3600_000
+      return Math.abs(pTime - publishTime) < 72 * 3600_000
     })
 
     if (!matchedPipe) continue // don't create orphaned analytics rows

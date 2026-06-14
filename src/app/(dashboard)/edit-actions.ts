@@ -618,40 +618,56 @@ function extractYouTubeId(input: string): string {
   return clean
 }
 
-// Link a pipeline post to a YouTube video. Sets yt_id on ALL post_analytics rows for that post.
+// Link a pipeline post to a YouTube video.
+// Always saves yt_video_id to pipeline_items (persists on reload).
+// Also saves yt_id to post_analytics rows when a posts row exists.
 // postTextId: text like '#yt0001'. ytInput: full URL or raw 11-char video ID.
+// pipelineItemId: pipeline_items.id UUID — ensures the ID persists even without a posts row.
 export async function linkYouTubeVideo(
   postTextId: string,
   ytInput: string,
-): Promise<{ ytId?: string; error?: string }> {
+  pipelineItemId?: string,
+): Promise<{ ytId?: string; note?: string; error?: string }> {
   const c = await getCtx()
   if (!c || !c.cid) return { error: 'Not authenticated' }
 
   const ytId = extractYouTubeId(ytInput)
   if (!ytId) return { error: 'Invalid YouTube URL or video ID' }
 
-  // Resolve text post_id → UUID via posts table
-  const { data: postRow, error: postErr } = await c.admin
+  // Always save yt_video_id to pipeline_items when we have the item ID
+  // This is the durable save path — survives reload regardless of analytics rows
+  if (pipelineItemId) {
+    await c.admin
+      .from('pipeline_items')
+      .update({ yt_video_id: ytId })
+      .eq('id', pipelineItemId)
+      .eq('client_id', c.cid)
+  }
+
+  // Try to also update post_analytics.yt_id (best-effort — may be 0 rows)
+  const { data: postRow } = await c.admin
     .from('posts')
     .select('id')
     .eq('post_id', postTextId)
     .eq('client_id', c.cid)
     .single()
 
-  if (postErr || !postRow) return { error: 'Post not found' }
-  const postUuid = (postRow as unknown as { id: string }).id
-
-  // Update all post_analytics rows for this post
-  const { error: updErr } = await c.admin
-    .from('post_analytics')
-    .update({ yt_id: ytId })
-    .eq('post_id', postUuid)
-
-  if (updErr) return { error: updErr.message }
+  if (postRow) {
+    const postUuid = (postRow as unknown as { id: string }).id
+    await c.admin
+      .from('post_analytics')
+      .update({ yt_id: ytId, yt_video_id: ytId })
+      .eq('post_id', postUuid)
+  }
 
   revalidatePath('/pipeline')
   revalidatePath('/analytics')
-  return { ytId }
+
+  const note = !postRow
+    ? 'Video ID saved. Analytics will appear after the next sync.'
+    : undefined
+
+  return { ytId, note }
 }
 
 // ── Content Approval Workflow ────────────────────────────────────────────────

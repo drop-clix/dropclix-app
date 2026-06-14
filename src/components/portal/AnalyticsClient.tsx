@@ -715,7 +715,7 @@ const PAGE_SIZE = 10
 
 export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   const [posts, setPosts] = useState<PostRow[]>(initialPosts)
-  const [pillar,  setPillar ] = useState<string>('All')
+  const [search,  setSearch ] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('views')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page,    setPage   ] = useState(1)
@@ -727,7 +727,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   const pillarColors = usePillarColors(useMemo(() => posts.map(p => p.pillar ?? ''), [posts]))
 
   // Reset page when filters change
-  useEffect(() => { setPage(1) }, [platform, win, scope, from, to, pillar])
+  useEffect(() => { setPage(1) }, [platform, win, scope, from, to, search])
 
   function handleMetricSave(postUUID: string, field: EditableField, value: number, decision?: string) {
     setPosts(prev => prev.map(p => {
@@ -743,7 +743,29 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   const rows = useMemo(() => {
     let filtered = filterByPlatform(posts, platform, p => p.format)
     filtered = filterByScope(filtered, scope, from, to)
-    if (pillar !== 'All') filtered = filtered.filter(p => p.pillar === pillar)
+    if (search.trim()) {
+      const q = search.toLowerCase().trim()
+      filtered = filtered.filter(p => {
+        const w = p[win as WindowKey]
+        const er = calcER(w, p.platform).toFixed(1)
+        return (
+          p.postId.toLowerCase().includes(q) ||
+          p.title.toLowerCase().includes(q) ||
+          p.date.toLowerCase().includes(q) ||
+          p.pillar.toLowerCase().includes(q) ||
+          p.hook.toLowerCase().includes(q) ||
+          p.format.toLowerCase().includes(q) ||
+          (p.decision || '').toLowerCase().includes(q) ||
+          String(w.views).includes(q) ||
+          String(w.likes).includes(q) ||
+          String(w.comments).includes(q) ||
+          String(w.saves).includes(q) ||
+          String(w.shares).includes(q) ||
+          er.includes(q) ||
+          String(w.watch_pct).includes(q)
+        )
+      })
+    }
     const wk = win as WindowKey
     return filtered.slice().sort((a, b) => {
       const wa = a[wk]; const wb = b[wk]
@@ -758,7 +780,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       else if (sortKey === 'watch_pct'){ av = wa.watch_pct; bv = wb.watch_pct }
       return sortDir === 'desc' ? bv - av : av - bv
     })
-  }, [posts, platform, pillar, win, scope, from, to, sortKey, sortDir])
+  }, [posts, platform, search, win, scope, from, to, sortKey, sortDir])
 
   const activeWin = win as WindowKey
 
@@ -809,24 +831,31 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
         <KpiCard label="Avg Watch %"      value={kpis.avgWatch > 0 ? kpis.avgWatch.toFixed(1) + '%' : '—'} sub={`${kpis.eliteCount} elite posts (ER ≥12%)`} />
       </div>
 
-      {/* ── Pillar filter ────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <span className="text-[8px] tracking-[.18em] uppercase self-center mr-1" style={{ color: '#555' }}>Pillar</span>
-        {PILLARS.map(p => (
+      {/* ── Search bar ───────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-6" style={{ borderBottom: '1px solid #1a1a1a', paddingBottom: 2 }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1) }}
+          placeholder="Search by ID, title, pillar, decision, views…"
+          style={{
+            flex: 1, background: 'transparent', border: 'none', outline: 'none',
+            color: '#f2ede4', fontSize: 12, padding: '6px 0',
+            fontFamily: 'DM Sans, sans-serif',
+          }}
+          onFocus={e => { (e.target.closest('div') as HTMLDivElement).style.borderBottomColor = '#c9a96e' }}
+          onBlur={e  => { (e.target.closest('div') as HTMLDivElement).style.borderBottomColor = '#1a1a1a' }}
+        />
+        {search && (
           <button
-            key={p}
-            onClick={() => setPillar(p)}
-            className="text-[8px] font-medium tracking-[.12em] uppercase px-3 py-2 transition-colors"
-            style={{
-              color:      pillar === p ? '#c9a96e' : '#666',
-              background: pillar === p ? 'rgba(201,169,110,.08)' : 'transparent',
-              border:     `1px solid ${pillar === p ? 'rgba(201,169,110,.35)' : '#1a1a1a'}`,
-              cursor: 'pointer',
-            }}
-          >
-            {p}
-          </button>
-        ))}
+            onClick={() => { setSearch(''); setPage(1) }}
+            style={{ color: '#555', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1, flexShrink: 0 }}
+            aria-label="Clear search"
+          >×</button>
+        )}
       </div>
 
       {/* Slide-over for row click (Feature 3) */}

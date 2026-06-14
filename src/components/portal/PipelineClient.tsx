@@ -130,6 +130,29 @@ function YTIcon({ size = 12, color = '#4cc9ff' }: { size?: number; color?: strin
   )
 }
 
+function IGSmall() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="ig-row-lg" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#ffd600"/>
+          <stop offset="50%" stopColor="#ff0069"/>
+          <stop offset="100%" stopColor="#7638fa"/>
+        </linearGradient>
+      </defs>
+      <path fill="url(#ig-row-lg)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+    </svg>
+  )
+}
+
+function TTSmall({ color = '#2dd4bf' }: { color?: string }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path fill={color} d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
+    </svg>
+  )
+}
+
 function YTLinkModal({
   item,
   onClose,
@@ -139,7 +162,12 @@ function YTLinkModal({
   onClose: () => void
   onLinked: (ytId: string) => void
 }) {
-  const [input, setInput]     = useState(item.ytId ?? '')
+  const { toast } = useToast()
+  const [input, setInput]     = useState(() => {
+    if (item.ytId) return item.ytId
+    if (item.ytVideoId) return `https://www.youtube.com/watch?v=${item.ytVideoId}`
+    return ''
+  })
   const [saving, setSaving]   = useState(false)
   const [errMsg, setErrMsg]   = useState('')
 
@@ -148,9 +176,10 @@ function YTLinkModal({
     if (!val) return
     setSaving(true)
     setErrMsg('')
-    const result = await linkYouTubeVideo(item.postId, val)
+    const result = await linkYouTubeVideo(item.postId, val, item.id)
     setSaving(false)
     if (result.error) { setErrMsg(result.error); return }
+    if (result.note) toast(result.note, 'info')
     onLinked(result.ytId!)
     onClose()
   }
@@ -202,9 +231,9 @@ function YTLinkModal({
           )}
         </div>
 
-        {item.ytId && (
+        {(item.ytId || item.ytVideoId) && (
           <p style={{ fontSize: 9, color: '#555', marginBottom: 16 }}>
-            Currently linked: <span style={{ color: '#4cc9ff', fontFamily: 'monospace' }}>{item.ytId}</span>
+            Currently linked: <span style={{ color: '#4cc9ff', fontFamily: 'monospace' }}>{item.ytId ?? item.ytVideoId}</span>
           </p>
         )}
 
@@ -238,10 +267,15 @@ function YTLinkModal({
 
 // ── Platform link button helper ────────────────────────────────────────────
 
-function isPlatLinked(videoUrl: string | null, plat: 'ig' | 'tt'): boolean {
-  if (!videoUrl) return false
-  if (plat === 'ig') return videoUrl.includes('instagram.com') || videoUrl.includes('/p/')
-  if (plat === 'tt') return videoUrl.includes('tiktok.com')
+function isPlatLinked(item: PipelineItem, plat: 'ig' | 'tt'): boolean {
+  if (plat === 'ig') {
+    if (item.igVideoId) return true
+    return !!(item.videoUrl && (item.videoUrl.includes('instagram.com') || item.videoUrl.includes('/p/')))
+  }
+  if (plat === 'tt') {
+    if (item.ttVideoId) return true
+    return !!(item.videoUrl && item.videoUrl.includes('tiktok.com'))
+  }
   return false
 }
 
@@ -259,10 +293,19 @@ function PlatformLinkModal({
   item: PipelineItem
   plat: 'ig' | 'tt'
   onClose: () => void
-  onLinked: (url: string) => void
+  onLinked: (url: string, videoId: string) => void
 }) {
   const cfg = PLAT_LINK_CFG[plat]
-  const [input, setInput]   = useState(isPlatLinked(item.videoUrl, plat) ? (item.videoUrl ?? '') : '')
+  const [input, setInput]   = useState(() => {
+    if (plat === 'ig') {
+      if (item.igVideoId) return `https://www.instagram.com/reel/${item.igVideoId}/`
+      if (item.videoUrl?.includes('instagram.com') || item.videoUrl?.includes('/p/')) return item.videoUrl ?? ''
+    }
+    if (plat === 'tt') {
+      if (item.videoUrl?.includes('tiktok.com')) return item.videoUrl ?? ''
+    }
+    return ''
+  })
   const [saving, setSaving] = useState(false)
   const [errMsg, setErrMsg] = useState('')
 
@@ -271,10 +314,16 @@ function PlatformLinkModal({
     if (!val) return
     setSaving(true)
     setErrMsg('')
-    const result = await updatePipelineItem(item.id, { video_url: val })
+    const videoId = parsePlatformVideoId(val, plat)
+    const update: Record<string, string> = { video_url: val }
+    if (videoId) {
+      if (plat === 'ig') update.ig_video_id = videoId
+      if (plat === 'tt') update.tt_video_id = videoId
+    }
+    const result = await updatePipelineItem(item.id, update)
     setSaving(false)
     if (result.error) { setErrMsg(result.error); return }
-    onLinked(val)
+    onLinked(val, videoId)
     onClose()
   }
 
@@ -325,9 +374,14 @@ function PlatformLinkModal({
           )}
         </div>
 
-        {isPlatLinked(item.videoUrl, plat) && (
+        {isPlatLinked(item, plat) && (
           <p style={{ fontSize: 9, color: '#555', marginBottom: 16, wordBreak: 'break-all' }}>
-            Currently linked: <span style={{ color: cfg.color }}>{item.videoUrl}</span>
+            {plat === 'ig' && item.igVideoId
+              ? <>Linked ID: <span style={{ color: cfg.color, fontFamily: 'monospace' }}>{item.igVideoId}</span></>
+              : plat === 'tt' && item.ttVideoId
+                ? <>Linked ID: <span style={{ color: cfg.color, fontFamily: 'monospace' }}>{item.ttVideoId}</span></>
+                : <>Currently linked: <span style={{ color: cfg.color }}>{item.videoUrl}</span></>
+            }
           </p>
         )}
 
@@ -1082,7 +1136,7 @@ function MarkAsPostedModal({
 }: {
   item: PipelineItem
   onClose: () => void
-  onPosted: (iso: string, videoId: string) => void
+  onPosted: (iso: string, videoIds: Record<string, string>) => void
 }) {
   const [dateVal, setDateVal] = useState<string>(() => {
     const d = new Date(); d.setSeconds(0, 0)
@@ -1146,7 +1200,7 @@ function MarkAsPostedModal({
 
     await updatePipelineItem(item.id, update)
     setSaving(false)
-    onPosted(iso, parsedIds[displayPlats[0]] ?? '')
+    onPosted(iso, parsedIds)
     onClose()
   }
 
@@ -1710,11 +1764,16 @@ export function PipelineClient({
   }
 
   function handleYtLinked(itemId: string, ytId: string) {
-    setItems(prev => prev.map(i => i.id === itemId ? { ...i, ytId } : i))
+    setItems(prev => prev.map(i => i.id === itemId ? { ...i, ytId, ytVideoId: ytId } : i))
   }
 
-  function handlePlatLinked(itemId: string, url: string) {
-    setItems(prev => prev.map(i => i.id === itemId ? { ...i, videoUrl: url } : i))
+  function handlePlatLinked(itemId: string, url: string, plat: 'ig' | 'tt', videoId: string) {
+    setItems(prev => prev.map(i => i.id === itemId ? {
+      ...i,
+      videoUrl: url,
+      ...(plat === 'ig' && videoId ? { igVideoId: videoId } : {}),
+      ...(plat === 'tt' && videoId ? { ttVideoId: videoId } : {}),
+    } : i))
   }
 
   function handleCreated(item: PipelineItem) {
@@ -1835,7 +1894,7 @@ export function PipelineClient({
           item={platLinkItem.item}
           plat={platLinkItem.plat}
           onClose={() => setPlatLinkItem(null)}
-          onLinked={url => handlePlatLinked(platLinkItem.item.id, url)}
+          onLinked={(url, videoId) => handlePlatLinked(platLinkItem.item.id, url, platLinkItem.plat, videoId)}
         />
       )}
 
@@ -1958,8 +2017,14 @@ export function PipelineClient({
         <MarkAsPostedModal
           item={markPostedItem}
           onClose={() => setMarkPostedItem(null)}
-          onPosted={(iso, _videoId) => {
-            handleUpdate(markPostedItem.id, { status: 'POSTED', postedAt: iso })
+          onPosted={(iso, videoIds) => {
+            handleUpdate(markPostedItem.id, {
+              status: 'POSTED',
+              postedAt: iso,
+              ...(videoIds.ig ? { igVideoId: videoIds.ig } : {}),
+              ...(videoIds.tt ? { ttVideoId: videoIds.tt } : {}),
+              ...(videoIds.yt ? { ytVideoId: videoIds.yt } : {}),
+            })
             toast(`Marked as Posted · ${markPostedItem.title}`, 'success')
           }}
         />
@@ -2388,8 +2453,9 @@ export function PipelineClient({
                 const isHovered = hoveredId === item.id
                 const pillarColor = pillarColors.get(item.pillar ?? '') ?? '#2a2a2a'
                 const primaryPlatColor = PLAT_CFG[item.platform[0]] ? PLAT_CFG[item.platform[0]].color : '#2a2a2a'
-                const igLinked = isPlatLinked(item.videoUrl, 'ig')
-                const ttLinked = isPlatLinked(item.videoUrl, 'tt')
+                const igLinked = isPlatLinked(item, 'ig')
+                const ttLinked = isPlatLinked(item, 'tt')
+                const ytLinked = !!item.ytId || !!item.ytVideoId
 
                 return (
                   <Fragment key={item.id}>
@@ -2512,18 +2578,21 @@ export function PipelineClient({
                           {item.platform.includes('ig') ? (
                             <button
                               onClick={e => { e.stopPropagation(); setPlatLinkItem({ item, plat: 'ig' }) }}
-                              title={igLinked ? `Linked: Instagram` : 'Link Instagram post'}
+                              title={igLinked ? 'Instagram linked — click to update' : 'Link Instagram post'}
                               style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                width: 22, height: 20, cursor: 'pointer', fontSize: 7, fontWeight: 700,
-                                letterSpacing: '.08em', textTransform: 'uppercase',
-                                background: igLinked ? 'rgba(201,169,110,.15)' : 'transparent',
-                                border: `1px solid ${igLinked ? 'rgba(201,169,110,.4)' : '#1e1e1e'}`,
-                                color: igLinked ? '#c9a96e' : '#2a2a2a',
-                                borderRadius: 3,
+                                width: 28, height: 28, cursor: 'pointer',
+                                background: igLinked ? 'rgba(201,169,110,.08)' : 'transparent',
+                                border: `1px solid ${igLinked ? 'rgba(201,169,110,.35)' : '#1a1a1a'}`,
+                                borderRadius: 4,
+                                opacity: igLinked ? 1 : 0.25,
+                                boxShadow: igLinked ? '0 0 8px rgba(201,169,110,.2)' : 'none',
+                                transition: 'opacity .15s, box-shadow .15s',
                               }}
-                            >IG</button>
-                          ) : <span style={{ width: 22, display: 'block' }} />}
+                            >
+                              <IGSmall />
+                            </button>
+                          ) : <span style={{ width: 28, display: 'block' }} />}
                         </td>
                       )}
 
@@ -2533,18 +2602,21 @@ export function PipelineClient({
                           {item.platform.includes('tt') ? (
                             <button
                               onClick={e => { e.stopPropagation(); setPlatLinkItem({ item, plat: 'tt' }) }}
-                              title={ttLinked ? `Linked: TikTok` : 'Link TikTok video'}
+                              title={ttLinked ? 'TikTok linked — click to update' : 'Link TikTok video'}
                               style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                width: 22, height: 20, cursor: 'pointer', fontSize: 7, fontWeight: 700,
-                                letterSpacing: '.08em', textTransform: 'uppercase',
-                                background: ttLinked ? 'rgba(45,212,191,.15)' : 'transparent',
-                                border: `1px solid ${ttLinked ? 'rgba(45,212,191,.4)' : '#1e1e1e'}`,
-                                color: ttLinked ? '#2dd4bf' : '#2a2a2a',
-                                borderRadius: 3,
+                                width: 28, height: 28, cursor: 'pointer',
+                                background: ttLinked ? 'rgba(45,212,191,.08)' : 'transparent',
+                                border: `1px solid ${ttLinked ? 'rgba(45,212,191,.35)' : '#1a1a1a'}`,
+                                borderRadius: 4,
+                                opacity: ttLinked ? 1 : 0.25,
+                                boxShadow: ttLinked ? '0 0 8px rgba(45,212,191,.2)' : 'none',
+                                transition: 'opacity .15s, box-shadow .15s',
                               }}
-                            >TT</button>
-                          ) : <span style={{ width: 22, display: 'block' }} />}
+                            >
+                              <TTSmall color={ttLinked ? '#2dd4bf' : '#888'} />
+                            </button>
+                          ) : <span style={{ width: 28, display: 'block' }} />}
                         </td>
                       )}
 
@@ -2554,18 +2626,21 @@ export function PipelineClient({
                           {item.platform.includes('yt') || item.ytType != null ? (
                             <button
                               onClick={e => { e.stopPropagation(); setYtLinkItem(item) }}
-                              title={item.ytId ? `Linked: ${item.ytId}` : 'Link YouTube video'}
+                              title={ytLinked ? `Linked: ${item.ytId ?? item.ytVideoId}` : 'Link YouTube video'}
                               style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                width: 22, height: 20, cursor: 'pointer',
-                                background: item.ytId ? 'rgba(76,201,255,.1)' : 'transparent',
-                                border: `1px solid ${item.ytId ? 'rgba(76,201,255,.4)' : '#1e1e1e'}`,
-                                borderRadius: 3,
+                                width: 28, height: 28, cursor: 'pointer',
+                                background: ytLinked ? 'rgba(76,201,255,.08)' : 'transparent',
+                                border: `1px solid ${ytLinked ? 'rgba(76,201,255,.35)' : '#1a1a1a'}`,
+                                borderRadius: 4,
+                                opacity: ytLinked ? 1 : 0.25,
+                                boxShadow: ytLinked ? '0 0 8px rgba(76,201,255,.2)' : 'none',
+                                transition: 'opacity .15s, box-shadow .15s',
                               }}
                             >
-                              <YTIcon size={10} color={item.ytId ? '#4cc9ff' : '#2a2a2a'} />
+                              <YTIcon size={12} color={ytLinked ? '#4cc9ff' : '#888'} />
                             </button>
-                          ) : <span style={{ width: 22, display: 'block' }} />}
+                          ) : <span style={{ width: 28, display: 'block' }} />}
                         </td>
                       )}
 
