@@ -282,25 +282,32 @@ async function updateVideoMetadata(
   postUUID: string,
   video: YouTubePublicVideo,
 ): Promise<void> {
-  const update: Record<string, string> = {}
-  if (video.title) update.title = video.title
-  if (video.thumbnailUrl) update.thumbnail_url = video.thumbnailUrl
+  // pipeline_items.title is the source of truth — never overwrite it from the API
+  const pipelineUpdate: Record<string, string> = {}
+  if (video.thumbnailUrl) pipelineUpdate.thumbnail_url = video.thumbnailUrl
 
-  if (Object.keys(update).length === 0) return
+  if (Object.keys(pipelineUpdate).length > 0) {
+    const { error: pipeErr } = await admin
+      .from('pipeline_items')
+      .update(pipelineUpdate)
+      .eq('id', item.id)
+      .eq('client_id', item.client_id)
+    if (pipeErr) console.error('[poll] pipeline metadata update failed:', pipeErr.message)
+  }
 
-  const { error: pipeErr } = await admin
-    .from('pipeline_items')
-    .update(update)
-    .eq('id', item.id)
-    .eq('client_id', item.client_id)
-  if (pipeErr) console.error('[poll] pipeline metadata update failed:', pipeErr.message)
+  // posts.title stores API metadata only; safe to write YT caption here
+  const postUpdate: Record<string, string> = {}
+  if (video.title) postUpdate.title = video.title
+  if (video.thumbnailUrl) postUpdate.thumbnail_url = video.thumbnailUrl
 
-  const { error: postErr } = await admin
-    .from('posts')
-    .update(update)
-    .eq('id', postUUID)
-    .eq('client_id', item.client_id)
-  if (postErr) console.error('[poll] posts metadata update failed:', postErr.message)
+  if (Object.keys(postUpdate).length > 0) {
+    const { error: postErr } = await admin
+      .from('posts')
+      .update(postUpdate)
+      .eq('id', postUUID)
+      .eq('client_id', item.client_id)
+    if (postErr) console.error('[poll] posts metadata update failed:', postErr.message)
+  }
 }
 
 // ── Poll a single pipeline item ───────────────────────────────────────────

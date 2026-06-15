@@ -636,16 +636,22 @@ export async function linkYouTubeVideo(
   if (!ytId) return { error: 'Invalid YouTube URL or video ID' }
 
   const video = await fetchYouTubePublicVideo(ytId)
-  const metadataUpdate: Record<string, string> = {}
-  if (video?.title) metadataUpdate.title = video.title
-  if (video?.thumbnailUrl) metadataUpdate.thumbnail_url = video.thumbnailUrl
+
+  // pipeline_items.title is the source of truth — never overwrite it from the API
+  const pipelineUpdate: Record<string, string> = {}
+  if (video?.thumbnailUrl) pipelineUpdate.thumbnail_url = video.thumbnailUrl
+
+  // posts.title stores API metadata only; safe to write YT caption here
+  const postMetadataUpdate: Record<string, string> = {}
+  if (video?.title) postMetadataUpdate.title = video.title
+  if (video?.thumbnailUrl) postMetadataUpdate.thumbnail_url = video.thumbnailUrl
 
   // Always save yt_video_id to pipeline_items when we have the item ID
   // This is the durable save path — survives reload regardless of analytics rows
   if (pipelineItemId) {
     await c.admin
       .from('pipeline_items')
-      .update({ yt_video_id: ytId, ...metadataUpdate })
+      .update({ yt_video_id: ytId, ...pipelineUpdate })
       .eq('id', pipelineItemId)
       .eq('client_id', c.cid)
   }
@@ -660,10 +666,10 @@ export async function linkYouTubeVideo(
 
   if (postRow) {
     const postUuid = (postRow as unknown as { id: string }).id
-    if (Object.keys(metadataUpdate).length > 0) {
+    if (Object.keys(postMetadataUpdate).length > 0) {
       await c.admin
         .from('posts')
-        .update(metadataUpdate)
+        .update(postMetadataUpdate)
         .eq('id', postUuid)
         .eq('client_id', c.cid)
     }
@@ -719,25 +725,31 @@ export async function ensureYTPostsRow(
   console.log(`[ensureYTPostsRow] post_id=${item.post_id} yt_video_id=${item.yt_video_id}`)
 
   const video = await fetchYouTubePublicVideo(item.yt_video_id)
-  const metadataUpdate: Record<string, string> = {}
-  if (video?.title) metadataUpdate.title = video.title
-  if (video?.thumbnailUrl) metadataUpdate.thumbnail_url = video.thumbnailUrl
 
-  if (Object.keys(metadataUpdate).length > 0) {
+  // pipeline_items.title is the source of truth — never overwrite it from the API
+  const pipelineUpdate: Record<string, string> = {}
+  if (video?.thumbnailUrl) pipelineUpdate.thumbnail_url = video.thumbnailUrl
+
+  if (Object.keys(pipelineUpdate).length > 0) {
     await c.admin
       .from('pipeline_items')
-      .update(metadataUpdate)
+      .update(pipelineUpdate)
       .eq('id', pipelineItemId)
       .eq('client_id', c.cid)
   }
+
+  // posts.title stores API metadata only; safe to write YT caption here
+  const postMetadataUpdate: Record<string, string> = {}
+  if (video?.title) postMetadataUpdate.title = video.title
+  if (video?.thumbnailUrl) postMetadataUpdate.thumbnail_url = video.thumbnailUrl
 
   // Strategy 1: exact post_id match
   const { data: exact } = await c.admin.from('posts').select('id, post_id')
     .eq('post_id', item.post_id).eq('client_id', c.cid).maybeSingle()
   if (exact) {
     console.log(`[ensureYTPostsRow] found existing posts row via exact match: ${(exact as any).post_id}`)
-    if (Object.keys(metadataUpdate).length > 0) {
-      await c.admin.from('posts').update(metadataUpdate).eq('id', (exact as any).id)
+    if (Object.keys(postMetadataUpdate).length > 0) {
+      await c.admin.from('posts').update(postMetadataUpdate).eq('id', (exact as any).id)
     }
     return { postId: (exact as any).post_id, created: false }
   }
@@ -749,8 +761,8 @@ export async function ensureYTPostsRow(
         .eq('post_id', part).eq('client_id', c.cid).maybeSingle()
       if (data) {
         console.log(`[ensureYTPostsRow] found via pipe-split: ${(data as any).post_id}`)
-        if (Object.keys(metadataUpdate).length > 0) {
-          await c.admin.from('posts').update(metadataUpdate).eq('id', (data as any).id)
+        if (Object.keys(postMetadataUpdate).length > 0) {
+          await c.admin.from('posts').update(postMetadataUpdate).eq('id', (data as any).id)
         }
         return { postId: (data as any).post_id, created: false }
       }
@@ -762,8 +774,8 @@ export async function ensureYTPostsRow(
     .eq('yt_id', item.yt_video_id).eq('client_id', c.cid).maybeSingle()
   if (byYt) {
     console.log(`[ensureYTPostsRow] found via yt_id: ${(byYt as any).post_id}`)
-    if (Object.keys(metadataUpdate).length > 0) {
-      await c.admin.from('posts').update(metadataUpdate).eq('id', (byYt as any).id)
+    if (Object.keys(postMetadataUpdate).length > 0) {
+      await c.admin.from('posts').update(postMetadataUpdate).eq('id', (byYt as any).id)
     }
     return { postId: (byYt as any).post_id, created: false }
   }
@@ -806,7 +818,7 @@ export async function ensureYTPostsRow(
   const { error: insErr } = await c.admin.from('posts').insert({
     client_id: c.cid,
     post_id:   newPostId,
-    title:     video?.title ?? item.title ?? '(YouTube video)',
+    title:     item.title ?? '(YouTube video)',
     platform,
     date:      item.posted_at ? (item.posted_at as string).slice(0, 10) : null,
     yt_id:     item.yt_video_id,

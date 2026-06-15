@@ -67,7 +67,7 @@ export default async function AnalyticsPage() {
 
   const { data: rawPipelineItems, error: pipelineError } = await supabase
     .from('pipeline_items')
-    .select('post_id, yt_video_id, ig_video_id, tt_video_id')
+    .select('post_id, title, yt_video_id, ig_video_id, tt_video_id')
     .eq('client_id', clientId ?? fallback)
 
   if (pipelineError) {
@@ -76,10 +76,14 @@ export default async function AnalyticsPage() {
 
   const pipelineByVideoId = new Map<string, string>()
   const pipelineByPostSegment = new Map<string, string>()
+  const pipelineTitleByPostId = new Map<string, string>()
 
   for (const item of rawPipelineItems ?? []) {
     const pipelinePostId = (item as any).post_id as string | null
+    const pipelineTitle  = (item as any).title    as string | null
     if (!pipelinePostId) continue
+
+    if (pipelineTitle) pipelineTitleByPostId.set(pipelinePostId, pipelineTitle)
 
     const ytVideoId = (item as any).yt_video_id as string | null
     const igVideoId = (item as any).ig_video_id as string | null
@@ -123,11 +127,15 @@ export default async function AnalyticsPage() {
       }
     }
 
+    const resolvedPipelinePostId = pipelineByVideoId.get((p as any).yt_id ?? '')
+      ?? pipelineByPostSegment.get(p.post_id)
+      ?? null
+
     return {
       uuid:     p.id,
       postId:   p.post_id,
-      pipelinePostId: pipelineByVideoId.get((p as any).yt_id ?? '') ?? pipelineByPostSegment.get(p.post_id) ?? null,
-      title:    p.title,
+      pipelinePostId: resolvedPipelinePostId,
+      title:    (resolvedPipelinePostId ? pipelineTitleByPostId.get(resolvedPipelinePostId) : null) ?? p.title,
       platform: p.platform ?? [],
       pillar:   p.pillar   ?? '—',
       hook:     (p as any).hook   ?? '—',
