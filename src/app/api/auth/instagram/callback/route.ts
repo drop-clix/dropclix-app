@@ -1,6 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+type PageAccount = {
+  id?: string
+  name?: string
+  access_token?: string
+}
+
+type InstagramAccount = {
+  id?: string
+  username?: string
+  followers_count?: number
+}
+
+function sanitizeForLog(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeForLog)
+  if (!value || typeof value !== 'object') return value
+
+  const redacted = new Set([
+    'access_token',
+    'refresh_token',
+    'token',
+    'client_secret',
+    'fb_exchange_token',
+  ])
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, val]) => [
+      key,
+      redacted.has(key.toLowerCase()) ? '[REDACTED]' : sanitizeForLog(val),
+    ]),
+  )
+}
+
+async function graphGet<T extends object>(
+  label: string,
+  path: string,
+  params: Record<string, string>,
+  accessToken: string,
+): Promise<T | null> {
+  const url = new URL(`https://graph.facebook.com/v19.0/${path}`)
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
+  url.searchParams.set('access_token', accessToken)
+
+  const res = await fetch(url.toString())
+  const text = await res.text()
+  let body: unknown = text
+  try {
+    body = text ? JSON.parse(text) : null
+  } catch {
+    body = text
+  }
+
+  console.log(`[ig-oauth] ${label} response:`, {
+    status: res.status,
+    ok: res.ok,
+    body: sanitizeForLog(body),
+  })
+
+  if (!res.ok) return null
+  return body as T
+}
+
 export async function GET(req: NextRequest) {
   const code     = req.nextUrl.searchParams.get('code')
   const clientId = req.nextUrl.searchParams.get('state')
@@ -58,40 +119,105 @@ export async function GET(req: NextRequest) {
 
   const expiry = new Date(Date.now() + expiresIn * 1000).toISOString()
 
-  // Get the Instagram Business Account ID via Facebook Pages
-  // With Facebook Business Login the token's /me is a Facebook user, not IG account.
-  // We must traverse: FB User → Pages → instagram_business_account
+  // Get the Instagram account ID via Facebook Graph.
+  // Preferred path: FB user token → pages → page access token → page instagram_business_account.
+  // Fallback path: FB user token → direct /me instagram_business_account.
   let igAccountId: string | null   = null
   let username: string | null      = null
   let followersCount: number | null = null
   try {
-    const meRes = await fetch(
-      `https://graph.facebook.com/v19.0/me?fields=id,name,accounts{instagram_business_account{id,username,followers_count}}&access_token=${accessToken}`,
+    const meData = await graphGet<{ id?: string; name?: string }>(
+      'user /me',
+      'me',
+      { fields: 'id,name' },
+      accessToken,
     )
-    if (meRes.ok) {
-      const meData = await meRes.json() as {
-        id: string
-        accounts?: { data: Array<{ id: string; instagram_business_account?: { id: string; username?: string; followers_count?: number } }> }
+
+    const accountsData = await graphGet<{ data?: PageAccount[] }>(
+      'user /me/accounts',
+      'me/accounts',
+      { fields: 'id,name,access_token' },
+      accessToken,
+    )
+
+    const pages = accountsData?.data ?? []
+    console.log(`[ig-oauth] pages returned: ${pages.length}`)
+
+    for (const page of pages) {
+      if (!page.id || !page.access_token) {
+        console.warn('[ig-oauth] skipping page without id/access token:', sanitizeForLog(page))
+        continue
       }
-      const pages = meData.accounts?.data ?? []
-      for (const page of pages) {
-        if (page.instagram_business_account) {
-          igAccountId    = page.instagram_business_account.id        ?? null
-          username       = page.instagram_business_account.username   ?? null
-          followersCount = page.instagram_business_account.followers_count ?? null
-          break
-        }
+
+      const pageData = await graphGet<{
+        id?: string
+        name?: string
+        instagram_business_account?: InstagramAccount
+      }>(
+        `page ${page.id} instagram_business_account`,
+        page.id,
+        { fields: 'instagram_business_account{id,username,followers_count},name' },
+        page.access_token,
+      )
+
+      const account = pageData?.instagram_business_account
+      if (account?.id) {
+        igAccountId    = account.id
+        username       = account.username ?? pageData?.name ?? meData?.name ?? null
+        followersCount = account.followers_count ?? null
+        console.log(`[ig-oauth] found IG account via page ${page.id}:`, sanitizeForLog({
+          igAccountId,
+          username,
+          followersCount,
+        }))
+        break
       }
-      if (!igAccountId) {
-        console.warn('[ig-oauth] No Instagram Business Account found on any Facebook Page for this user')
-      } else {
-        console.log(`[ig-oauth] found IG account: @${username} (${igAccountId}), followers=${followersCount}`)
+    }
+
+    if (!igAccountId) {
+      console.warn('[ig-oauth] No Instagram Business Account found via Facebook Pages; trying direct /me fallback')
+      const directData = await graphGet<{
+        id?: string
+        name?: string
+        instagram_business_account?: InstagramAccount
+      }>(
+        'direct /me instagram_business_account fallback',
+        'me',
+        { fields: 'id,name,instagram_business_account' },
+        accessToken,
+      )
+
+      const directAccount = directData?.instagram_business_account
+      if (directAccount?.id) {
+        igAccountId = directAccount.id
+        username = directAccount.username ?? directData?.name ?? meData?.name ?? null
+
+        const details = await graphGet<InstagramAccount>(
+          `direct IG account ${igAccountId} details`,
+          igAccountId,
+          { fields: 'username,followers_count' },
+          accessToken,
+        )
+        username = details?.username ?? username
+        followersCount = details?.followers_count ?? directAccount.followers_count ?? null
+
+        console.log('[ig-oauth] found IG account via direct fallback:', sanitizeForLog({
+          igAccountId,
+          username,
+          followersCount,
+        }))
       }
-    } else {
-      console.warn('[ig-oauth] /me pages fetch failed:', meRes.status, await meRes.text())
+    }
+
+    if (!igAccountId) {
+      console.warn('[ig-oauth] No Instagram Business Account found after page-token lookup and direct fallback')
     }
   } catch (e) {
     console.warn('[ig-oauth] profile fetch error:', e)
+  }
+
+  if (!igAccountId) {
+    return NextResponse.redirect(`${adminBase}?ig_error=no_instagram_account`)
   }
 
   const admin = createAdminClient()
