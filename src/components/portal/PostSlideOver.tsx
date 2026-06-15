@@ -15,6 +15,8 @@ export type SlideOverPost = {
   pillar?: string | null
   hook?: string | null
   decision?: string | null
+  thumbnailUrl?: string | null
+  live: SlideOverWindow
   w24: SlideOverWindow
   w3:  SlideOverWindow
   w7:  SlideOverWindow
@@ -24,7 +26,7 @@ export type SlideOverPost = {
 const EMPTY_WIN: SlideOverWindow = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, followers: 0, watch_pct: 0 }
 
 function makeEmpty(): SlideOverPost {
-  return { postId: '', title: '', platform: [], date: '', w24: EMPTY_WIN, w3: EMPTY_WIN, w7: EMPTY_WIN, eom: EMPTY_WIN }
+  return { postId: '', title: '', platform: [], date: '', live: EMPTY_WIN, w24: EMPTY_WIN, w3: EMPTY_WIN, w7: EMPTY_WIN, eom: EMPTY_WIN }
 }
 makeEmpty // keep reference
 
@@ -54,6 +56,7 @@ const DEC_CFG: Record<string, { color: string; bg: string; border: string }> = {
 }
 
 const WINS = [
+  { key: 'live' as const, label: 'LIVE' },
   { key: 'w24' as const, label: 'W24' },
   { key: 'w3'  as const, label: 'W3'  },
   { key: 'w7'  as const, label: 'W7'  },
@@ -148,6 +151,13 @@ export function PostSlideOver({
 
         {/* Body */}
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {post.thumbnailUrl && (
+            <img
+              src={post.thumbnailUrl}
+              alt=""
+              style={{ width: '100%', aspectRatio: '16 / 9', objectFit: 'cover', border: '1px solid #171717', borderRadius: 5, background: '#0a0a0a' }}
+            />
+          )}
 
           {/* ER% + Decision badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -172,7 +182,7 @@ export function PostSlideOver({
             )}
           </div>
 
-          {/* 4-window 2×2 grid */}
+          {/* Live + locked window grid */}
           <div>
             <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 8 }}>
               Metric Windows

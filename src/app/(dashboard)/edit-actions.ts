@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cookies } from 'next/headers'
 import { erToDecision } from '@/lib/decision'
+import { fetchYouTubePublicVideo } from '@/lib/youtube-public'
 
 const IMPERSONATE = 'dropclix_impersonate_client_id'
 
@@ -82,7 +83,7 @@ const VALID_STATUSES = new Set([
 const VALID_PIPE = new Set([
   'status','priority','platform','pillar','week','script_content','title','notes',
   'posted_at','scheduled_date','video_url','drive_file_id','approval_comment',
-  'ig_video_id','tt_video_id','yt_video_id',
+  'ig_video_id','tt_video_id','yt_video_id','thumbnail_url',
 ])
 // Fields that need to be mirrored in the matching calendar event
 const PIPE_SYNC_FIELDS = new Set(['title', 'platform', 'posted_at', 'scheduled_date'])
@@ -634,12 +635,17 @@ export async function linkYouTubeVideo(
   const ytId = extractYouTubeId(ytInput)
   if (!ytId) return { error: 'Invalid YouTube URL or video ID' }
 
+  const video = await fetchYouTubePublicVideo(ytId)
+  const metadataUpdate: Record<string, string> = {}
+  if (video?.title) metadataUpdate.title = video.title
+  if (video?.thumbnailUrl) metadataUpdate.thumbnail_url = video.thumbnailUrl
+
   // Always save yt_video_id to pipeline_items when we have the item ID
   // This is the durable save path — survives reload regardless of analytics rows
   if (pipelineItemId) {
     await c.admin
       .from('pipeline_items')
-      .update({ yt_video_id: ytId })
+      .update({ yt_video_id: ytId, ...metadataUpdate })
       .eq('id', pipelineItemId)
       .eq('client_id', c.cid)
   }
@@ -654,6 +660,13 @@ export async function linkYouTubeVideo(
 
   if (postRow) {
     const postUuid = (postRow as unknown as { id: string }).id
+    if (Object.keys(metadataUpdate).length > 0) {
+      await c.admin
+        .from('posts')
+        .update(metadataUpdate)
+        .eq('id', postUuid)
+        .eq('client_id', c.cid)
+    }
     await c.admin
       .from('post_analytics')
       .update({ yt_id: ytId, yt_video_id: ytId })
@@ -693,24 +706,52 @@ export async function ensureYTPostsRow(
   const item = raw as any
   if (!item.yt_video_id) return {}
 
+  const video = await fetchYouTubePublicVideo(item.yt_video_id)
+  const metadataUpdate: Record<string, string> = {}
+  if (video?.title) metadataUpdate.title = video.title
+  if (video?.thumbnailUrl) metadataUpdate.thumbnail_url = video.thumbnailUrl
+
+  if (Object.keys(metadataUpdate).length > 0) {
+    await c.admin
+      .from('pipeline_items')
+      .update(metadataUpdate)
+      .eq('id', pipelineItemId)
+      .eq('client_id', c.cid)
+  }
+
   // Strategy 1: exact post_id match
   const { data: exact } = await c.admin.from('posts').select('id, post_id')
     .eq('post_id', item.post_id).eq('client_id', c.cid).maybeSingle()
-  if (exact) return { postId: (exact as any).post_id, created: false }
+  if (exact) {
+    if (Object.keys(metadataUpdate).length > 0) {
+      await c.admin.from('posts').update(metadataUpdate).eq('id', (exact as any).id)
+    }
+    return { postId: (exact as any).post_id, created: false }
+  }
 
   // Strategy 2: pipe-split
   if (typeof item.post_id === 'string' && item.post_id.includes('|')) {
     for (const part of item.post_id.split('|').map((s: string) => s.trim()).filter(Boolean)) {
       const { data } = await c.admin.from('posts').select('id, post_id')
         .eq('post_id', part).eq('client_id', c.cid).maybeSingle()
-      if (data) return { postId: (data as any).post_id, created: false }
+      if (data) {
+        if (Object.keys(metadataUpdate).length > 0) {
+          await c.admin.from('posts').update(metadataUpdate).eq('id', (data as any).id)
+        }
+        return { postId: (data as any).post_id, created: false }
+      }
     }
   }
 
   // Strategy 3: yt_id match
   const { data: byYt } = await c.admin.from('posts').select('id, post_id')
     .eq('yt_id', item.yt_video_id).eq('client_id', c.cid).maybeSingle()
-  if (byYt) return { postId: (byYt as any).post_id, created: false }
+  if (byYt) {
+    if (Object.keys(metadataUpdate).length > 0) {
+      await c.admin.from('posts').update(metadataUpdate).eq('id', (byYt as any).id)
+    }
+    return { postId: (byYt as any).post_id, created: false }
+  }
 
   // No posts row — create stub with auto-incremented #ytNNNN
   const { data: lastYt } = await c.admin.from('posts').select('post_id')
@@ -730,10 +771,11 @@ export async function ensureYTPostsRow(
   const { error: insErr } = await c.admin.from('posts').insert({
     client_id: c.cid,
     post_id:   newPostId,
-    title:     item.title ?? '(YouTube video)',
+    title:     video?.title ?? item.title ?? '(YouTube video)',
     platform,
     date:      item.posted_at ? (item.posted_at as string).slice(0, 10) : null,
     yt_id:     item.yt_video_id,
+    thumbnail_url: video?.thumbnailUrl ?? null,
   })
   if (insErr) return { error: insErr.message }
 

@@ -4,7 +4,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useCallback } from 'react'
 
 export type PlatformFilter = 'all' | 'ig' | 'tt' | 'yt' | 'lf'
-export type WindowFilter   = 'w24' | 'w3' | 'w7' | 'eom'
+export type WindowFilter   = 'live' | 'w24' | 'w3' | 'w7' | 'eom'
 export type ScopeFilter    =
   | 'all' | 'week' | 'month' | 'custom'
   | 'jan' | 'feb' | 'mar' | 'apr' | 'may' | 'jun'

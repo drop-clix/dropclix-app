@@ -1,38 +1,35 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchYouTubePublicVideo, type YouTubePublicVideo } from '@/lib/youtube-public'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
+type MetricWindow = 'live' | 'w24' | 'w3' | 'w7' | 'eom'
+type PollStats = {
+  views: number
+  likes: number
+  comments: number
+  shares?: number | null
+  saves?: number | null
+  followers?: number | null
+  watch_pct?: number | null
+  impressions?: number | null
+  ctr?: number | null
+  yt_id?: string | null
+  yt_video_id?: string | null
+}
 
 // ── YouTube Data API v3 (public stats — YOUTUBE_API_KEY, no OAuth) ────────
 
 export async function fetchYTPublicStats(videoId: string): Promise<{
   views: number; likes: number; comments: number
 } | null> {
-  const key = process.env.YOUTUBE_API_KEY
-  if (!key) {
-    console.warn('[poll] YOUTUBE_API_KEY not set — cannot poll')
-    return null
-  }
-
-  const url = `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoId}&key=${key}`
   console.log(`[poll] → YT Data API: ${videoId}`)
-  const res = await fetch(url, { next: { revalidate: 0 } })
-  if (!res.ok) {
-    console.error(`[poll] YT Data API HTTP ${res.status} for ${videoId}:`, await res.text())
-    return null
-  }
-
-  const json = await res.json()
-  const stats = json.items?.[0]?.statistics
-  if (!stats) {
+  const video = await fetchYouTubePublicVideo(videoId)
+  if (!video) {
     console.log(`[poll] YT Data API: no stats for ${videoId} (private, deleted, or invalid ID)`)
     return null
   }
 
-  const result = {
-    views:    parseInt(stats.viewCount    ?? '0', 10),
-    likes:    parseInt(stats.likeCount    ?? '0', 10),
-    comments: parseInt(stats.commentCount ?? '0', 10),
-  }
+  const result = video.stats
   console.log(`[poll] YT stats ${videoId}: views=${result.views} likes=${result.likes} comments=${result.comments}`)
   return result
 }
@@ -44,8 +41,8 @@ export async function upsertPolledStats(
   postUUID: string,
   clientId: string,
   platform: string,
-  metricWindow: string,
-  stats: { views: number; likes: number; comments: number },
+  metricWindow: MetricWindow,
+  stats: PollStats,
 ): Promise<boolean> {
   const { data: existing, error: existingError } = await admin
     .from('post_analytics')
@@ -72,7 +69,7 @@ export async function upsertPolledStats(
     views: stats.views,
   })
 
-  const { error } = await admin.from('post_analytics').upsert({
+  const payload: Record<string, unknown> = {
     post_id:          postUUID,
     client_id:        clientId,
     platform,
@@ -84,7 +81,18 @@ export async function upsertPolledStats(
     prev_recorded_at: prevRecordedAt,
     last_polled_at:   now,
     recorded_at:      now,
-  }, { onConflict: 'post_id,platform,metric_window' })
+  }
+
+  if (stats.shares !== undefined) payload.shares = stats.shares
+  if (stats.saves !== undefined) payload.saves = stats.saves
+  if (stats.followers !== undefined) payload.followers = stats.followers
+  if (stats.watch_pct !== undefined) payload.watch_pct = stats.watch_pct
+  if (stats.impressions !== undefined) payload.impressions = stats.impressions
+  if (stats.ctr !== undefined) payload.ctr = stats.ctr
+  if (stats.yt_id !== undefined) payload.yt_id = stats.yt_id
+  if (stats.yt_video_id !== undefined) payload.yt_video_id = stats.yt_video_id
+
+  const { error } = await admin.from('post_analytics').upsert(payload, { onConflict: 'post_id,platform,metric_window' })
 
   if (error) {
     console.error('[poll] upsert failed:', error.message, error.code, error.details)
@@ -135,6 +143,14 @@ function endOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59)
 }
 
+function windowTypeToMetricWindow(windowType: string): MetricWindow | null {
+  if (windowType === '24hr') return 'w24'
+  if (windowType === '3day') return 'w3'
+  if (windowType === '7day') return 'w7'
+  if (windowType === 'eom') return 'eom'
+  return null
+}
+
 // ── Execute due snapshot jobs ─────────────────────────────────────────────
 
 export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
@@ -151,26 +167,49 @@ export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
 
   let captured = 0
   for (const job of jobs as any[]) {
-    const { data: rows } = await admin
+    const metricWindow = windowTypeToMetricWindow(job.window_type)
+    if (!metricWindow) continue
+
+    const { data: existingLocked } = await admin
       .from('post_analytics')
-      .select('views, likes, comments, shares, saves, metric_window')
+      .select('id')
       .eq('post_id', job.post_id)
       .eq('client_id', job.client_id)
+      .eq('metric_window', metricWindow)
+      .limit(1)
 
-    if (!rows || rows.length === 0) continue
+    if (existingLocked && existingLocked.length > 0) {
+      await admin.from('snapshot_jobs').update({ captured: true }).eq('id', job.id)
+      continue
+    }
 
-    const priority = ['eom', 'w7', 'w3', 'w24']
-    const best = (rows as any[]).sort((a: any, b: any) =>
-      priority.indexOf(a.metric_window) - priority.indexOf(b.metric_window)
-    )[0]
-    if (!best) continue
+    const { data: live } = await admin
+      .from('post_analytics')
+      .select('views, likes, comments, shares, saves, followers, watch_pct, impressions, ctr, yt_id, yt_video_id')
+      .eq('post_id', job.post_id)
+      .eq('client_id', job.client_id)
+      .eq('metric_window', 'live')
+      .maybeSingle()
 
-    const views    = best.views    ?? 0
-    const likes    = best.likes    ?? 0
-    const comments = best.comments ?? 0
-    const shares   = best.shares   ?? 0
-    const saves    = best.saves    ?? 0
-    const erPct = views > 0 ? ((likes + comments + shares + saves) / views) * 100 : 0
+    if (!live) continue
+
+    const views     = (live as any).views     ?? 0
+    const likes     = (live as any).likes     ?? 0
+    const comments  = (live as any).comments  ?? 0
+    const shares    = (live as any).shares    ?? 0
+    const saves     = (live as any).saves     ?? 0
+    const followers = (live as any).followers ?? 0
+    const erPct = views > 0 ? ((likes + comments + shares + saves + followers) / views) * 100 : 0
+
+    await upsertPolledStats(admin, job.post_id, job.client_id, 'yt', metricWindow, {
+      views, likes, comments, shares, saves,
+      followers,
+      watch_pct: (live as any).watch_pct ?? 0,
+      impressions: (live as any).impressions ?? 0,
+      ctr: (live as any).ctr ?? 0,
+      yt_id: (live as any).yt_id ?? null,
+      yt_video_id: (live as any).yt_video_id ?? null,
+    })
 
     await admin.from('analytics_snapshots').upsert({
       post_id:          job.post_id,
@@ -237,6 +276,33 @@ async function resolvePostsUUID(
   return null
 }
 
+async function updateVideoMetadata(
+  admin: SupabaseAdmin,
+  item: PollablePipelineItem,
+  postUUID: string,
+  video: YouTubePublicVideo,
+): Promise<void> {
+  const update: Record<string, string> = {}
+  if (video.title) update.title = video.title
+  if (video.thumbnailUrl) update.thumbnail_url = video.thumbnailUrl
+
+  if (Object.keys(update).length === 0) return
+
+  const { error: pipeErr } = await admin
+    .from('pipeline_items')
+    .update(update)
+    .eq('id', item.id)
+    .eq('client_id', item.client_id)
+  if (pipeErr) console.error('[poll] pipeline metadata update failed:', pipeErr.message)
+
+  const { error: postErr } = await admin
+    .from('posts')
+    .update(update)
+    .eq('id', postUUID)
+    .eq('client_id', item.client_id)
+  if (postErr) console.error('[poll] posts metadata update failed:', postErr.message)
+}
+
 // ── Poll a single pipeline item ───────────────────────────────────────────
 //
 // Source of truth: yt_video_id on pipeline_items (set by admin via Mark as Posted modal or YT link modal).
@@ -253,11 +319,12 @@ export async function pollPipelineItem(
 
   console.log(`[poll] polling ${item.post_id} (pipeline ${item.id}) yt_video_id=${item.yt_video_id}`)
 
-  const stats = await fetchYTPublicStats(item.yt_video_id)
-  if (!stats) {
+  const video = await fetchYouTubePublicVideo(item.yt_video_id)
+  if (!video) {
     console.log(`[poll] skip ${item.post_id}: YT API returned no data`)
     return { polled: false, reason: 'yt_api_null' }
   }
+  const stats = video.stats
 
   // Resolve posts UUID for post_analytics FK (3-strategy)
   const postUUID = await resolvePostsUUID(admin, item)
@@ -270,9 +337,15 @@ export async function pollPipelineItem(
     return { polled: false, reason: 'no_posts_row' }
   }
 
-  console.log(`[poll] ${item.post_id} → posts UUID=${postUUID} — writing to post_analytics eom`)
+  await updateVideoMetadata(admin, item, postUUID, video)
 
-  const didUpsert = await upsertPolledStats(admin, postUUID, item.client_id, 'yt', 'eom', stats)
+  console.log(`[poll] ${item.post_id} → posts UUID=${postUUID} — writing to post_analytics live`)
+
+  const didUpsert = await upsertPolledStats(admin, postUUID, item.client_id, 'yt', 'live', {
+    ...stats,
+    yt_id: item.yt_video_id,
+    yt_video_id: item.yt_video_id,
+  })
   if (!didUpsert) {
     return { polled: false, reason: 'upsert_failed' }
   }

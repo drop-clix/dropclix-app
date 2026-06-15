@@ -63,11 +63,12 @@ const PILLARS = ['All','Sales Tips','Self Development','Service/Love','Volume/50
 
 type SortKey = 'date' | 'views' | 'likes' | 'comments' | 'saves' | 'shares' | 'er' | 'watch_pct'
 type SortDir = 'asc' | 'desc'
-type WindowKey = 'w24' | 'w3' | 'w7' | 'eom'
+type WindowKey = 'live' | 'w24' | 'w3' | 'w7' | 'eom'
 
-const WINDOW_LABELS: Record<WindowKey, string> = { w24: '24 Hr', w3: '3 Day', w7: '7 Day', eom: 'EOM' }
+const WINDOW_LABELS: Record<WindowKey, string> = { live: 'Live', w24: '24 Hr', w3: '3 Day', w7: '7 Day', eom: 'EOM' }
 
 const WINDOWS: { key: WindowKey; label: string }[] = [
+  { key: 'live', label: 'LIVE' },
   { key: 'w24', label: '24HR' },
   { key: 'w3',  label: '3DAY' },
   { key: 'w7',  label: '7DAY' },
@@ -130,14 +131,23 @@ function AnalyticsTableRow({
           {post.postId}
         </span>
       </td>
-      <td className="px-5 py-4" style={{ maxWidth: 200 }}>
-        <span
-          className="text-[12px] font-light block overflow-hidden"
-          style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 200 }}
-          title={post.title}
-        >
-          {post.title}
-        </span>
+      <td className="px-5 py-4" style={{ maxWidth: 240 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          {post.thumbnailUrl && (
+            <img
+              src={post.thumbnailUrl}
+              alt=""
+              style={{ width: 42, height: 24, objectFit: 'cover', border: '1px solid #1a1a1a', borderRadius: 3, flexShrink: 0 }}
+            />
+          )}
+          <span
+            className="text-[12px] font-light block overflow-hidden"
+            style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: post.thumbnailUrl ? 178 : 220 }}
+            title={post.title}
+          >
+            {post.title}
+          </span>
+        </div>
       </td>
       <td className="px-5 py-4 text-[11px] font-light" style={{ color: '#666', whiteSpace: 'nowrap' }}>
         {post.date || '—'}
@@ -869,6 +879,8 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
             pillar:   slidePost.pillar,
             hook:     slidePost.hook,
             decision: slidePost.decision,
+            thumbnailUrl: slidePost.thumbnailUrl,
+            live: slidePost.live,
             w24: slidePost.w24,
             w3:  slidePost.w3,
             w7:  slidePost.w7,

@@ -39,6 +39,7 @@ create table posts (
   date date,
   notes text,
   decision text,
+  thumbnail_url text,
   created_at timestamptz default now(),
   unique(client_id, post_id)
 );
@@ -48,7 +49,7 @@ create table post_analytics (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null references posts(id),
   client_id uuid not null references clients(id),
-  metric_window text not null check (metric_window in ('w24','w3','w7','eom')),
+  metric_window text not null check (metric_window in ('live','w24','w3','w7','eom')),
   platform text not null,
   views integer default 0,
   likes integer default 0,
@@ -79,6 +80,7 @@ create table pipeline_items (
   week text,
   scheduled_date date,
   video_url text,
+  thumbnail_url text,
   drive_url text,
   script_content text,
   script_status text default 'draft',

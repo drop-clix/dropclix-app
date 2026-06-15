@@ -4,11 +4,8 @@
  * Reads OAuth tokens from platform_connections for Nick's client_id,
  * then pulls per-video metrics and upserts into post_analytics.
  *
- * Window selection is age-based:
- *   post ≤ 2 days old → w24
- *   post ≤ 3 days old → w3
- *   post ≤ 6 days old → w7
- *   any age           → eom (uses today as end date to capture current totals)
+ * Manual sync writes current totals to the live window only.
+ * Locked windows (w24, w3, w7, eom) are captured by cron snapshot jobs.
  *
  * Usage:
  *   node scripts/sync-youtube.mjs             # dry-run
@@ -108,33 +105,6 @@ async function getValidAccessToken() {
   return { accessToken: json.access_token, channelId: data.channel_id, channelName: data.channel_name }
 }
 
-// ── Window logic ──────────────────────────────────────────────────────────────
-
-// Returns which metric windows to sync based on how old the post is.
-// eom is always included so old posts always get their current totals written.
-function windowsForPost(publishDate) {
-  const ageDays = (Date.now() - new Date(publishDate).getTime()) / 86400000
-  const wins = ['eom']
-  if (ageDays <= 6) wins.push('w7')
-  if (ageDays <= 3) wins.push('w3')
-  if (ageDays <= 2) wins.push('w24')
-  return wins
-}
-
-// End date for the Analytics API call for each window.
-// eom uses today so it captures all-time totals regardless of publish month.
-// w24/w3/w7 use publish date + N days, capped at today.
-function windowEndDate(publishDate, win) {
-  const today = new Date().toISOString().slice(0, 10)
-  if (win === 'eom') return today
-  const d = new Date(publishDate)
-  if (win === 'w24') d.setDate(d.getDate() + 1)
-  else if (win === 'w3') d.setDate(d.getDate() + 3)
-  else if (win === 'w7') d.setDate(d.getDate() + 7)
-  const dStr = d.toISOString().slice(0, 10)
-  return dStr > today ? today : dStr
-}
-
 // ── Analytics fetch ───────────────────────────────────────────────────────────
 
 async function fetchMetrics(accessToken, channelId, videoId, startDate, endDate) {
@@ -205,17 +175,6 @@ async function fetchMetrics(accessToken, channelId, videoId, startDate, endDate)
   }
 }
 
-function erPct(m) {
-  if (!m.views) return 0
-  return ((m.likes + m.comments + m.shares + m.subscribers) / m.views) * 100
-}
-
-function decision(er) {
-  if (er >= 12) return 'Double Down'
-  if (er >= 4)  return 'Iterate'
-  return 'Kill'
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function run() {
@@ -249,61 +208,50 @@ async function run() {
 
   for (const post of posts) {
     const videoId = post.yt_id
-    const windows = windowsForPost(post.date)
-    console.log(`\n▸ ${post.post_id} — ${videoId} (published ${post.date}) → [${windows.join(', ')}]`)
+    const endDate = new Date().toISOString().slice(0, 10)
+    console.log(`\n▸ ${post.post_id} — ${videoId} (published ${post.date}) → [live]`)
 
-    let bestEr = 0, bestViews = 0
+    const m = await fetchMetrics(accessToken, channelId, videoId, post.date, endDate)
 
-    for (const win of windows) {
-      const endDate = windowEndDate(post.date, win)
-      const m = await fetchMetrics(accessToken, channelId, videoId, post.date, endDate)
-
-      if (!m) {
-        // API returned no rows at all for this video — skip this window
-        console.log(`  ${win}: no data from API — skipping`)
-        skipped++
-        continue
-      }
-
-      const er = erPct(m)
-      if (m.views > bestViews) { bestViews = m.views; bestEr = er }
-
-      console.log(
-        `  ${win}: ${m.views.toLocaleString()} views · ` +
-        `${m.likes}L ${m.comments}C ${m.shares}S ${m.subscribers}SubsG · ` +
-        `${er.toFixed(2)}% ER · ${m.watchPct}% watch · ` +
-        `${m.impressions.toLocaleString()} impr · ${m.ctr}% CTR · ${decision(er)}`
-      )
-
-      if (!DRY_RUN) {
-        const { error: uErr } = await admin.from('post_analytics').upsert(
-          {
-            post_id:       post.id,
-            client_id:     NICK_CLIENT_ID,
-            platform:      'yt',
-            metric_window: win,
-            yt_id:         videoId,
-            views:         m.views,
-            likes:         m.likes,
-            comments:      m.comments,
-            shares:        m.shares,
-            saves:         null,
-            watch_pct:     m.watchPct,
-            followers:     m.subscribers,
-            impressions:   m.impressions,
-            ctr:           m.ctr,
-          },
-          { onConflict: 'post_id,platform,metric_window' },
-        )
-        if (uErr) { console.error(`  ✗ DB error: ${uErr.message}`); errors++ }
-        else synced++
-      } else {
-        synced++
-      }
+    if (!m) {
+      console.log('  live: no data from API — skipping')
+      skipped++
+      continue
     }
 
-    if (bestViews > 0 && !DRY_RUN) {
-      await admin.from('posts').update({ decision: decision(bestEr) }).eq('id', post.id)
+    console.log(
+      `  live: ${m.views.toLocaleString()} views · ` +
+      `${m.likes}L ${m.comments}C ${m.shares}S ${m.subscribers}SubsG · ` +
+      `${m.watchPct}% watch · ${m.impressions.toLocaleString()} impr · ${m.ctr}% CTR`
+    )
+
+    if (!DRY_RUN) {
+      const { error: uErr } = await admin.from('post_analytics').upsert(
+        {
+          post_id:        post.id,
+          client_id:      NICK_CLIENT_ID,
+          platform:       'yt',
+          metric_window:  'live',
+          yt_id:          videoId,
+          yt_video_id:    videoId,
+          views:          m.views,
+          likes:          m.likes,
+          comments:       m.comments,
+          shares:         m.shares,
+          saves:          null,
+          watch_pct:      m.watchPct,
+          followers:      m.subscribers,
+          impressions:    m.impressions,
+          ctr:            m.ctr,
+          last_polled_at: new Date().toISOString(),
+          recorded_at:    new Date().toISOString(),
+        },
+        { onConflict: 'post_id,platform,metric_window' },
+      )
+      if (uErr) { console.error(`  ✗ DB error: ${uErr.message}`); errors++ }
+      else synced++
+    } else {
+      synced++
     }
   }
 
@@ -315,7 +263,7 @@ async function run() {
   }
 
   console.log('\n' + '─'.repeat(50))
-  console.log(`Done.  ${synced} windows ${DRY_RUN ? 'would be' : ''} synced · ${skipped} skipped · ${errors} errors`)
+  console.log(`Done.  ${synced} live rows ${DRY_RUN ? 'would be' : ''} synced · ${skipped} skipped · ${errors} errors`)
   if (DRY_RUN) console.log('Re-run with --run to apply changes.')
 }
 

@@ -286,6 +286,7 @@ function buildSlideOverPost(raw: RawAnglesPost): SlideOverPost {
     pillar:   raw.pillar,
     hook:     raw.hook,
     decision: raw.decision,
+    live: buildWindow(find('live')),
     w24: buildWindow(find('w24')),
     w3:  buildWindow(find('w3')),
     w7:  buildWindow(find('w7')),

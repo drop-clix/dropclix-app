@@ -10,31 +10,6 @@ type SyncResult = {
   lastSyncedAt: string
 }
 
-// Returns which metric windows to sync based on post age.
-// eom is always included so old posts always get their current totals written.
-function windowsForPost(publishDate: string): ('w24' | 'w3' | 'w7' | 'eom')[] {
-  const ageDays = (Date.now() - new Date(publishDate).getTime()) / 86400000
-  const wins: ('w24' | 'w3' | 'w7' | 'eom')[] = ['eom']
-  if (ageDays <= 6) wins.push('w7')
-  if (ageDays <= 3) wins.push('w3')
-  if (ageDays <= 2) wins.push('w24')
-  return wins
-}
-
-// End date for the Analytics API call.
-// eom uses today to capture all-time totals regardless of publish month.
-// w24/w3/w7 use publish date + N days, capped at today.
-function windowEndDate(publishDate: string, win: 'w24' | 'w3' | 'w7' | 'eom'): string {
-  const today = new Date().toISOString().slice(0, 10)
-  if (win === 'eom') return today
-  const d = new Date(publishDate)
-  if (win === 'w24') d.setDate(d.getDate() + 1)
-  else if (win === 'w3') d.setDate(d.getDate() + 3)
-  else if (win === 'w7') d.setDate(d.getDate() + 7)
-  const dStr = d.toISOString().slice(0, 10)
-  return dStr > today ? today : dStr
-}
-
 async function fetchYTAnalytics(
   accessToken: string,
   channelId: string,
@@ -108,17 +83,6 @@ async function fetchYTAnalytics(
   }
 }
 
-function erPct(m: { views: number; likes: number; comments: number; shares: number; subscribersGained: number }) {
-  if (!m.views) return 0
-  return ((m.likes + m.comments + m.shares + m.subscribersGained) / m.views) * 100
-}
-
-function decisionFromEr(er: number): string {
-  if (er >= 12) return 'Double Down'
-  if (er >= 4)  return 'Iterate'
-  return 'Kill'
-}
-
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -165,64 +129,49 @@ export async function POST(req: NextRequest) {
   for (const post of posts) {
     const videoId    = post.yt_id
     const publishDate = post.date
-    const windows    = windowsForPost(publishDate)
+    const endDate = new Date().toISOString().slice(0, 10)
+    const metrics = await fetchYTAnalytics(
+      conn.access_token,
+      conn.channel_id,
+      videoId,
+      publishDate,
+      endDate,
+    )
 
-    let bestEr    = 0
-    let bestViews = 0
-
-    for (const win of windows) {
-      const endDate = windowEndDate(publishDate, win)
-      const metrics = await fetchYTAnalytics(
-        conn.access_token,
-        conn.channel_id,
-        videoId,
-        publishDate,
-        endDate,
-      )
-
-      if (!metrics) {
-        // API returned no rows for this video — skip this window
-        result.skipped++
-        continue
-      }
-
-      const er = erPct(metrics)
-      if (metrics.views > bestViews) { bestViews = metrics.views; bestEr = er }
-
-      const { error: uErr } = await admin
-        .from('post_analytics')
-        .upsert(
-          {
-            post_id:        post.id,
-            client_id:      clientId,
-            platform:       'yt',
-            metric_window:  win,
-            yt_id:          videoId,
-            views:          metrics.views,
-            likes:          metrics.likes,
-            comments:       metrics.comments,
-            shares:         metrics.shares,
-            saves:          null,
-            watch_pct:      metrics.averageViewPercentage,
-            followers:      metrics.subscribersGained,
-            impressions:    metrics.impressions,
-            ctr:            metrics.ctr,
-          },
-          { onConflict: 'post_id,platform,metric_window' },
-        )
-
-      if (uErr) {
-        result.errors.push(`${post.post_id} ${win}: ${uErr.message}`)
-      } else {
-        result.synced++
-      }
+    if (!metrics) {
+      result.skipped++
+      continue
     }
 
-    if (bestViews > 0) {
-      await admin
-        .from('posts')
-        .update({ decision: decisionFromEr(bestEr) })
-        .eq('id', post.id)
+    const { error: uErr } = await admin
+      .from('post_analytics')
+      .upsert(
+        {
+          post_id:        post.id,
+          client_id:      clientId,
+          platform:       'yt',
+          metric_window:  'live',
+          yt_id:          videoId,
+          yt_video_id:    videoId,
+          views:          metrics.views,
+          likes:          metrics.likes,
+          comments:       metrics.comments,
+          shares:         metrics.shares,
+          saves:          null,
+          watch_pct:      metrics.averageViewPercentage,
+          followers:      metrics.subscribersGained,
+          impressions:    metrics.impressions,
+          ctr:            metrics.ctr,
+          last_polled_at: new Date().toISOString(),
+          recorded_at:    new Date().toISOString(),
+        },
+        { onConflict: 'post_id,platform,metric_window' },
+      )
+
+    if (uErr) {
+      result.errors.push(`${post.post_id} live: ${uErr.message}`)
+    } else {
+      result.synced++
     }
   }
 

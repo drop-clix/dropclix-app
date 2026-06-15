@@ -27,6 +27,8 @@ export type PostRow = {
   format: string
   date: string
   decision: string
+  thumbnailUrl: string | null
+  live: WindowData
   w24: WindowData
   w3: WindowData
   w7: WindowData
@@ -49,6 +51,7 @@ export default async function AnalyticsPage() {
     .from('posts')
     .select(`
       id, post_id, title, platform, pillar, hook, format, date, decision,
+      thumbnail_url,
       post_analytics(metric_window, views, likes, comments, shares, saves, followers, watch_pct, prev_views, prev_recorded_at, last_polled_at, recorded_at)
     `)
     .eq('client_id', clientId ?? fallback)
@@ -86,6 +89,8 @@ export default async function AnalyticsPage() {
       format:   (p as any).format ?? '—',
       date:     p.date     ?? '',
       decision: p.decision ?? '',
+      thumbnailUrl: (p as any).thumbnail_url ?? null,
+      live: byWindow['live'] ?? { ...EMPTY_WIN },
       w24: byWindow['w24'] ?? { ...EMPTY_WIN },
       w3:  byWindow['w3']  ?? { ...EMPTY_WIN },
       w7:  byWindow['w7']  ?? { ...EMPTY_WIN },
