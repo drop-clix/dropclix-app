@@ -112,7 +112,7 @@ export function usePortalFilters(): PortalFilters & {
     ? (localStorage.getItem('dropclix_platform') as PlatformFilter | null) ?? 'ig'
     : 'ig'
   const platform = (searchParams.get('platform') ?? storedPlatform) as PlatformFilter
-  const win      = (searchParams.get('win')      ?? 'eom') as WindowFilter
+  const win      = (searchParams.get('win')      ?? 'live') as WindowFilter
   const scope    = (searchParams.get('scope')    ?? 'all') as ScopeFilter
   const from     = searchParams.get('from')
   const to       = searchParams.get('to')

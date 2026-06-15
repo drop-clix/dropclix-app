@@ -768,17 +768,36 @@ export async function ensureYTPostsRow(
     return { postId: (byYt as any).post_id, created: false }
   }
 
-  // No posts row — create stub with auto-incremented #ytNNNN
+  // No posts row — create stub using pipeline_items.post_id as source of truth.
+  // If pipe-separated, extract the #yt* or #LF* part. Only generate #ytNNNN as last resort.
   console.log(`[ensureYTPostsRow] no existing posts row found — creating stub for yt_video_id=${item.yt_video_id}`)
-  const { data: lastYt } = await c.admin.from('posts').select('post_id')
-    .eq('client_id', c.cid).like('post_id', '#yt%').order('post_id', { ascending: false }).limit(1)
 
-  let nextNum = 1
-  if (lastYt && (lastYt as any[]).length > 0) {
-    const n = parseInt(((lastYt as any[])[0].post_id as string).replace('#yt', ''), 10)
-    if (!isNaN(n)) nextNum = n + 1
+  let newPostId: string
+  const rawPid = item.post_id as string
+  if (!rawPid.includes('|')) {
+    // Single ID: use directly (e.g. "#yt0087", "#LF0003")
+    newPostId = rawPid
+    console.log(`[ensureYTPostsRow] using pipeline post_id directly: ${newPostId}`)
+  } else {
+    // Pipe-separated: extract the #yt* or #LF* part
+    const parts = rawPid.split('|').map((s: string) => s.trim())
+    const ytPart = parts.find((p: string) => p.startsWith('#yt') || p.startsWith('#LF'))
+    if (ytPart) {
+      newPostId = ytPart
+      console.log(`[ensureYTPostsRow] extracted YT part from pipe-separated post_id: ${newPostId}`)
+    } else {
+      // Absolute last resort: generate sequential #ytNNNN
+      const { data: lastYt } = await c.admin.from('posts').select('post_id')
+        .eq('client_id', c.cid).like('post_id', '#yt%').order('post_id', { ascending: false }).limit(1)
+      let nextNum = 1
+      if (lastYt && (lastYt as any[]).length > 0) {
+        const n = parseInt(((lastYt as any[])[0].post_id as string).replace('#yt', ''), 10)
+        if (!isNaN(n)) nextNum = n + 1
+      }
+      newPostId = `#yt${String(nextNum).padStart(4, '0')}`
+      console.log(`[ensureYTPostsRow] no YT part found in pipe-separated ID — generated fallback: ${newPostId}`)
+    }
   }
-  const newPostId = `#yt${String(nextNum).padStart(4, '0')}`
 
   const platform: string[] = Array.isArray(item.platform) && item.platform.length > 0
     ? (item.platform as string[])

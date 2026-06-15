@@ -98,15 +98,16 @@ if (DRY) {
 }
 
 // ── 3. Create stub posts rows ─────────────────────────────────────────────
+// Source of truth: pipeline_items.post_id. Use it directly for #yt*/#LF* IDs.
+// Only fall back to generating a sequential #ytNNNN as absolute last resort.
 
 console.log('\nCreating stub posts rows...')
 let created = 0, failed = 0
 
 for (const [cid, items] of Object.entries(byClient)) {
-  // Get the next available #yt number for this client
+  // Fallback counter — used only when no suitable YT ID exists on the pipeline item
   const { data: lastYt } = await sb.from('posts').select('post_id')
     .eq('client_id', cid).like('post_id', '#yt%').order('post_id', { ascending: false }).limit(1)
-
   let nextNum = 1
   if (lastYt && lastYt.length > 0) {
     const n = parseInt(lastYt[0].post_id.replace('#yt', ''), 10)
@@ -114,8 +115,20 @@ for (const [cid, items] of Object.entries(byClient)) {
   }
 
   for (const item of items) {
-    const newPostId = `#yt${String(nextNum).padStart(4, '0')}`
-    nextNum++
+    // Derive stub post_id from pipeline_items.post_id (source of truth)
+    let newPostId
+    if (!item.post_id.includes('|')) {
+      newPostId = item.post_id
+    } else {
+      const parts = item.post_id.split('|').map(s => s.trim())
+      const ytPart = parts.find(p => p.startsWith('#yt') || p.startsWith('#LF'))
+      if (ytPart) {
+        newPostId = ytPart
+      } else {
+        newPostId = `#yt${String(nextNum).padStart(4, '0')}`
+        nextNum++
+      }
+    }
 
     const platform = Array.isArray(item.platform) && item.platform.length > 0
       ? item.platform
