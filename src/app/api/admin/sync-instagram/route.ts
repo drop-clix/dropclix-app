@@ -36,10 +36,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No Instagram connection found for this client' }, { status: 404 })
   }
 
-  const { access_token: accessToken } = conn as any
+  const { access_token: accessToken, channel_id: igAccountId } = conn as any
+
+  if (!igAccountId) {
+    return NextResponse.json(
+      { error: 'Instagram account ID not found. Please reconnect Instagram to refresh the connection.' },
+      { status: 400 },
+    )
+  }
 
   // Run sync
-  const result = await syncInstagramForClient(admin, clientId, accessToken)
+  const result = await syncInstagramForClient(admin, clientId, accessToken, igAccountId)
 
   const now = new Date().toISOString()
 

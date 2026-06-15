@@ -12,8 +12,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${adminBase}?ig_error=access_denied`)
   }
 
-  // Exchange code for short-lived access token
-  const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
+  // Exchange code for short-lived Facebook User Access Token
+  // Facebook Business Login uses graph.facebook.com, not api.instagram.com
+  const tokenRes = await fetch('https://graph.facebook.com/v19.0/oauth/access_token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -26,44 +27,72 @@ export async function GET(req: NextRequest) {
   })
 
   if (!tokenRes.ok) {
-    console.error('Instagram token exchange failed:', await tokenRes.text())
+    const body = await tokenRes.text()
+    console.error('Instagram (FB) token exchange failed:', tokenRes.status, body)
     return NextResponse.redirect(`${adminBase}?ig_error=token_failed`)
   }
 
-  const { access_token: shortToken, user_id: igUserId } = await tokenRes.json() as {
-    access_token: string
-    user_id: number
-  }
+  // Facebook response: { access_token, token_type, expires_in }
+  // Unlike the old Instagram Basic Display API, FB does NOT return user_id here
+  const tokenData = await tokenRes.json() as { access_token: string; token_type?: string; expires_in?: number }
+  const shortToken = tokenData.access_token
 
   // Exchange short-lived token for long-lived token (60-day TTL)
+  // Facebook Business Login uses grant_type=fb_exchange_token (not ig_exchange_token)
   let accessToken = shortToken
-  let expiresIn   = 3600
+  let expiresIn   = 5_184_000 // 60 days default
   try {
     const longRes = await fetch(
-      `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${shortToken}`,
+      `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.INSTAGRAM_APP_ID}&client_secret=${process.env.INSTAGRAM_APP_SECRET}&access_token=${shortToken}`,
     )
     if (longRes.ok) {
       const longData = await longRes.json() as { access_token: string; expires_in: number }
       accessToken = longData.access_token ?? shortToken
       expiresIn   = longData.expires_in   ?? expiresIn
+    } else {
+      console.warn('Long-lived token exchange failed:', longRes.status, await longRes.text())
     }
-  } catch { /* fall back to short-lived token */ }
+  } catch (e) {
+    console.warn('Long-lived token exchange error:', e)
+  }
 
   const expiry = new Date(Date.now() + expiresIn * 1000).toISOString()
 
-  // Fetch profile info (id, username, followers_count)
-  let username: string | null = null
+  // Get the Instagram Business Account ID via Facebook Pages
+  // With Facebook Business Login the token's /me is a Facebook user, not IG account.
+  // We must traverse: FB User → Pages → instagram_business_account
+  let igAccountId: string | null   = null
+  let username: string | null      = null
   let followersCount: number | null = null
   try {
-    const profileRes = await fetch(
-      `https://graph.instagram.com/me?fields=id,username,followers_count,media_count&access_token=${accessToken}`,
+    const meRes = await fetch(
+      `https://graph.facebook.com/v19.0/me?fields=id,name,accounts{instagram_business_account{id,username,followers_count}}&access_token=${accessToken}`,
     )
-    if (profileRes.ok) {
-      const profile = await profileRes.json() as { id: string; username?: string; followers_count?: number }
-      username       = profile.username        ?? null
-      followersCount = profile.followers_count ?? null
+    if (meRes.ok) {
+      const meData = await meRes.json() as {
+        id: string
+        accounts?: { data: Array<{ id: string; instagram_business_account?: { id: string; username?: string; followers_count?: number } }> }
+      }
+      const pages = meData.accounts?.data ?? []
+      for (const page of pages) {
+        if (page.instagram_business_account) {
+          igAccountId    = page.instagram_business_account.id        ?? null
+          username       = page.instagram_business_account.username   ?? null
+          followersCount = page.instagram_business_account.followers_count ?? null
+          break
+        }
+      }
+      if (!igAccountId) {
+        console.warn('[ig-oauth] No Instagram Business Account found on any Facebook Page for this user')
+      } else {
+        console.log(`[ig-oauth] found IG account: @${username} (${igAccountId}), followers=${followersCount}`)
+      }
+    } else {
+      console.warn('[ig-oauth] /me pages fetch failed:', meRes.status, await meRes.text())
     }
-  } catch { /* non-fatal */ }
+  } catch (e) {
+    console.warn('[ig-oauth] profile fetch error:', e)
+  }
 
   const admin = createAdminClient()
   const now = new Date().toISOString()
@@ -75,7 +104,7 @@ export async function GET(req: NextRequest) {
         platform:         'instagram',
         access_token:     accessToken,
         token_expires_at: expiry,
-        channel_id:       String(igUserId),
+        channel_id:       igAccountId,
         channel_name:     username,
         subscriber_count: followersCount,
         last_synced_at:   null,

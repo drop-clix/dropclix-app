@@ -29,13 +29,13 @@ export type IGSyncResult = {
 
 // ── Fetch all media for the connected account ─────────────────────────────────
 
-async function fetchIGMedia(accessToken: string): Promise<IGMedia[]> {
+async function fetchIGMedia(accessToken: string, igAccountId: string): Promise<IGMedia[]> {
   const fields = 'id,permalink,media_type,timestamp,like_count,comments_count'
-  const url = `https://graph.instagram.com/me/media?fields=${fields}&limit=100&access_token=${accessToken}`
+  const url = `https://graph.facebook.com/v19.0/${igAccountId}/media?fields=${fields}&limit=100&access_token=${accessToken}`
 
   const res = await fetch(url)
   if (!res.ok) {
-    console.error('[ig-sync] /me/media failed:', res.status, await res.text())
+    console.error('[ig-sync] /media failed:', res.status, await res.text())
     return []
   }
   const json = await res.json() as { data?: IGMedia[]; error?: { message: string } }
@@ -59,7 +59,7 @@ async function fetchIGMediaInsights(
     ? 'reach,saved,plays,impressions'
     : 'reach,saved,impressions'
 
-  const url = `https://graph.instagram.com/${mediaId}/insights?metric=${metrics}&access_token=${accessToken}`
+  const url = `https://graph.facebook.com/v19.0/${mediaId}/insights?metric=${metrics}&access_token=${accessToken}`
   const res = await fetch(url)
 
   const empty: IGInsights = { reach: 0, saved: 0, plays: null, impressions: 0 }
@@ -84,8 +84,8 @@ async function fetchIGMediaInsights(
 
 // ── Fetch follower count ───────────────────────────────────────────────────────
 
-export async function fetchIGFollowersCount(accessToken: string): Promise<number | null> {
-  const url = `https://graph.instagram.com/me?fields=followers_count&access_token=${accessToken}`
+export async function fetchIGFollowersCount(accessToken: string, igAccountId: string): Promise<number | null> {
+  const url = `https://graph.facebook.com/v19.0/${igAccountId}?fields=followers_count&access_token=${accessToken}`
   const res = await fetch(url)
   if (!res.ok) return null
   const json = await res.json() as { followers_count?: number }
@@ -143,13 +143,14 @@ export async function syncInstagramForClient(
   admin: AdminClient,
   clientId: string,
   accessToken: string,
+  igAccountId: string,
 ): Promise<IGSyncResult> {
   const result: IGSyncResult = { synced: 0, skipped: 0, errors: [], followersCount: null }
 
-  const followersCount = await fetchIGFollowersCount(accessToken)
+  const followersCount = await fetchIGFollowersCount(accessToken, igAccountId)
   result.followersCount = followersCount
 
-  const media = await fetchIGMedia(accessToken)
+  const media = await fetchIGMedia(accessToken, igAccountId)
   console.log(`[ig-sync] fetched ${media.length} media items for client ${clientId}`)
 
   for (const item of media) {

@@ -12,6 +12,6 @@ export async function GET(req: NextRequest) {
   })
 
   return NextResponse.redirect(
-    `https://api.instagram.com/oauth/authorize?${params.toString()}`,
+    `https://www.facebook.com/dialog/oauth?${params.toString()}`,
   )
 }
