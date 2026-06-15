@@ -249,3 +249,18 @@ export async function disconnectTikTok(clientId: string): Promise<{ error?: stri
   revalidatePath('/admin')
   return {}
 }
+
+// ── Instagram disconnect ────────────────────────────────────────────────────────
+
+export async function disconnectInstagram(clientId: string): Promise<{ error?: string }> {
+  if (!await assertAdmin()) return { error: 'Unauthorized' }
+  const adm = createAdminClient()
+  const { error } = await adm
+    .from('platform_connections')
+    .delete()
+    .eq('client_id', clientId)
+    .eq('platform', 'instagram')
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return {}
+}

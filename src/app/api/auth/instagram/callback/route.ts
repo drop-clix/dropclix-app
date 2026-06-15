@@ -51,19 +51,22 @@ export async function GET(req: NextRequest) {
 
   const expiry = new Date(Date.now() + expiresIn * 1000).toISOString()
 
-  // Fetch profile info (id + username)
+  // Fetch profile info (id, username, followers_count)
   let username: string | null = null
+  let followersCount: number | null = null
   try {
     const profileRes = await fetch(
-      `https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`,
+      `https://graph.instagram.com/me?fields=id,username,followers_count,media_count&access_token=${accessToken}`,
     )
     if (profileRes.ok) {
-      const profile = await profileRes.json() as { id: string; username?: string }
-      username = profile.username ?? null
+      const profile = await profileRes.json() as { id: string; username?: string; followers_count?: number }
+      username       = profile.username        ?? null
+      followersCount = profile.followers_count ?? null
     }
   } catch { /* non-fatal */ }
 
   const admin = createAdminClient()
+  const now = new Date().toISOString()
   const { error: dbErr } = await admin
     .from('platform_connections')
     .upsert(
@@ -74,8 +77,10 @@ export async function GET(req: NextRequest) {
         token_expires_at: expiry,
         channel_id:       String(igUserId),
         channel_name:     username,
-        created_at:       new Date().toISOString(),
-        updated_at:       new Date().toISOString(),
+        subscriber_count: followersCount,
+        last_synced_at:   null,
+        created_at:       now,
+        updated_at:       now,
       },
       { onConflict: 'client_id,platform' },
     )
