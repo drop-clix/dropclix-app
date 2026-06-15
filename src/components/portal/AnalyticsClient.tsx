@@ -18,6 +18,18 @@ import { usePillarColors } from '@/hooks/usePillarColors'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// Pick the right post_analytics row for the active platform filter.
+// 'lf' (Long Form) stores analytics as platform='yt', so map it.
+// Falls back to the flat window field (which prefers 'ig') when platform='all'.
+function resolveWin(post: PostRow, platform: string, win: WindowKey): WindowData {
+  if (platform !== 'all') {
+    const platKey = platform === 'lf' ? 'yt' : platform
+    const hit = post.byPlatformWindow[`${platKey}_${win}`]
+    if (hit) return hit
+  }
+  return post[win]
+}
+
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
   if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K'
@@ -85,6 +97,7 @@ function AnalyticsTableRow({
   post,
   index,
   activeWin,
+  platform,
   pillarColors,
   onOpen,
   onSave,
@@ -92,11 +105,12 @@ function AnalyticsTableRow({
   post: PostRow
   index: number
   activeWin: WindowKey
+  platform: string
   pillarColors: Map<string, string>
   onOpen: (post: PostRow) => void
   onSave: (uuid: string, field: EditableField, val: number, decision?: string) => void
 }) {
-  const w           = post[activeWin]
+  const w           = resolveWin(post, platform, activeWin)
   const er          = calcER(w, post.platform)
   const t           = tier(er, w.views > 0)
   const ts          = TIER_STYLES[t]
@@ -608,46 +622,49 @@ function AdvancedAnalyticsCharts({
   const [reachMode, setReachMode] = useState<'top' | 'last' | 'all'>('top')
   const postPoints = useMemo<ChartPostPoint[]>(() => {
     let source = rows.slice()
-    if (reachMode === 'top') source = source.sort((a, b) => b[win].views - a[win].views).slice(0, 10)
+    if (reachMode === 'top') source = source.sort((a, b) => resolveWin(b, platform, win).views - resolveWin(a, platform, win).views).slice(0, 10)
     if (reachMode === 'last') source = source.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).reverse()
     return source.map(post => {
-      const er = calcER(post[win], post.platform)
-      return { name: post.postId, post, views: post[win].views, er: +er.toFixed(1), date: post.date.slice(5), color: tierColor(er) }
+      const wData = resolveWin(post, platform, win)
+      const er = calcER(wData, post.platform)
+      return { name: post.postId, post, views: wData.views, er: +er.toFixed(1), date: post.date.slice(5), color: tierColor(er) }
     })
-  }, [rows, win, reachMode])
+  }, [rows, win, reachMode, platform])
 
   const erPoints = useMemo(() => rows.slice().sort((a, b) => a.date.localeCompare(b.date)).map(post => {
-    const er = calcER(post[win], post.platform)
+    const wData = resolveWin(post, platform, win)
+    const er = calcER(wData, post.platform)
     return { name: post.date.slice(5), post, er: +er.toFixed(1), color: tierColor(er) }
-  }), [rows, win])
+  }), [rows, win, platform])
 
   const monthly = useMemo(() => {
     const map = new Map<string, { month: string; posts: number; reach: number; followers: number }>()
     for (const post of rows) {
       const key = post.date.slice(0, 7)
       const cur = map.get(key) ?? { month: key.slice(5), posts: 0, reach: 0, followers: 0 }
+      const wData = resolveWin(post, platform, win)
       cur.posts += 1
-      cur.reach += post[win].views
-      cur.followers += post[win].followers
+      cur.reach += wData.views
+      cur.followers += wData.followers
       map.set(key, cur)
     }
     return [...map.values()].sort((a, b) => a.month.localeCompare(b.month)).map(m => ({
       ...m,
       growth: m.reach > 0 ? +((m.followers / m.reach) * 100).toFixed(2) : 0,
     }))
-  }, [rows, win])
+  }, [rows, win, platform])
 
   const pillars = useMemo(() => {
     const map = new Map<string, { pillar: string; er: number; count: number }>()
     for (const post of rows) {
       const key = post.pillar || 'Other'
       const cur = map.get(key) ?? { pillar: key, er: 0, count: 0 }
-      cur.er += calcER(post[win], post.platform)
+      cur.er += calcER(resolveWin(post, platform, win), post.platform)
       cur.count += 1
       map.set(key, cur)
     }
     return [...map.values()].map(p => ({ ...p, avgER: +(p.er / p.count).toFixed(1) })).sort((a, b) => b.avgER - a.avgER)
-  }, [rows, win])
+  }, [rows, win, platform])
 
   return (
     <div className="mt-8 flex flex-col gap-6">
@@ -742,8 +759,15 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
   function handleMetricSave(postUUID: string, field: EditableField, value: number, decision?: string) {
     setPosts(prev => prev.map(p => {
       if (p.uuid !== postUUID) return p
-      const winData = { ...p[win as WindowKey], [field]: value } as WindowData
-      const updated = { ...p, [win as WindowKey]: winData }
+      const wk = win as WindowKey
+      const primaryPlatform = p.platform[0] ?? 'ig'
+      const bpwKey = `${primaryPlatform}_${wk}`
+      const winData = { ...resolveWin(p, platform, wk), [field]: value } as WindowData
+      const updated = {
+        ...p,
+        [wk]: winData,
+        byPlatformWindow: { ...p.byPlatformWindow, [bpwKey]: winData },
+      }
       if (decision !== undefined) updated.decision = decision
       toast(`Saved · ${p.postId} updated`)
       return updated
@@ -778,7 +802,8 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
     }
     const wk = win as WindowKey
     return filtered.slice().sort((a, b) => {
-      const wa = a[wk]; const wb = b[wk]
+      const wa = resolveWin(a, platform, wk)
+      const wb = resolveWin(b, platform, wk)
       let av = 0, bv = 0
       if (sortKey === 'date')          { av = new Date(a.date).getTime(); bv = new Date(b.date).getTime() }
       else if (sortKey === 'er')       { av = calcER(wa, a.platform); bv = calcER(wb, b.platform) }
@@ -796,13 +821,13 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
 
   const kpis = useMemo(() => {
     const total = rows.length
-    const totalViews = rows.reduce((s, r) => s + r[activeWin].views, 0)
-    const withViews  = rows.filter(r => r[activeWin].views > 0)
-    const avgER      = withViews.length ? withViews.reduce((s, r) => s + calcER(r[activeWin], r.platform), 0) / withViews.length : 0
-    const avgWatch   = withViews.length ? withViews.reduce((s, r) => s + r[activeWin].watch_pct, 0) / withViews.length : 0
-    const eliteCount = withViews.filter(r => calcER(r[activeWin], r.platform) >= 12).length
+    const totalViews = rows.reduce((s, r) => s + resolveWin(r, platform, activeWin).views, 0)
+    const withViews  = rows.filter(r => resolveWin(r, platform, activeWin).views > 0)
+    const avgER      = withViews.length ? withViews.reduce((s, r) => s + calcER(resolveWin(r, platform, activeWin), r.platform), 0) / withViews.length : 0
+    const avgWatch   = withViews.length ? withViews.reduce((s, r) => s + resolveWin(r, platform, activeWin).watch_pct, 0) / withViews.length : 0
+    const eliteCount = withViews.filter(r => calcER(resolveWin(r, platform, activeWin), r.platform) >= 12).length
     return { total, totalViews, avgER, avgWatch, eliteCount }
-  }, [rows, activeWin])
+  }, [rows, activeWin, platform])
 
   const pagedRows = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [rows, page])
 
@@ -966,6 +991,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
                   post={post}
                   index={i}
                   activeWin={activeWin}
+                  platform={platform}
                   pillarColors={pillarColors}
                   onOpen={setSlidePost}
                   onSave={handleMetricSave}

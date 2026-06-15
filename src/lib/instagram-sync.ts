@@ -64,12 +64,18 @@ async function fetchIGMediaInsights(
 
   const empty: IGInsights = { reach: 0, saved: 0, plays: null, impressions: 0 }
 
+  const rawText = await res.text()
+  let rawBody: unknown = rawText
+  try { rawBody = rawText ? JSON.parse(rawText) : null } catch { /* keep string */ }
+
   if (!res.ok) {
-    // Insights can fail for personal accounts or content older than 2 years
-    console.warn(`[ig-sync] insights failed for ${mediaId}: HTTP ${res.status}`)
+    console.warn(`[ig-sync] insights failed for ${mediaId} (${mediaType}) HTTP ${res.status}:`, rawBody)
     return empty
   }
-  const json = await res.json() as { data?: { name: string; values: { value: number }[] }[] }
+
+  console.log(`[ig-sync] insights raw ${mediaId} (${mediaType}):`, JSON.stringify(rawBody))
+
+  const json = rawBody as { data?: { name: string; values: { value: number }[] }[] }
 
   const result = { ...empty }
   for (const metric of json.data ?? []) {
@@ -193,6 +199,10 @@ export async function syncInstagramForClient(
       },
       { onConflict: 'post_id,platform,metric_window' },
     )
+
+    if (views === 0 && likes > 0) {
+      console.warn(`[ig-sync] reach=0 but likes=${likes} for ${shortcode} (mediaId=${item.id}, type=${item.media_type}) — insights may be unavailable or metric name mismatch`)
+    }
 
     if (uErr) {
       console.error(`[ig-sync] upsert failed for ${shortcode}:`, uErr.message)

@@ -28,6 +28,9 @@ export type PostRow = {
   date: string
   decision: string
   thumbnailUrl: string | null
+  // Keyed '{platform}_{metric_window}' e.g. 'ig_live', 'yt_eom' — used for per-platform display
+  byPlatformWindow: Record<string, WindowData>
+  // Flat windows: prefer 'ig' row; used when platform filter = 'all'
   live: WindowData
   w24: WindowData
   w3: WindowData
@@ -52,7 +55,7 @@ export default async function AnalyticsPage() {
     .select(`
       id, post_id, title, platform, pillar, hook, format, date, decision,
       thumbnail_url,
-      post_analytics(metric_window, views, likes, comments, shares, saves, followers, watch_pct, prev_views, prev_recorded_at, last_polled_at, recorded_at)
+      post_analytics(platform, metric_window, views, likes, comments, shares, saves, followers, watch_pct, prev_views, prev_recorded_at, last_polled_at, recorded_at)
     `)
     .eq('client_id', clientId ?? fallback)
     .order('date', { ascending: false })
@@ -63,9 +66,13 @@ export default async function AnalyticsPage() {
 
   // Flatten into PostRow[]
   const posts: PostRow[] = (rawPosts ?? []).map(p => {
+    // byPlatformWindow: exact per-platform data, e.g. 'ig_live', 'yt_eom'
+    const byPlatformWindow: Record<string, WindowData> = {}
+    // byWindow (flat): prefer 'ig' rows; used for platform='all' display
     const byWindow: Record<string, WindowData> = {}
+
     for (const a of p.post_analytics ?? []) {
-      byWindow[a.metric_window] = {
+      const data: WindowData = {
         views:          a.views           ?? 0,
         likes:          a.likes           ?? 0,
         comments:       a.comments        ?? 0,
@@ -78,7 +85,14 @@ export default async function AnalyticsPage() {
         lastPolledAt:   (a as any).last_polled_at   ?? null,
         recordedAt:     (a as any).recorded_at      ?? null,
       }
+      const rowPlatform = (a as any).platform as string ?? 'ig'
+      byPlatformWindow[`${rowPlatform}_${a.metric_window}`] = data
+      // Flat: prefer 'ig', then first-seen for each window
+      if (!byWindow[a.metric_window] || rowPlatform === 'ig') {
+        byWindow[a.metric_window] = data
+      }
     }
+
     return {
       uuid:     p.id,
       postId:   p.post_id,
@@ -90,6 +104,7 @@ export default async function AnalyticsPage() {
       date:     p.date     ?? '',
       decision: p.decision ?? '',
       thumbnailUrl: (p as any).thumbnail_url ?? null,
+      byPlatformWindow,
       live: byWindow['live'] ?? { ...EMPTY_WIN },
       w24: byWindow['w24'] ?? { ...EMPTY_WIN },
       w3:  byWindow['w3']  ?? { ...EMPTY_WIN },
