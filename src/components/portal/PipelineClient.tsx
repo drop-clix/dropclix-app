@@ -177,8 +177,12 @@ function YTLinkModal({
     setSaving(true)
     setErrMsg('')
     const result = await linkYouTubeVideo(item.postId, val, item.id)
+    if (result.error) { setSaving(false); setErrMsg(result.error); return }
+    // Ensure a posts row exists so the cron can start polling immediately.
+    // linkYouTubeVideo saves yt_video_id to pipeline_items; ensureYTPostsRow
+    // reads it back and creates a stub posts row if none exists.
+    await ensureYTPostsRow(item.id)
     setSaving(false)
-    if (result.error) { setErrMsg(result.error); return }
     if (result.note) toast(result.note, 'info')
     onLinked(result.ytId!)
     onClose()

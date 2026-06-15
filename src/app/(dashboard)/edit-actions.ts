@@ -693,18 +693,30 @@ export async function linkYouTubeVideo(
 export async function ensureYTPostsRow(
   pipelineItemId: string,
 ): Promise<{ error?: string; postId?: string; created?: boolean }> {
+  console.log(`[ensureYTPostsRow] called for pipeline item ${pipelineItemId}`)
   const c = await getCtx()
-  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (!c || !c.cid) {
+    console.error('[ensureYTPostsRow] not authenticated or no cid')
+    return { error: 'Not authenticated' }
+  }
 
-  const { data: raw } = await c.admin
+  const { data: raw, error: rawErr } = await c.admin
     .from('pipeline_items')
     .select('id, post_id, title, platform, posted_at, yt_video_id')
     .eq('id', pipelineItemId)
     .single()
-  if (!raw) return { error: 'Pipeline item not found' }
+  if (!raw) {
+    console.error('[ensureYTPostsRow] pipeline item not found:', pipelineItemId, rawErr?.message)
+    return { error: 'Pipeline item not found' }
+  }
 
   const item = raw as any
-  if (!item.yt_video_id) return {}
+  if (!item.yt_video_id) {
+    console.log(`[ensureYTPostsRow] pipeline item ${pipelineItemId} has no yt_video_id — skipping`)
+    return {}
+  }
+
+  console.log(`[ensureYTPostsRow] post_id=${item.post_id} yt_video_id=${item.yt_video_id}`)
 
   const video = await fetchYouTubePublicVideo(item.yt_video_id)
   const metadataUpdate: Record<string, string> = {}
@@ -723,6 +735,7 @@ export async function ensureYTPostsRow(
   const { data: exact } = await c.admin.from('posts').select('id, post_id')
     .eq('post_id', item.post_id).eq('client_id', c.cid).maybeSingle()
   if (exact) {
+    console.log(`[ensureYTPostsRow] found existing posts row via exact match: ${(exact as any).post_id}`)
     if (Object.keys(metadataUpdate).length > 0) {
       await c.admin.from('posts').update(metadataUpdate).eq('id', (exact as any).id)
     }
@@ -735,6 +748,7 @@ export async function ensureYTPostsRow(
       const { data } = await c.admin.from('posts').select('id, post_id')
         .eq('post_id', part).eq('client_id', c.cid).maybeSingle()
       if (data) {
+        console.log(`[ensureYTPostsRow] found via pipe-split: ${(data as any).post_id}`)
         if (Object.keys(metadataUpdate).length > 0) {
           await c.admin.from('posts').update(metadataUpdate).eq('id', (data as any).id)
         }
@@ -747,6 +761,7 @@ export async function ensureYTPostsRow(
   const { data: byYt } = await c.admin.from('posts').select('id, post_id')
     .eq('yt_id', item.yt_video_id).eq('client_id', c.cid).maybeSingle()
   if (byYt) {
+    console.log(`[ensureYTPostsRow] found via yt_id: ${(byYt as any).post_id}`)
     if (Object.keys(metadataUpdate).length > 0) {
       await c.admin.from('posts').update(metadataUpdate).eq('id', (byYt as any).id)
     }
@@ -754,6 +769,7 @@ export async function ensureYTPostsRow(
   }
 
   // No posts row — create stub with auto-incremented #ytNNNN
+  console.log(`[ensureYTPostsRow] no existing posts row found — creating stub for yt_video_id=${item.yt_video_id}`)
   const { data: lastYt } = await c.admin.from('posts').select('post_id')
     .eq('client_id', c.cid).like('post_id', '#yt%').order('post_id', { ascending: false }).limit(1)
 
@@ -777,7 +793,10 @@ export async function ensureYTPostsRow(
     yt_id:     item.yt_video_id,
     thumbnail_url: video?.thumbnailUrl ?? null,
   })
-  if (insErr) return { error: insErr.message }
+  if (insErr) {
+    console.error(`[ensureYTPostsRow] INSERT failed for ${newPostId} yt=${item.yt_video_id}:`, insErr.message, insErr.code)
+    return { error: insErr.message }
+  }
 
   console.log(`[ensureYTPostsRow] created stub posts row ${newPostId} for pipeline item ${pipelineItemId} yt=${item.yt_video_id}`)
   return { postId: newPostId, created: true }
