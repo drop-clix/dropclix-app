@@ -821,6 +821,101 @@ export async function ensureYTPostsRow(
   return { postId: newPostId, created: true }
 }
 
+// ── Ensure posts row exists for an IG/TT-linked pipeline item ───────────────
+//
+// IG/TT video IDs live on pipeline_items. The posts table has no ig_id/tt_id
+// columns, so the posts row is keyed by the platform-specific post_id segment.
+
+type ShortPlatform = 'ig' | 'tt'
+
+function extractPlatformPostId(rawPostId: string, platform: ShortPlatform): string | null {
+  const prefix = `#${platform}`
+  const parts = rawPostId.split('|').map(part => part.trim()).filter(Boolean)
+  const match = parts.find(part => part.toLowerCase().startsWith(prefix))
+  return match ?? null
+}
+
+async function ensureSocialPostsRow(
+  pipelineItemId: string,
+  platform: ShortPlatform,
+): Promise<{ error?: string; postId?: string; created?: boolean }> {
+  console.log(`[ensure${platform.toUpperCase()}PostsRow] called for pipeline item ${pipelineItemId}`)
+  const c = await getCtx()
+  if (!c || !c.cid) {
+    console.error(`[ensure${platform.toUpperCase()}PostsRow] not authenticated or no cid`)
+    return { error: 'Not authenticated' }
+  }
+
+  const videoIdColumn = platform === 'ig' ? 'ig_video_id' : 'tt_video_id'
+  const { data: raw, error: rawErr } = await c.admin
+    .from('pipeline_items')
+    .select('id, post_id, title, platform, posted_at, pillar, ig_video_id, tt_video_id')
+    .eq('id', pipelineItemId)
+    .eq('client_id', c.cid)
+    .single()
+
+  if (!raw) {
+    console.error(`[ensure${platform.toUpperCase()}PostsRow] pipeline item not found:`, pipelineItemId, rawErr?.message)
+    return { error: 'Pipeline item not found' }
+  }
+
+  const item = raw as any
+  if (!item[videoIdColumn]) {
+    console.log(`[ensure${platform.toUpperCase()}PostsRow] pipeline item ${pipelineItemId} has no ${videoIdColumn} — skipping`)
+    return {}
+  }
+
+  const rawPostId = item.post_id as string
+  const platformPostId = extractPlatformPostId(rawPostId, platform)
+  if (!platformPostId) {
+    console.error(`[ensure${platform.toUpperCase()}PostsRow] no #${platform} segment in post_id=${rawPostId}`)
+    return { error: `No #${platform} segment found in pipeline post_id` }
+  }
+
+  const { data: exactFull } = await c.admin.from('posts').select('id, post_id')
+    .eq('post_id', rawPostId).eq('client_id', c.cid).maybeSingle()
+  if (exactFull) {
+    console.log(`[ensure${platform.toUpperCase()}PostsRow] found existing posts row via exact pipeline ID: ${(exactFull as any).post_id}`)
+    return { postId: (exactFull as any).post_id, created: false }
+  }
+
+  const { data: exactSegment } = await c.admin.from('posts').select('id, post_id')
+    .eq('post_id', platformPostId).eq('client_id', c.cid).maybeSingle()
+  if (exactSegment) {
+    console.log(`[ensure${platform.toUpperCase()}PostsRow] found existing posts row via segment: ${(exactSegment as any).post_id}`)
+    return { postId: (exactSegment as any).post_id, created: false }
+  }
+
+  const { error: insErr } = await c.admin.from('posts').insert({
+    client_id: c.cid,
+    post_id:   platformPostId,
+    title:     item.title ?? (platform === 'ig' ? '(Instagram post)' : '(TikTok post)'),
+    platform:  [platform],
+    pillar:    item.pillar ?? null,
+    date:      item.posted_at ? (item.posted_at as string).slice(0, 10) : null,
+  })
+
+  if (insErr) {
+    console.error(`[ensure${platform.toUpperCase()}PostsRow] INSERT failed for ${platformPostId}:`, insErr.message, insErr.code)
+    return { error: insErr.message }
+  }
+
+  console.log(`[ensure${platform.toUpperCase()}PostsRow] created stub posts row ${platformPostId} for pipeline item ${pipelineItemId}`)
+  return { postId: platformPostId, created: true }
+}
+
+export async function ensureIGPostsRow(
+  pipelineItemId: string,
+): Promise<{ error?: string; postId?: string; created?: boolean }> {
+  return ensureSocialPostsRow(pipelineItemId, 'ig')
+}
+
+export async function ensureTTPostsRow(
+  pipelineItemId: string,
+): Promise<{ error?: string; postId?: string; created?: boolean }> {
+  return ensureSocialPostsRow(pipelineItemId, 'tt')
+}
+
 // ── Content Approval Workflow ────────────────────────────────────────────────
 
 export async function submitApproval(

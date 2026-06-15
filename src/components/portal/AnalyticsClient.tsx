@@ -30,6 +30,27 @@ function resolveWin(post: PostRow, platform: string, win: WindowKey): WindowData
   return post[win]
 }
 
+function idForPlatform(postId: string, activePlatform: string): string {
+  if (activePlatform === 'all') return postId
+  if (!postId.includes('|')) return postId
+
+  const parts = postId.split('|').map(part => part.trim()).filter(Boolean)
+  const match = parts.find(part => {
+    const lower = part.toLowerCase()
+    if (activePlatform === 'ig') return lower.startsWith('#ig')
+    if (activePlatform === 'tt') return lower.startsWith('#tt')
+    if (activePlatform === 'yt') return lower.startsWith('#yt')
+    if (activePlatform === 'lf') return lower.startsWith('#lf')
+    return false
+  })
+
+  return match ?? '—'
+}
+
+function displayPostId(post: PostRow, activePlatform: string): string {
+  return idForPlatform(post.pipelinePostId ?? post.postId, activePlatform)
+}
+
 function fmt(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
   if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K'
@@ -117,6 +138,7 @@ function AnalyticsTableRow({
   const ds          = DECISION_STYLES[post.decision] ?? { color: '#666' }
   const hasData     = w.views > 0
   const pillarColor = pillarColors.get(post.pillar ?? '') ?? '#1a1a1a'
+  const displayId   = displayPostId(post, platform)
 
   // Interpolate view count for recently polled videos (within 7 days)
   const liveViews = useInterpolatedStat(
@@ -142,7 +164,7 @@ function AnalyticsTableRow({
       <td style={{ width: 3, padding: 0, background: `${pillarColor}cc` }} />
       <td className="px-5 py-4">
         <span className="text-[10px] font-medium tracking-[.08em]" style={{ fontFamily: 'monospace', color: '#c9a96e' }}>
-          {post.postId}
+          {displayId}
         </span>
       </td>
       <td className="px-5 py-4" style={{ maxWidth: 240 }}>
@@ -367,7 +389,7 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 
 type ReachViewMode = 'top10' | 'last10' | 'all'
 
-function ReachByPostChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
+function ReachByPostChart({ rows, win, platform }: { rows: PostRow[]; win: WindowKey; platform: string }) {
   const [mode, setMode] = useState<ReachViewMode>('top10')
 
   const chartData = useMemo(() => {
@@ -375,11 +397,11 @@ function ReachByPostChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
     if (mode === 'top10')  sorted = sorted.slice(0, 10)
     if (mode === 'last10') sorted = sorted.slice().sort((a, b) => a[win].views - b[win].views).slice(0, 10)
     return sorted.map(r => ({
-      name:  r.postId,
+      name:  displayPostId(r, platform),
       views: r[win].views,
       er:    calcER(r[win], r.platform),
     }))
-  }, [rows, win, mode])
+  }, [rows, win, mode, platform])
 
   return (
     <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '20px 20px 16px' }}>
@@ -545,10 +567,12 @@ function ChartCard({
 function PostSnapshot({
   post,
   win,
+  platform,
   onClose,
 }: {
   post: PostRow
   win: WindowKey
+  platform: string
   onClose: () => void
 }) {
   const metric = post[win]
@@ -563,9 +587,9 @@ function PostSnapshot({
   ].filter(Boolean).slice(0, 3)
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(0,0,0,.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={e => { if (e.currentTarget === e.target) onClose() }}>
-      <div style={{ width: 420, maxWidth: '100%', background: '#0a0a0a', border: '1px solid #242424', borderRadius: 8, boxShadow: '0 24px 80px rgba(0,0,0,.7)' }}>
+        <div style={{ width: 420, maxWidth: '100%', background: '#0a0a0a', border: '1px solid #242424', borderRadius: 8, boxShadow: '0 24px 80px rgba(0,0,0,.7)' }}>
         <div style={{ padding: 22, borderBottom: '1px solid #171717' }}>
-          <p className="text-[10px] tracking-[.18em] uppercase mb-2" style={{ color: '#c9a96e' }}>{post.postId}</p>
+          <p className="text-[10px] tracking-[.18em] uppercase mb-2" style={{ color: '#c9a96e' }}>{displayPostId(post, platform)}</p>
           <h3 className="font-jakarta font-light text-[22px]" style={{ color: '#f2ede4', lineHeight: 1.2 }}>{post.title}</h3>
         </div>
         <div style={{ padding: 22 }}>
@@ -627,7 +651,7 @@ function AdvancedAnalyticsCharts({
     return source.map(post => {
       const wData = resolveWin(post, platform, win)
       const er = calcER(wData, post.platform)
-      return { name: post.postId, post, views: wData.views, er: +er.toFixed(1), date: post.date.slice(5), color: tierColor(er) }
+      return { name: displayPostId(post, platform), post, views: wData.views, er: +er.toFixed(1), date: post.date.slice(5), color: tierColor(er) }
     })
   }, [rows, win, reachMode, platform])
 
@@ -769,7 +793,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
         byPlatformWindow: { ...p.byPlatformWindow, [bpwKey]: winData },
       }
       if (decision !== undefined) updated.decision = decision
-      toast(`Saved · ${p.postId} updated`)
+      toast(`Saved · ${displayPostId(p, platform)} updated`)
       return updated
     }))
   }
@@ -783,7 +807,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
         const w = p[win as WindowKey]
         const er = calcER(w, p.platform).toFixed(1)
         return (
-          p.postId.toLowerCase().includes(q) ||
+          displayPostId(p, platform).toLowerCase().includes(q) ||
           p.title.toLowerCase().includes(q) ||
           p.date.toLowerCase().includes(q) ||
           p.pillar.toLowerCase().includes(q) ||
@@ -897,7 +921,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       {slidePost && (
         <PostSlideOver
           post={{
-            postId:   slidePost.postId,
+            postId:   displayPostId(slidePost, platform),
             title:    slidePost.title,
             platform: slidePost.platform,
             date:     slidePost.date,
@@ -987,7 +1011,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
             ) : (
               pagedRows.map((post, i) => (
                 <AnalyticsTableRow
-                  key={post.postId}
+                  key={post.uuid}
                   post={post}
                   index={i}
                   activeWin={activeWin}
@@ -1028,7 +1052,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       </div>
 
       {snapshotPost && (
-        <PostSnapshot post={snapshotPost} win={activeWin} onClose={() => setSnapshotPost(null)} />
+        <PostSnapshot post={snapshotPost} win={activeWin} platform={platform} onClose={() => setSnapshotPost(null)} />
       )}
     </div>
   )

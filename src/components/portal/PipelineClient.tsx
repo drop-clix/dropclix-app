@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems, bulkCreatePipelineItems, ensureYTPostsRow } from '@/app/(dashboard)/edit-actions'
+import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems, bulkCreatePipelineItems, ensureYTPostsRow, ensureIGPostsRow, ensureTTPostsRow } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
@@ -327,6 +327,8 @@ function PlatformLinkModal({
     const result = await updatePipelineItem(item.id, update)
     setSaving(false)
     if (result.error) { setErrMsg(result.error); return }
+    if (plat === 'ig' && videoId) await ensureIGPostsRow(item.id)
+    if (plat === 'tt' && videoId) await ensureTTPostsRow(item.id)
     onLinked(val, videoId)
     onClose()
   }
@@ -1207,6 +1209,8 @@ function MarkAsPostedModal({
     // Ensure a posts row exists so the cron can write to post_analytics.
     // Handles multi-platform items (pipe-separated post_id) via 3-strategy lookup.
     if (parsedIds.yt) await ensureYTPostsRow(item.id)
+    if (parsedIds.ig) await ensureIGPostsRow(item.id)
+    if (parsedIds.tt) await ensureTTPostsRow(item.id)
 
     setSaving(false)
     onPosted(iso, parsedIds)

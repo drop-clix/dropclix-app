@@ -331,3 +331,9 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 | `scripts/fix-nick-data.mjs` | CLIENT:Nick cleanup — week fixes, ID renames, platforms. Already applied. Idempotent. |
 | `scripts/diagnose-nick.mjs` | Prints Nick's enabled_platforms + post/pipeline platform distribution. |
 | `scripts/backfill-priorities.mjs` | Backfill pipeline priorities from STATUS_PRIORITY map. |
+
+## S44 Bug Fix Notes
+
+- Issue: Analytics ID display stayed on `posts.post_id` (often `#yt...`) even when the IG/TT platform pill was active. Root cause: Analytics loaded rows from `posts` and rendered `post.postId` directly; the platform filter was never passed into ID segment selection. Fix: Analytics now carries `pipeline_items.post_id` as `pipelinePostId` via video ID / post segment lookup and uses platform-aware display logic for table IDs, search, charts, slide-over headers, snapshots, and save toasts. Source of truth remains `pipeline_items.post_id`.
+- Issue: IG/TT linked + posted pipeline items did not auto-appear in Analytics. Root cause: only YouTube called `ensureYTPostsRow`; IG/TT link save and Mark as Posted only stored `ig_video_id` / `tt_video_id` on `pipeline_items` and never created a `posts` row for `post_analytics` to reference. Fix: added `ensureIGPostsRow()` and `ensureTTPostsRow()` in `edit-actions.ts`, wired them after IG/TT link save and Mark as Posted. They extract the matching `#ig` / `#tt` segment from pipe-separated `pipeline_items.post_id`, insert only if missing, and never generate or renumber IDs.
+- Gotcha: The `posts` table has no `ig_id` or `tt_id` columns. Do not write those fields. IG/TT video IDs live on `pipeline_items`; `posts` rows are keyed by platform-specific `post_id` segments and sync routes resolve through the pipeline link columns.

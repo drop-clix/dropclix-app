@@ -20,6 +20,7 @@ export type WindowData = {
 export type PostRow = {
   uuid: string      // posts.id — needed to target post_analytics rows
   postId: string
+  pipelinePostId: string | null
   title: string
   platform: string[]
   pillar: string
@@ -53,7 +54,7 @@ export default async function AnalyticsPage() {
   const { data: rawPosts, error } = await supabase
     .from('posts')
     .select(`
-      id, post_id, title, platform, pillar, hook, format, date, decision,
+      id, post_id, title, platform, pillar, hook, format, date, decision, yt_id,
       thumbnail_url,
       post_analytics(platform, metric_window, views, likes, comments, shares, saves, followers, watch_pct, prev_views, prev_recorded_at, last_polled_at, recorded_at)
     `)
@@ -62,6 +63,35 @@ export default async function AnalyticsPage() {
 
   if (error) {
     console.error('Analytics fetch error:', error.message)
+  }
+
+  const { data: rawPipelineItems, error: pipelineError } = await supabase
+    .from('pipeline_items')
+    .select('post_id, yt_video_id, ig_video_id, tt_video_id')
+    .eq('client_id', clientId ?? fallback)
+
+  if (pipelineError) {
+    console.error('Analytics pipeline ID fetch error:', pipelineError.message)
+  }
+
+  const pipelineByVideoId = new Map<string, string>()
+  const pipelineByPostSegment = new Map<string, string>()
+
+  for (const item of rawPipelineItems ?? []) {
+    const pipelinePostId = (item as any).post_id as string | null
+    if (!pipelinePostId) continue
+
+    const ytVideoId = (item as any).yt_video_id as string | null
+    const igVideoId = (item as any).ig_video_id as string | null
+    const ttVideoId = (item as any).tt_video_id as string | null
+
+    if (ytVideoId) pipelineByVideoId.set(ytVideoId, pipelinePostId)
+    if (igVideoId) pipelineByVideoId.set(igVideoId, pipelinePostId)
+    if (ttVideoId) pipelineByVideoId.set(ttVideoId, pipelinePostId)
+
+    for (const part of pipelinePostId.split('|').map(part => part.trim()).filter(Boolean)) {
+      pipelineByPostSegment.set(part, pipelinePostId)
+    }
   }
 
   // Flatten into PostRow[]
@@ -96,6 +126,7 @@ export default async function AnalyticsPage() {
     return {
       uuid:     p.id,
       postId:   p.post_id,
+      pipelinePostId: pipelineByVideoId.get((p as any).yt_id ?? '') ?? pipelineByPostSegment.get(p.post_id) ?? null,
       title:    p.title,
       platform: p.platform ?? [],
       pillar:   p.pillar   ?? '—',
