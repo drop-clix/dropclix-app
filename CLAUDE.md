@@ -6,6 +6,7 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 
 ## Security Rules — NEVER violate these
 
+- **`pipeline_items.title` is the ONLY display title source.** No API sync (YouTube, Instagram, TikTok) may ever write to `pipeline_items.title`. `posts.title` stores raw API metadata and must never be used as a display title in the portal UI. When syncing/polling, always split metadata updates: `pipeline_items` gets only `thumbnail_url`; `posts` may receive `title` + `thumbnail_url`.
 - **Never hardcode API keys, secrets, or credentials** in any committed file (.ts, .tsx, .md, .sql, .mjs, etc.). Use `process.env.VAR_NAME` only.
 - **Never commit env files**: `.env`, `.env.local`, `.env*.local`, `.env.prod.local` are in `.gitignore` — keep them there. `vercel env pull` overwrites `.env.local` with encrypted empty strings; real secrets are not recoverable via pull.
 - **Never put secrets in NEXT_PUBLIC_ variables** — they are inlined into client bundles and visible to anyone.
@@ -91,6 +92,7 @@ Rules:
 
 ## Key decisions / gotchas
 
+- **`pipeline_items.title` source of truth**: The display title for any video in the portal is always `pipeline_items.title`. `posts.title` is API metadata only (stores raw YT caption for internal use) and is never rendered in the UI. When syncing/polling, split metadata: `pipeline_items` → `thumbnail_url` only; `posts` → `title` + `thumbnail_url`. `analytics/page.tsx` resolves display title from `pipelineTitleByPostId` map (built from `pipeline_items.title` via video ID or post_id segment lookup), falling back to `posts.title` only when no pipeline item exists.
 - **`isPlatLinked` signature**: takes `(item: PipelineItem, plat: 'ig' | 'tt')` — NOT `(videoUrl, plat)`. Checks `item.igVideoId`/`item.ttVideoId` first, then falls back to `item.videoUrl` domain check.
 - **Pipeline row link buttons (IG/TT/YT)**: 28×28px with brand logo SVGs (`IGSmall`/`TTSmall`/`YTIcon`). `opacity: 0.25` when unlinked, `1` when linked + glow `boxShadow`. `ytLinked = !!item.ytId || !!item.ytVideoId`.
 - **`PlatformLinkModal` auto-fill**: pre-fills IG from `item.igVideoId` → `instagram.com/reel/{id}/`; TT from `item.videoUrl` if TT URL; also saves `ig_video_id`/`tt_video_id` to DB alongside `video_url`. `onLinked(url, videoId)` — two args.
@@ -331,6 +333,15 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 | `scripts/fix-nick-data.mjs` | CLIENT:Nick cleanup — week fixes, ID renames, platforms. Already applied. Idempotent. |
 | `scripts/diagnose-nick.mjs` | Prints Nick's enabled_platforms + post/pipeline platform distribution. |
 | `scripts/backfill-priorities.mjs` | Backfill pipeline priorities from STATUS_PRIORITY map. |
+
+## S45 Bug Fix Notes
+
+- Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.
+- Fix: `analytics/page.tsx` now fetches `title` from `pipeline_items` alongside the existing video ID columns. A `pipelineTitleByPostId` map resolves the display title from pipeline (by video ID or post_id segment) before falling back to `posts.title`. `PostRow.title` is now always the pipeline title when a matching pipeline item exists.
+- Fix: `video-polling.ts` `updateVideoMetadata()` now uses two separate update objects — `pipelineUpdate` (thumbnail only, no title) and `postUpdate` (title + thumbnail). The YT API caption is only ever written to `posts.title` (API metadata), never to `pipeline_items.title`.
+- Fix: `edit-actions.ts` `linkYouTubeVideo()` same split — pipeline gets `thumbnail_url` only; posts gets `title` + `thumbnail_url`.
+- Fix: `edit-actions.ts` `ensureYTPostsRow()` same split for existing-row updates; stub row creation now uses `item.title` (pipeline title) instead of `video?.title` (YT API caption).
+- Gotcha: `pipeline_items.title` is the ONLY display title source across the entire portal. When adding any new sync route or metadata update, always check: does this write overwrite `pipeline_items.title`? If yes, remove it. The rule is in the Security Rules section of CLAUDE.md and must never be broken.
 
 ## S44 Bug Fix Notes
 
