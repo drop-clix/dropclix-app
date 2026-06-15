@@ -12,6 +12,12 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 - **Never put secrets in NEXT_PUBLIC_ variables** — they are inlined into client bundles and visible to anyone.
 - **Never paste key values into CLAUDE.md or any tracked file** — describe the key by its Vercel env var name only (e.g., `YOUTUBE_API_KEY`).
 - If a key is ever accidentally committed: rotate it immediately in the provider console, remove the value from the file, rewrite git history (`git commit --amend` + `git push --force-with-lease`), and update Vercel env with the new key.
+- **DESTRUCTIVE SQL RULE**: Before writing any DELETE or UPDATE targeting client data, always: (1) Run SELECT with identical WHERE clause first. (2) Confirm row count matches expectation. (3) Verify no legitimate client data is included. (4) Never filter on `post_id` alone — always include `client_id`. A cross-client contamination incident (see `/fires/`) was caused by missing `client_id` scoping on inserts and deletes.
+
+## FIRES — ACTIVE INCIDENTS
+See `/fires/` folder for full incident reports.
+- 2026-06-15: **Client data contamination** — Nick's posts rows being rebuilt (IN PROGRESS) → `fires/2026-06-15-client-data-contamination.md`
+- 2026-06-15: **Pipeline title overwrite** — RESOLVED (S45) → `fires/2026-06-15-pipeline-title-overwrite.md`
 
 ## Session Scope
 
