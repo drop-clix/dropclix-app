@@ -206,8 +206,8 @@ export function AdminInstagramSection({
         })}
       </div>
 
-      <p className="text-[9px] font-light mt-3" style={{ color: '#1e1e1e' }}>
-        OAuth scopes: instagram_business_basic · instagram_manage_insights · Long-lived token (60-day TTL)
+      <p className="text-[9px] font-light mt-3" style={{ color: '#555' }}>
+        Required Instagram permissions · Long-lived token (60-day TTL)
       </p>
     </div>
   )
