@@ -51,4 +51,10 @@ callback URL.
 
 ## Resolution
 
-[x] COMPLETE — switching to password-based invite flow
+[x] COMPLETE — password-based invite flow implemented in S50.
+
+`createNewClient` now calls `adm.auth.admin.createUser({ email_confirm: true, user_metadata: { must_change_password: true } })`.
+Admin copies temp credentials from modal and shares directly with client.
+Client logs in with temp password → `layout.tsx` detects `must_change_password` flag → redirect to `/auth/set-password`.
+Set-password page clears the flag and sends client to dashboard.
+No email links involved in the happy path.
