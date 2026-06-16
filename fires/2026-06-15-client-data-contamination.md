@@ -56,11 +56,16 @@ Recovery method:
 - YouTube Studio CSV export (nick_yt_import.csv, 354 videos)
 - Script: `scripts/restore-nick-yt-from-studio.mjs --run`
 - Sorted chronologically (oldest first) for date-ordered #yt#### IDs
-- Starting post_id: #yt0071 (floor), actual = max(existing Nick #yt####) + 1
-- pipeline_items: skipped existing rows (yt_video_id match), inserted new
-- posts: skipped existing rows (yt_id match), inserted new
-- post_analytics: upserted all 354 rows as metric_window='live'
-- Cross-contamination check confirmed 0 Nick ytIds leaked into Day 1 client
+- New post_ids assigned: #yt0071 – #yt0411 (341 new pipeline items)
+- pipeline_items: 341 inserted, 13 skipped (already existed), 0 failed
+- posts:          343 inserted, 11 skipped (already existed), 0 failed
+- post_analytics: 354 upserted (metric_window='live'), 0 failed
+- Cross-contamination check: 0 Nick ytIds found in Day 1 client rows ✓
+
+Final verified counts (Nick, YT):
+- pipeline_items: 356
+- posts:          355
+- post_analytics: 354 (metric_window='live')
 
 Verify final state in Supabase SQL Editor:
 ```sql

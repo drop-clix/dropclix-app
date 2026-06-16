@@ -62,7 +62,11 @@ const envRaw = readFileSync(join(__dirname, '../.env.local'), 'utf-8')
 const env    = {}
 for (const line of envRaw.split('\n')) {
   const m = line.match(/^([^#\s=][^=]*)=(.*)$/)
-  if (m) env[m[1].trim()] = m[2].trim()
+  if (m) {
+    let val = m[2].trim()
+    if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1)
+    env[m[1].trim()] = val
+  }
 }
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY)
 
@@ -159,7 +163,7 @@ const allRows = rawLines.slice(1)
       ctr:         num(COL.ctr),
     }
   })
-  .filter(r => r.ytVideoId !== '')   // skip totals row (empty Content)
+  .filter(r => /^[A-Za-z0-9_-]{11}$/.test(r.ytVideoId))  // skip totals/summary rows; YT IDs are exactly 11 chars
 
 console.log(`CSV: ${CSV_PATH}`)
 console.log(`Rows with Content ID: ${allRows.length}`)
