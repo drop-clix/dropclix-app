@@ -16,7 +16,7 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 
 ## FIRES — ACTIVE INCIDENTS
 See `/fires/` folder for full incident reports.
-- 2026-06-15: **Client data contamination** — Nick's posts rows being rebuilt (IN PROGRESS) → `fires/2026-06-15-client-data-contamination.md`
+- 2026-06-15: **Client data contamination** — RESOLVED (S46) → `fires/2026-06-15-client-data-contamination.md`
 - 2026-06-15: **Pipeline title overwrite** — RESOLVED (S45) → `fires/2026-06-15-pipeline-title-overwrite.md`
 
 ## Session Scope
@@ -221,7 +221,7 @@ Rules:
 - Auth user ID: `893475d0-f0ba-4570-a1f6-5110cd2c9e18`
 - Client ID: `913f1794-1506-4449-b56c-b683809cefc3`
 - Test client: test@client.com (role=client) linked to Nick's client_id
-- YouTube: 53 videos (`#yt0001`–`#yt0039` Shorts, `#LF0001`–`#LF0014` LF). Re-import: `node scripts/ingest-yt-csv.mjs <csv> --run`
+- YouTube: 354 videos restored from YT Studio CSV (S46). IDs #yt0001–#yt0070 pre-existing; #yt0071+ assigned chronologically. Re-import/restore: `node scripts/restore-nick-yt-from-studio.mjs --run`
 
 ## Day 1 / Chase client
 
@@ -339,6 +339,18 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 | `scripts/fix-nick-data.mjs` | CLIENT:Nick cleanup — week fixes, ID renames, platforms. Already applied. Idempotent. |
 | `scripts/diagnose-nick.mjs` | Prints Nick's enabled_platforms + post/pipeline platform distribution. |
 | `scripts/backfill-priorities.mjs` | Backfill pipeline priorities from STATUS_PRIORITY map. |
+
+## S46 Recovery Notes (CLIENT: Nick Nascimento)
+
+- Incident: Client data contamination (June 15, 2026) deleted Nick's posts rows and post_analytics during a cross-client cleanup. 43 posts + 89 analytics rows were removed.
+- Recovery: `scripts/restore-nick-yt-from-studio.mjs` — reads 354 rows from YouTube Studio CSV export (`scripts/data/Content.../nick_yt_import.csv`). Sorts chronologically oldest→newest so post_ids (#yt####) are date-ordered.
+- Step 1 pipeline_items: skips rows where `yt_video_id` already exists for Nick (existing rows not touched). Inserts new rows with status=POSTED, priority=6, week=MonWk#, platform=['yt'].
+- Step 2 posts: skips rows where `yt_id` already exists for Nick. Uses same #yt#### assigned in Step 1. Starting ID = max(existing Nick #yt####, 70) + 1.
+- Step 3 post_analytics: upserts all 354 rows as metric_window='live'. ON CONFLICT (post_id, platform, metric_window) DO UPDATE.
+- Step 4 verify: queries pipeline_items / posts / post_analytics counts for Nick. Cross-contamination check: Day 1 client_id must have 0 rows matching Nick's yt_ids.
+- Safety: every insert includes `client_id: NICK_CLIENT_ID` hardcoded. Day 1 client_id is declared as a constant and never written.
+- Script is idempotent: safe to re-run. If .env.local has empty strings (after `vercel env pull`), restore Supabase creds from dashboard before running.
+- Nick CLAUDE.md note update: Nick now has up to 354 YouTube videos. Post IDs #yt0001–#yt0070 were pre-existing (57 had yt_video_id from S39 backfill). New videos assigned #yt0071+ in chronological order.
 
 ## S45 Bug Fix Notes
 

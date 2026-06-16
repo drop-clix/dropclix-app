@@ -1,7 +1,7 @@
 # FIRE: Client Data Contamination
 **Date:** June 15, 2026
 **Severity:** CRITICAL
-**Status:** IN PROGRESS
+**Status:** RESOLVED
 
 ## What Happened
 Day 1 | D 1 posts rows (posts table) were duplicated under
@@ -44,6 +44,36 @@ manual CSV re-import.
 - [ ] Never filter on post_id alone — always include client_id
 - [ ] Add a nightly SQL check that alerts if any post_id exists
       under more than one client_id
+- [x] Always scope CSV imports by client_id — every insert row
+      must carry client_id explicitly (added to restore script)
+- [x] Restoration script scopes every read + write to Nick's
+      client_id, with cross-contamination check in verify step
 
 ## Resolution
-[ ] PENDING — Nick's posts rows being rebuilt
+[x] COMPLETE — S46 deployed June 15, 2026
+
+Recovery method:
+- YouTube Studio CSV export (nick_yt_import.csv, 354 videos)
+- Script: `scripts/restore-nick-yt-from-studio.mjs --run`
+- Sorted chronologically (oldest first) for date-ordered #yt#### IDs
+- Starting post_id: #yt0071 (floor), actual = max(existing Nick #yt####) + 1
+- pipeline_items: skipped existing rows (yt_video_id match), inserted new
+- posts: skipped existing rows (yt_id match), inserted new
+- post_analytics: upserted all 354 rows as metric_window='live'
+- Cross-contamination check confirmed 0 Nick ytIds leaked into Day 1 client
+
+Verify final state in Supabase SQL Editor:
+```sql
+SELECT COUNT(*) FROM pipeline_items
+WHERE client_id='913f1794-1506-4449-b56c-b683809cefc3'
+AND platform @> ARRAY['yt'];
+
+SELECT COUNT(*) FROM posts
+WHERE client_id='913f1794-1506-4449-b56c-b683809cefc3'
+AND platform @> ARRAY['yt'];
+
+SELECT COUNT(*) FROM post_analytics
+WHERE client_id='913f1794-1506-4449-b56c-b683809cefc3'
+AND platform='yt' AND metric_window='live';
+```
+All three should be ≥ 354.
