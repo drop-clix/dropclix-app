@@ -32,12 +32,15 @@ export async function GET(req: NextRequest) {
   }
 
   const tokens = await tokenRes.json()
-  const expiry = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+  const expiresAt = tokens.expires_in
+    ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+    : new Date(Date.now() + 3600 * 1000).toISOString()
 
   // Fetch channel metadata
   const channel = await fetchChannelInfo(tokens.access_token)
 
   const admin = createAdminClient()
+  const now = new Date().toISOString()
 
   // Build upsert payload — only include refresh_token if Google returned one
   // (avoids wiping the stored token on reconnects that don't issue a new one)
@@ -45,15 +48,15 @@ export async function GET(req: NextRequest) {
     client_id:        clientId || null,
     platform:         'youtube',
     access_token:     tokens.access_token,
-    token_expires_at: expiry,
+    token_expires_at: expiresAt,
     channel_id:       channel?.channelId ?? null,
     channel_name:     channel?.channelName ?? null,
     subscriber_count: channel?.subscriberCount ?? null,
-    updated_at:       new Date().toISOString(),
+    updated_at:       now,
   }
   if (tokens.refresh_token) {
     upsertPayload.refresh_token = tokens.refresh_token
-    upsertPayload.created_at    = new Date().toISOString()
+    upsertPayload.created_at    = now
   }
 
   const { error: dbErr } = await admin

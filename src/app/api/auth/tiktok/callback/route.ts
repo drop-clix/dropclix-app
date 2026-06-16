@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
   let followerCount: number | null = null
   try {
     const userRes = await fetch(
-      'https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,follower_count,avatar_url',
+      'https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,follower_count',
       { headers: { Authorization: `Bearer ${access_token}` } },
     )
     if (userRes.ok) {
@@ -80,6 +80,7 @@ export async function GET(req: NextRequest) {
   } catch { /* non-fatal */ }
 
   const admin = createAdminClient()
+  const now = new Date().toISOString()
   const upsertPayload: Record<string, unknown> = {
     client_id:        clientId || null,
     platform:         'tiktok',
@@ -88,8 +89,8 @@ export async function GET(req: NextRequest) {
     channel_id:       open_id,
     channel_name:     displayName,
     subscriber_count: followerCount,
-    created_at:       new Date().toISOString(),
-    updated_at:       new Date().toISOString(),
+    created_at:       now,
+    updated_at:       now,
   }
   if (refresh_token) upsertPayload.refresh_token = refresh_token
 

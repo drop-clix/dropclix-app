@@ -7,6 +7,18 @@ import { createClient } from '@/lib/supabase/client'
 type Mode = 'login' | 'reset'
 type ResetStatus = 'idle' | 'sending' | 'sent' | 'error'
 
+const inputStyle: React.CSSProperties = {
+  background: '#0e0e0e',
+  border: '1px solid #1e1e1e',
+  color: '#f2ede4',
+  fontFamily: 'DM Sans, sans-serif',
+  borderRadius: '6px',
+  padding: '12px 16px',
+  width: '100%',
+  fontSize: '14px',
+  outline: 'none',
+}
+
 export default function LoginPage() {
   const router = useRouter()
 
@@ -152,12 +164,7 @@ export default function LoginPage() {
                   onChange={e => setEmail(e.target.value)}
                   placeholder="you@company.com"
                   className="w-full px-4 py-3 text-sm outline-none transition-colors"
-                  style={{
-                    background: '#0e0e0e',
-                    border: '1px solid #1e1e1e',
-                    color: '#f2ede4',
-                    fontFamily: 'DM Sans, sans-serif',
-                  }}
+                  style={inputStyle}
                   onFocus={e => (e.target.style.borderColor = '#c9a96e')}
                   onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
                 />
@@ -191,12 +198,7 @@ export default function LoginPage() {
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full px-4 py-3 text-sm outline-none transition-colors"
-                  style={{
-                    background: '#0e0e0e',
-                    border: '1px solid #1e1e1e',
-                    color: '#f2ede4',
-                    fontFamily: 'DM Sans, sans-serif',
-                  }}
+                  style={inputStyle}
                   onFocus={e => (e.target.style.borderColor = '#c9a96e')}
                   onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
                 />
@@ -285,12 +287,7 @@ export default function LoginPage() {
                       onChange={e => setResetEmail(e.target.value)}
                       placeholder="you@company.com"
                       className="w-full px-4 py-3 text-sm outline-none transition-colors"
-                      style={{
-                        background: '#0e0e0e',
-                        border: '1px solid #1e1e1e',
-                        color: '#f2ede4',
-                        fontFamily: 'DM Sans, sans-serif',
-                      }}
+                      style={inputStyle}
                       onFocus={e => (e.target.style.borderColor = '#c9a96e')}
                       onBlur={e => (e.target.style.borderColor = '#1e1e1e')}
                     />
@@ -328,7 +325,7 @@ export default function LoginPage() {
                     className="w-full py-3 text-[9px] tracking-[.18em] uppercase transition-colors"
                     style={{ color: '#666', cursor: 'pointer' }}
                     onMouseEnter={e => ((e.target as HTMLElement).style.color = '#c9a96e')}
-                    onMouseLeave={e => ((e.target as HTMLElement).style.color = '#444')}
+                    onMouseLeave={e => ((e.target as HTMLElement).style.color = '#666')}
                   >
                     ← Back to Sign In
                   </button>

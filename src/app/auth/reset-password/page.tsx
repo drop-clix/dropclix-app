@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-type Status = 'loading' | 'ready' | 'invalid' | 'submitting' | 'success' | 'error'
+type Status = 'loading' | 'ready' | 'invalid' | 'submitting' | 'success'
 
 const inputStyle: React.CSSProperties = {
   background: '#0e0e0e',
@@ -185,7 +185,7 @@ export default function ResetPasswordPage() {
             )}
 
             {/* Form */}
-            {(status === 'ready' || status === 'submitting' || status === 'error') && (
+            {(status === 'ready' || status === 'submitting') && (
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
                   <label

@@ -141,7 +141,6 @@ export async function GET(req: NextRequest) {
     )
 
     const pages = accountsData?.data ?? []
-    console.log(`[ig-oauth] pages returned: ${pages.length}`)
 
     for (const page of pages) {
       if (!page.id || !page.access_token) {
