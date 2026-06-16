@@ -129,7 +129,10 @@ export default function LoginPage() {
     const supabase = createClient()
     const { error: otpErr } = await supabase.auth.signInWithOtp({
       email: magicEmail,
-      options: { emailRedirectTo: window.location.origin },
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        shouldCreateUser: false,
+      },
     })
 
     if (otpErr) {
