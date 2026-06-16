@@ -28,6 +28,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!user) redirect('/login')
 
+  // Force first-login password change for clients — admins are exempt
+  const metaRole = (user.app_metadata as Record<string, unknown> | null)?.role
+  if (user.user_metadata?.must_change_password === true && metaRole !== 'admin') {
+    redirect('/auth/set-password')
+  }
+
   const { data: profile } = await supabase
     .from('users')
     .select('role, email, client_id')

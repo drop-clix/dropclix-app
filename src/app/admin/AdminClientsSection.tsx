@@ -182,8 +182,67 @@ function CreateClientModal({ onClose, onSuccess }: { onClose: () => void; onSucc
   const [slugTouched, setSlugTouched] = useState(false)
   const [platforms,   setPlatforms  ] = useState<string[]>(['ig'])
   const [tabs,        setTabs       ] = useState<string[]>(ALL_TABS.map(t => t.key))
+  const [copied,      setCopied     ] = useState(false)
 
-  useEffect(() => { if (state?.success) onSuccess(state.name ?? '') }, [state, onSuccess])
+  // Narrow state to credentials shape only when success + tempPassword present
+  const creds = state && 'success' in state && state.success && 'tempPassword' in state
+    ? (state as { success: true; name: string; email: string; tempPassword: string })
+    : null
+
+  function handleCopyCredentials() {
+    if (!creds) return
+    const text = `Portal: https://portal.drop-clix.com\nEmail: ${creds.email}\nTemporary password: ${creds.tempPassword}\n\nAsk them to log in and change their password.`
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
+
+  // Credentials panel — shown after successful creation
+  if (creds) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.8)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ background: '#080808', border: '1px solid #1a1a1a', padding: '40px 44px', width: '100%', maxWidth: 520 }}>
+          <div style={{ marginBottom: 28 }}>
+            <p style={{ fontSize: 9, letterSpacing: '0.24em', textTransform: 'uppercase' as const, color: '#39ff88', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ display: 'block', width: 16, height: 1, background: '#39ff88' }} />
+              Client Created
+            </p>
+            <h2 style={{ fontSize: 22, fontWeight: 300, color: '#f2ede4', lineHeight: 1.1, marginBottom: 6 }}>
+              &ldquo;{creds.name}&rdquo; is ready.
+            </h2>
+            <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>Share these credentials with your client.</p>
+          </div>
+
+          <div style={{ background: '#060606', border: '1px solid #1e1e1e', padding: '20px 24px', marginBottom: 24 }}>
+            {([
+              ['Portal',              'portal.drop-clix.com'],
+              ['Email',               creds.email],
+              ['Temporary password',  creds.tempPassword],
+            ] as [string, string][]).map(([label, value]) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase' as const, color: '#555' }}>{label}</span>
+                <span style={{ fontSize: 12, color: '#f2ede4', fontFamily: label === 'Temporary password' ? 'monospace' : 'inherit', letterSpacing: label === 'Temporary password' ? '.06em' : undefined }}>
+                  {value}
+                </span>
+              </div>
+            ))}
+            <div style={{ borderTop: '1px solid #1a1a1a', marginTop: 4, paddingTop: 12 }}>
+              <p style={{ fontSize: 10, color: '#555', fontWeight: 300 }}>Ask them to log in and change their password.</p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={handleCopyCredentials} style={{ ...btnGold, flex: 1, padding: '12px 20px' }}>
+              {copied ? '✓ Copied' : 'Copy Credentials'}
+            </button>
+            <button onClick={() => onSuccess(creds.name)} style={{ ...btnGhost, padding: '12px 20px' }}>
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -197,7 +256,7 @@ function CreateClientModal({ onClose, onSuccess }: { onClose: () => void; onSucc
             New Client
           </p>
           <h2 style={{ fontSize: 22, fontWeight: 300, color: '#f2ede4', lineHeight: 1.1, marginBottom: 6 }}>Create Client</h2>
-          <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>An invite email will be sent automatically.</p>
+          <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>A temporary password will be generated.</p>
         </div>
 
         <form action={formAction}>
@@ -228,7 +287,7 @@ function CreateClientModal({ onClose, onSuccess }: { onClose: () => void; onSucc
             <CheckboxGroup legend="Enabled Platforms" name="platforms" options={ALL_PLATFORMS} selected={platforms} onChange={setPlatforms} />
             <CheckboxGroup legend="Enabled Tabs" name="tabs" options={ALL_TABS} selected={tabs} onChange={setTabs} />
 
-            {state?.error && (
+            {state && 'error' in state && state.error && (
               <div style={{ padding: '10px 14px', background: 'rgba(255,59,95,.08)', border: '1px solid rgba(255,59,95,.2)', color: '#ff3b5f', fontSize: 11, fontWeight: 300 }}>
                 {state.error}
               </div>
@@ -236,7 +295,7 @@ function CreateClientModal({ onClose, onSuccess }: { onClose: () => void; onSucc
 
             <div style={{ display: 'flex', gap: 10, paddingTop: 8 }}>
               <button type="submit" disabled={isPending} style={{ ...btnGold, flex: 1, padding: '12px 20px', opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}>
-                {isPending ? 'Creating…' : 'Create & Send Invite →'}
+                {isPending ? 'Creating…' : 'Create Client →'}
               </button>
               <button type="button" onClick={onClose} style={{ ...btnGhost, padding: '12px 20px' }}>Cancel</button>
             </div>
@@ -495,24 +554,48 @@ function AdminImportModal({ client, onClose }: { client: ClientRow; onClose: () 
   )
 }
 
-// ── Resend Invite Button ──────────────────────────────────────────────────────
+// ── Reset Password Button ─────────────────────────────────────────────────────
 
 function ResendButton({ email }: { email: string }) {
   const [state, formAction, isPending] = useActionState(resendClientInvite, null)
+  const [copied, setCopied] = useState(false)
+
+  const tempPassword = state && 'tempPassword' in state ? (state as { tempPassword: string }).tempPassword : null
+
+  function copyPw() {
+    if (!tempPassword) return
+    navigator.clipboard.writeText(tempPassword)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
+
+  if (tempPassword) {
+    return (
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', color: '#f2ede4', fontSize: 11, fontFamily: 'monospace', letterSpacing: '.06em', padding: '7px 10px' }}>
+          {tempPassword}
+        </span>
+        <button onClick={copyPw} style={{ ...btnGhost, color: copied ? '#39ff88' : '#555', borderColor: copied ? 'rgba(57,255,136,.25)' : '#1e1e1e' }}>
+          {copied ? '✓' : 'Copy'}
+        </button>
+      </div>
+    )
+  }
+
   return (
     <form action={formAction} style={{ display: 'inline' }}>
       <input type="hidden" name="email" value={email} />
       <button
-        type="submit" disabled={isPending} title="Resend invite email"
+        type="submit" disabled={isPending} title="Reset client password"
         style={{
           ...btnGhost,
-          color: state?.success ? '#39ff88' : state?.error ? '#ff3b5f' : '#555',
-          borderColor: state?.success ? 'rgba(57,255,136,.25)' : state?.error ? 'rgba(255,59,95,.25)' : '#1e1e1e',
+          color: state && 'error' in state ? '#ff3b5f' : '#555',
+          borderColor: state && 'error' in state ? 'rgba(255,59,95,.25)' : '#1e1e1e',
           opacity: isPending ? 0.6 : 1,
           cursor: isPending ? 'not-allowed' : 'pointer',
         }}
       >
-        {isPending ? 'Sending…' : state?.success ? '✓ Sent' : 'Resend'}
+        {isPending ? 'Resetting…' : state && 'error' in state ? 'Error' : 'Reset PW'}
       </button>
     </form>
   )
@@ -691,7 +774,7 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
 
   function handleCreateSuccess(name: string) {
     setShowCreate(false)
-    setSuccessMsg(`Client "${name}" created — invite sent.`)
+    setSuccessMsg(`Client "${name}" created.`)
     setTimeout(() => setSuccessMsg(null), 5000)
   }
 

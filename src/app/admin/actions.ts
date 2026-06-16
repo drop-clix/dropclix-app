@@ -1,5 +1,6 @@
 'use server'
 
+import { randomBytes } from 'crypto'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
@@ -8,9 +9,24 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { importPostsForClient, checkExistingPostIdsForClient } from '@/app/(dashboard)/studio/actions'
 import type { NewPostData } from '@/app/(dashboard)/studio/actions'
 
-const IMPERSONATE_COOKIE = 'dropclix_impersonate_client_id'
+function generateTempPassword(): string {
+  const upper  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const lower  = 'abcdefghijklmnopqrstuvwxyz'
+  const nums   = '0123456789'
+  const all    = upper + lower + nums
+  const b      = randomBytes(24)
+  let bi       = 0
+  const pick   = (s: string) => s[b[bi++] % s.length]
+  const chars: string[] = [pick(upper), pick(lower), pick(nums)]
+  while (chars.length < 12) chars.push(pick(all))
+  for (let j = 11; j > 0; j--) {
+    const k = b[bi++] % (j + 1)
+    ;[chars[j], chars[k]] = [chars[k], chars[j]]
+  }
+  return chars.join('')
+}
 
-const PORTAL_URL = 'https://portal.drop-clix.com'
+const IMPERSONATE_COOKIE = 'dropclix_impersonate_client_id'
 
 // ── Auth guard (admin only) ───────────────────────────────────────────────────
 
@@ -99,17 +115,21 @@ export async function createNewClient(_prev: unknown, formData: FormData) {
   }
   const clientId = (client as unknown as { id: string }).id
 
-  // 2. Send invite email (creates Supabase auth user + sends magic link)
-  const { data: inviteData, error: inviteErr } = await adm.auth.admin.inviteUserByEmail(email, {
-    redirectTo: PORTAL_URL,
+  // 2. Create auth user with temp password — no invite email sent
+  const tempPassword = generateTempPassword()
+  const { data: userData, error: userAuthErr } = await adm.auth.admin.createUser({
+    email,
+    password:      tempPassword,
+    email_confirm: true,
+    user_metadata: { must_change_password: true },
   })
 
-  if (inviteErr || !inviteData?.user) {
+  if (userAuthErr || !userData?.user) {
     await adm.from('clients').delete().eq('id', clientId)
-    return { error: inviteErr?.message ?? 'Failed to send invite email.' }
+    return { error: userAuthErr?.message ?? 'Failed to create user account.' }
   }
 
-  const userId = inviteData.user.id
+  const userId = userData.user.id
 
   // 3. Insert user record linking auth user → client
   const { error: userErr } = await adm.from('users').insert({
@@ -129,10 +149,10 @@ export async function createNewClient(_prev: unknown, formData: FormData) {
   await seedClientData(clientId)
 
   revalidatePath('/admin')
-  return { success: true, clientId, name }
+  return { success: true as const, clientId, name, email, tempPassword }
 }
 
-// ── Resend invite ─────────────────────────────────────────────────────────────
+// ── Reset client password ─────────────────────────────────────────────────────
 
 export async function resendClientInvite(_prev: unknown, formData: FormData) {
   if (!await assertAdmin()) return { error: 'Unauthorized' }
@@ -141,12 +161,23 @@ export async function resendClientInvite(_prev: unknown, formData: FormData) {
   if (!email) return { error: 'Email is required.' }
 
   const adm = createAdminClient()
-  const { error } = await adm.auth.admin.inviteUserByEmail(email, {
-    redirectTo: PORTAL_URL,
-  })
+
+  const { data: userRecord, error: lookupErr } = await adm
+    .from('users')
+    .select('id')
+    .eq('email', email)
+    .single()
+
+  if (lookupErr || !userRecord) return { error: 'Client account not found.' }
+
+  const newTempPassword = generateTempPassword()
+  const { error } = await adm.auth.admin.updateUserById(
+    (userRecord as unknown as { id: string }).id,
+    { password: newTempPassword, user_metadata: { must_change_password: true } },
+  )
 
   if (error) return { error: error.message }
-  return { success: true }
+  return { success: true as const, tempPassword: newTempPassword }
 }
 
 // ── Update client info ────────────────────────────────────────────────────────
