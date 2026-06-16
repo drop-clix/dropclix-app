@@ -4,6 +4,19 @@ import { createServerClient } from '@supabase/ssr'
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
+  const { pathname } = request.nextUrl
+
+  // API routes handle their own auth — never redirect them
+  if (pathname.startsWith('/api/')) {
+    return supabaseResponse
+  }
+
+  // Auth utility pages (reset-password, PKCE callback) — always let through
+  // before getUser() so the PKCE code in the query string reaches the route handler intact
+  if (pathname.startsWith('/auth/')) {
+    return supabaseResponse
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
@@ -30,23 +43,11 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
-
-  // API routes handle their own auth — never redirect them
-  if (pathname.startsWith('/api/')) {
-    return supabaseResponse
-  }
-
   // Already authenticated → skip login page
   if (pathname.startsWith('/login')) {
     if (user) {
       return NextResponse.redirect(new URL('/', request.url))
     }
-    return supabaseResponse
-  }
-
-  // Auth utility pages (reset-password) — always let through; token is in the hash (client-only)
-  if (pathname.startsWith('/auth/')) {
     return supabaseResponse
   }
 
