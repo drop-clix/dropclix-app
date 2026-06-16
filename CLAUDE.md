@@ -98,6 +98,7 @@ Rules:
 - S44: Analytics platform ID display fix + `ensureIGPostsRow`/`ensureTTPostsRow` server actions to auto-create posts rows when IG/TT videos are linked or marked as posted. See `## S44 Bug Fix Notes`.
 - S45: `pipeline_items.title` source-of-truth enforcement — split all API metadata writes so `pipeline_items` only ever receives `thumbnail_url`, never `title`. Fixed `video-polling.ts`, `linkYouTubeVideo`, `ensureYTPostsRow`, `analytics/page.tsx`. See `## S45 Bug Fix Notes`.
 - S46 (CLIENT: Nick): Restored Nick's 354 YouTube videos from YT Studio CSV after contamination incident. `scripts/restore-nick-yt-from-studio.mjs`. See `## S46 Recovery Notes`.
+- S48 (GLOBAL): Magic link + invite auth flow. `login/page.tsx` now detects `access_token` + `type=magiclink|invite` in the URL hash on mount, subscribes to `onAuthStateChange(SIGNED_IN)`, fetches role, redirects admin → `/admin`, client → `/`. Shows "Verifying your link…" while processing; 5-second timeout falls back to "This link has expired" error. Added `'magic'` mode with `signInWithOtp` flow (secondary "Sign in with magic link →" button on login form). Fix 3 (invite `redirectTo`) was already correct — `PORTAL_URL = 'https://portal.drop-clix.com'` already in `admin/actions.ts`.
 - S47 (GLOBAL, cleanup only): Auth file dead-code pass. Removed dead `avatar_url` field from TikTok user info request; removed dead `'error'` Status variant + unreachable JSX guard in `reset-password/page.tsx`; removed S43 debug `console.log` from instagram callback; extracted shared `inputStyle` const in `login/page.tsx`; added `const now` in TikTok + YouTube callbacks; fixed `onMouseLeave` color regression on "Back to Sign In" button (`#444` → `#666`); added `tokens.expires_in` null-check in YouTube callback with 1hr fallback. No logic changes. tsc clean.
 
 ## Key decisions / gotchas
@@ -151,6 +152,7 @@ Rules:
 - **Pipeline row stripe**: first `<td>` = `PLAT_CFG[item.platform[0]].color`. `colSpan` = 13.
 - **Next.js 16 proxy**: `middleware.ts` deprecated. Use `src/proxy.ts` with `export function proxy()`.
 - **`/auth/` routes**: always pass unauthenticated — recovery token is in URL hash (client-only).
+- **Magic link / invite token handling**: `login/page.tsx` `useEffect` parses `window.location.hash` for `access_token` + `type=magiclink|invite`. Uses `onAuthStateChange(SIGNED_IN)` (not `getSession()`) because Supabase processes the hash asynchronously — `getSession()` called immediately would race. `timerRef` guards the 5-second expiry fallback. The `signInWithOtp` magic link option uses `emailRedirectTo: window.location.origin` so the link returns to the portal root, which is then processed by the same hash handler.
 - **cookies() is async**: `const cookieStore = await cookies()` in server components.
 - **Env vars**: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY), `SUPABASE_SECRET_KEY` (not SERVICE_ROLE_KEY, prefix `sb_secret_*`).
 - **Role check**: proxy AND page/layout. Login: admin → `/admin`, client → `/`. Layout redirects admin to `/admin`; `/` is client-only.
