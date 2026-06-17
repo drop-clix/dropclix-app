@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, useActionState, useEffect, useRef } from 'react'
-import { impersonateClient, createNewClient, resendClientInvite, updateClientInfo, adminImportPosts, adminCheckExistingPostIds } from './actions'
+import { impersonateClient, createNewClient, resendClientInvite, updateClientInfo, adminImportPosts, adminCheckExistingPostIds, deleteClient } from './actions'
 import type { NewPostData } from '@/app/(dashboard)/studio/actions'
 import { erToDecision } from '@/lib/decision'
 
@@ -126,6 +126,13 @@ const btnGold: React.CSSProperties = {
   color: '#c9a96e', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase',
   fontWeight: 500, padding: '7px 14px', cursor: 'pointer', fontFamily: 'inherit',
   transition: 'background 150ms', whiteSpace: 'nowrap',
+}
+
+const btnRed: React.CSSProperties = {
+  background: 'transparent', border: '1px solid rgba(255,59,95,.25)',
+  color: '#ff3b5f', fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase',
+  fontWeight: 500, padding: '7px 14px', cursor: 'pointer', fontFamily: 'inherit',
+  transition: 'border-color 150ms, color 150ms', whiteSpace: 'nowrap',
 }
 
 // ── CheckboxGroup ─────────────────────────────────────────────────────────────
@@ -558,26 +565,62 @@ function AdminImportModal({ client, onClose }: { client: ClientRow; onClose: () 
 
 function ResendButton({ email }: { email: string }) {
   const [state, formAction, isPending] = useActionState(resendClientInvite, null)
-  const [copied, setCopied] = useState(false)
+  const [copied,    setCopied   ] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
 
   const tempPassword = state && 'tempPassword' in state ? (state as { tempPassword: string }).tempPassword : null
 
-  function copyPw() {
+  function handleCopyCredentials() {
     if (!tempPassword) return
-    navigator.clipboard.writeText(tempPassword)
+    const text = `Portal: https://portal.drop-clix.com\nEmail: ${email}\nTemporary password: ${tempPassword}`
+    navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2500)
   }
 
-  if (tempPassword) {
+  // Credentials modal — shown after successful reset
+  if (tempPassword && !dismissed) {
     return (
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', color: '#f2ede4', fontSize: 11, fontFamily: 'monospace', letterSpacing: '.06em', padding: '7px 10px' }}>
-          {tempPassword}
-        </span>
-        <button onClick={copyPw} style={{ ...btnGhost, color: copied ? '#39ff88' : '#555', borderColor: copied ? 'rgba(57,255,136,.25)' : '#1e1e1e' }}>
-          {copied ? '✓' : 'Copy'}
-        </button>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.8)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ background: '#080808', border: '1px solid #1a1a1a', padding: '40px 44px', width: '100%', maxWidth: 520 }}>
+          <div style={{ marginBottom: 28 }}>
+            <p style={{ fontSize: 9, letterSpacing: '0.24em', textTransform: 'uppercase' as const, color: '#39ff88', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ display: 'block', width: 16, height: 1, background: '#39ff88' }} />
+              Password Reset
+            </p>
+            <h2 style={{ fontSize: 22, fontWeight: 300, color: '#f2ede4', lineHeight: 1.1, marginBottom: 6 }}>
+              Credentials ready to share.
+            </h2>
+            <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>Share these credentials with your client.</p>
+          </div>
+
+          <div style={{ background: '#060606', border: '1px solid #1e1e1e', padding: '20px 24px', marginBottom: 24 }}>
+            {([
+              ['Portal',             'portal.drop-clix.com'],
+              ['Email',              email],
+              ['Temporary password', tempPassword],
+            ] as [string, string][]).map(([label, value]) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase' as const, color: '#555' }}>{label}</span>
+                <span style={{ fontSize: 12, color: '#f2ede4', fontFamily: label === 'Temporary password' ? 'monospace' : 'inherit', letterSpacing: label === 'Temporary password' ? '.06em' : undefined }}>
+                  {value}
+                </span>
+              </div>
+            ))}
+            <div style={{ borderTop: '1px solid #1a1a1a', marginTop: 4, paddingTop: 12 }}>
+              <p style={{ fontSize: 10, color: '#555', fontWeight: 300 }}>Ask them to log in and change their password.</p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={handleCopyCredentials} style={{ ...btnGold, flex: 1, padding: '12px 20px' }}>
+              {copied ? '✓ Copied' : 'Copy Credentials'}
+            </button>
+            <button onClick={() => setDismissed(true)} style={{ ...btnGhost, padding: '12px 20px' }}>
+              Done
+            </button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -601,16 +644,73 @@ function ResendButton({ email }: { email: string }) {
   )
 }
 
+// ── Delete Confirm Modal ──────────────────────────────────────────────────────
+
+function DeleteConfirmModal({ client, onClose, onDeleted }: { client: ClientRow; onClose: () => void; onDeleted: () => void }) {
+  const [isPending, setIsPending] = useState(false)
+  const [error,     setError    ] = useState<string | null>(null)
+
+  async function handleDelete() {
+    setIsPending(true)
+    setError(null)
+    const res = await deleteClient(client.id, client.name)
+    setIsPending(false)
+    if (res.error) { setError(res.error); return }
+    onDeleted()
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.85)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#080808', border: '1px solid rgba(255,59,95,.2)', padding: '40px 44px', width: '100%', maxWidth: 480 }}>
+        <div style={{ marginBottom: 28 }}>
+          <p style={{ fontSize: 9, letterSpacing: '0.24em', textTransform: 'uppercase' as const, color: '#ff3b5f', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ display: 'block', width: 16, height: 1, background: '#ff3b5f' }} />
+            Permanent Action
+          </p>
+          <h2 style={{ fontSize: 22, fontWeight: 300, color: '#f2ede4', lineHeight: 1.1, marginBottom: 6 }}>
+            Delete {client.name}?
+          </h2>
+          <p style={{ fontSize: 11, color: '#555', fontWeight: 300, lineHeight: 1.7 }}>
+            This will permanently delete all their data including pipeline, analytics, posts, and their login account. This cannot be undone.
+          </p>
+        </div>
+
+        {error && (
+          <div style={{ padding: '10px 14px', marginBottom: 20, background: 'rgba(255,59,95,.08)', border: '1px solid rgba(255,59,95,.2)', color: '#ff3b5f', fontSize: 11 }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={handleDelete}
+            disabled={isPending}
+            style={{ ...btnRed, flex: 1, padding: '12px 20px', opacity: isPending ? 0.6 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}
+          >
+            {isPending ? 'Deleting…' : 'Delete permanently'}
+          </button>
+          <button onClick={onClose} style={{ ...btnGhost, padding: '12px 20px' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Client Card ───────────────────────────────────────────────────────────────
 
 function ClientCard({
   client,
   onEdit,
   onImport,
+  onDelete,
 }: {
   client: ClientRow
   onEdit: () => void
   onImport: () => void
+  onDelete: () => void
 }) {
   const [hovered, setHovered] = useState(false)
   const isActive = client.postCount > 0
@@ -707,6 +807,7 @@ function ClientCard({
           <button onClick={onImport} style={btnGhost}>Import</button>
           <ResendButton email={client.email} />
           <button onClick={onEdit} style={btnGhost}>Edit</button>
+          <button onClick={onDelete} style={btnRed}>Delete</button>
           <button onClick={() => setNotesOpen(o => !o)} style={{
             ...btnGhost,
             color: notesOpen ? '#c9a96e' : btnGhost.color,
@@ -769,12 +870,23 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
   const [showCreate,   setShowCreate  ] = useState(false)
   const [editClient,   setEditClient  ] = useState<ClientRow | null>(null)
   const [importClient, setImportClient] = useState<ClientRow | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ClientRow | null>(null)
+  const [deletedIds,   setDeletedIds  ] = useState<Set<string>>(new Set())
   const [successMsg,   setSuccessMsg  ] = useState<string | null>(null)
   const [,             startTransition] = useTransition()
+
+  const visibleClients = clients.filter(c => !deletedIds.has(c.id))
 
   function handleCreateSuccess(name: string) {
     setShowCreate(false)
     setSuccessMsg(`Client "${name}" created.`)
+    setTimeout(() => setSuccessMsg(null), 5000)
+  }
+
+  function handleDeleted(clientId: string, clientName: string) {
+    setDeletedIds(prev => new Set([...prev, clientId]))
+    setDeleteTarget(null)
+    setSuccessMsg(`Client "${clientName}" deleted.`)
     setTimeout(() => setSuccessMsg(null), 5000)
   }
 
@@ -786,7 +898,7 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
           <span style={{ display: 'block', width: 20, height: 1, background: '#c9a96e' }} />
           <p style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#c9a96e' }}>
             Clients
-            {clients.length > 0 && <span style={{ color: '#555', marginLeft: 8 }}>{clients.length}</span>}
+            {visibleClients.length > 0 && <span style={{ color: '#555', marginLeft: 8 }}>{visibleClients.length}</span>}
           </p>
         </div>
         <button
@@ -805,19 +917,20 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
       )}
 
       {/* Client cards */}
-      {clients.length === 0 ? (
+      {visibleClients.length === 0 ? (
         <div style={{ padding: '56px 32px', textAlign: 'center', background: '#0c0c0c', border: '1px solid rgba(255,255,255,0.04)' }}>
           <p style={{ fontSize: 13, color: '#1e1e1e', fontWeight: 300, marginBottom: 8 }}>No clients yet</p>
           <p style={{ fontSize: 11, color: '#555', fontWeight: 300 }}>Click "+ New Client" to get started.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {clients.map(client => (
+          {visibleClients.map(client => (
             <ClientCard
               key={client.id}
               client={client}
               onEdit={() => setEditClient(client)}
               onImport={() => setImportClient(client)}
+              onDelete={() => setDeleteTarget(client)}
             />
           ))}
         </div>
@@ -827,6 +940,13 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
       {showCreate   && <CreateClientModal onClose={() => setShowCreate(false)} onSuccess={handleCreateSuccess} />}
       {editClient   && <EditClientModal client={editClient}    onClose={() => setEditClient(null)}   />}
       {importClient && <AdminImportModal client={importClient} onClose={() => setImportClient(null)} />}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          client={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => handleDeleted(deleteTarget.id, deleteTarget.name)}
+        />
+      )}
     </div>
   )
 }

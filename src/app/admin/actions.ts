@@ -281,6 +281,55 @@ export async function disconnectTikTok(clientId: string): Promise<{ error?: stri
   return {}
 }
 
+// ── Delete client (all data) ──────────────────────────────────────────────────
+
+export async function deleteClient(clientId: string, clientName: string): Promise<{ error?: string }> {
+  if (!await assertAdmin()) return { error: 'Unauthorized' }
+
+  if (clientName === 'Nick Nascimento' || clientName === 'Day 1 | D 1') {
+    return { error: 'Cannot delete protected clients.' }
+  }
+
+  const adm = createAdminClient()
+
+  // Look up auth user ID before deleting the users row
+  const { data: userRecord } = await adm
+    .from('users')
+    .select('id')
+    .eq('client_id', clientId)
+    .single()
+  const userId = (userRecord as unknown as { id: string } | null)?.id
+
+  // Preview log — row counts before delete
+  for (const table of ['post_analytics', 'calendar_events', 'goals', 'pipeline_items', 'posts', 'platform_connections']) {
+    const { count } = await adm.from(table).select('*', { count: 'exact', head: true }).eq('client_id', clientId)
+    console.log(`[deleteClient] ${table}: ${count ?? 0} rows for ${clientId}`)
+  }
+
+  // Delete children first to satisfy FK constraints
+  await adm.from('post_analytics').delete().eq('client_id', clientId)
+  await adm.from('calendar_events').delete().eq('client_id', clientId)
+  await adm.from('goals').delete().eq('client_id', clientId)
+  await adm.from('pipeline_items').delete().eq('client_id', clientId)
+  await adm.from('posts').delete().eq('client_id', clientId)
+  await adm.from('platform_connections').delete().eq('client_id', clientId)
+  await adm.from('users').delete().eq('client_id', clientId)
+
+  const { error: clientErr } = await adm.from('clients').delete().eq('id', clientId)
+  if (clientErr) {
+    console.error('[deleteClient] clients delete error:', clientErr.message)
+    return { error: clientErr.message }
+  }
+
+  if (userId) {
+    const { error: authErr } = await adm.auth.admin.deleteUser(userId)
+    if (authErr) console.error('[deleteClient] auth.users delete error:', authErr.message)
+  }
+
+  revalidatePath('/admin')
+  return {}
+}
+
 // ── Instagram disconnect ────────────────────────────────────────────────────────
 
 export async function disconnectInstagram(clientId: string): Promise<{ error?: string }> {
