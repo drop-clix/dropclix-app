@@ -14,9 +14,14 @@ type IGMedia = {
 }
 
 type IGInsights = {
+  views: number
   reach: number
   saved: number
-  plays: number | null
+  shares: number
+  totalInteractions: number
+  avgWatchTimeMs: number | null
+  totalWatchTimeMs: number | null
+  skipRate: number | null
   impressions: number
 }
 
@@ -54,22 +59,39 @@ async function fetchIGMediaInsights(
   mediaType: string,
 ): Promise<IGInsights> {
   const isVideo = mediaType === 'VIDEO' || mediaType === 'REEL'
-  // Reels use 'plays' instead of 'video_views'
   const metrics = isVideo
-    ? 'reach,saved,plays,impressions'
-    : 'reach,saved,impressions'
+    ? 'views,saved,reach,total_interactions,shares,ig_reels_avg_watch_time,ig_reels_video_view_total_time,reels_skip_rate'
+    : 'reach,saved,impressions,shares,total_interactions'
 
   const url = `https://graph.facebook.com/v19.0/${mediaId}/insights?metric=${metrics}&access_token=${accessToken}`
   const res = await fetch(url)
 
-  const empty: IGInsights = { reach: 0, saved: 0, plays: null, impressions: 0 }
+  const empty: IGInsights = {
+    views: 0,
+    reach: 0,
+    saved: 0,
+    shares: 0,
+    totalInteractions: 0,
+    avgWatchTimeMs: null,
+    totalWatchTimeMs: null,
+    skipRate: null,
+    impressions: 0,
+  }
 
   const rawText = await res.text()
   let rawBody: unknown = rawText
   try { rawBody = rawText ? JSON.parse(rawText) : null } catch { /* keep string */ }
 
   if (!res.ok) {
-    console.warn(`[ig-sync] insights failed for ${mediaId} (${mediaType}) HTTP ${res.status}:`, rawBody)
+    const graphMessage = typeof rawBody === 'object' && rawBody && 'error' in rawBody
+      ? (rawBody as { error?: { message?: string; code?: number; type?: string } }).error
+      : null
+    console.warn(`[ig-sync] insights failed for ${mediaId} (${mediaType}) HTTP ${res.status}:`, {
+      metrics,
+      message: graphMessage?.message ?? rawBody,
+      code: graphMessage?.code,
+      type: graphMessage?.type,
+    })
     return empty
   }
 
@@ -80,9 +102,14 @@ async function fetchIGMediaInsights(
   const result = { ...empty }
   for (const metric of json.data ?? []) {
     const val = metric.values?.[0]?.value ?? 0
+    if (metric.name === 'views')       result.views       = val
     if (metric.name === 'reach')        result.reach       = val
     if (metric.name === 'saved')        result.saved       = val
-    if (metric.name === 'plays')        result.plays       = val
+    if (metric.name === 'shares')       result.shares      = val
+    if (metric.name === 'total_interactions') result.totalInteractions = val
+    if (metric.name === 'ig_reels_avg_watch_time') result.avgWatchTimeMs = val
+    if (metric.name === 'ig_reels_video_view_total_time') result.totalWatchTimeMs = val
+    if (metric.name === 'reels_skip_rate') result.skipRate = val
     if (metric.name === 'impressions')  result.impressions = val
   }
   return result
@@ -178,25 +205,26 @@ export async function syncInstagramForClient(
     const likes    = item.like_count    || 0
     const comments = item.comments_count || 0
     const saves    = insights.saved     || 0
-    const plays    = insights.plays     ?? null
+    const shares   = insights.shares    || 0
+
+    const payload: Record<string, unknown> = {
+      post_id:        resolved.postUUID,
+      client_id:      clientId,
+      platform:       'ig',
+      metric_window:  'live',
+      views,
+      likes,
+      comments,
+      shares,
+      saves,
+      watch_pct:      0,
+      skip_rate:      insights.skipRate,
+      last_polled_at: new Date().toISOString(),
+      recorded_at:    new Date().toISOString(),
+    }
 
     const { error: uErr } = await admin.from('post_analytics').upsert(
-      {
-        post_id:        resolved.postUUID,
-        client_id:      clientId,
-        platform:       'ig',
-        metric_window:  'live',
-        views,
-        likes,
-        comments,
-        shares:         0,
-        saves,
-        watch_pct:      plays !== null && views > 0
-                          ? Math.round((plays / views) * 10000) / 100
-                          : 0,
-        last_polled_at: new Date().toISOString(),
-        recorded_at:    new Date().toISOString(),
-      },
+      payload,
       { onConflict: 'post_id,platform,metric_window' },
     )
 
@@ -208,7 +236,7 @@ export async function syncInstagramForClient(
       console.error(`[ig-sync] upsert failed for ${shortcode}:`, uErr.message)
       result.errors.push(`${shortcode}: ${uErr.message}`)
     } else {
-      console.log(`[ig-sync] ✓ ${shortcode} — views=${views} likes=${likes} saves=${saves}`)
+      console.log(`[ig-sync] ✓ ${shortcode} — reach=${views} graph_views=${insights.views} likes=${likes} comments=${comments} shares=${shares} saves=${saves} skip_rate=${insights.skipRate ?? 'n/a'}`)
       result.synced++
     }
   }

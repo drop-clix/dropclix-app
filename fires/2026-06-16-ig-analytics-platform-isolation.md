@@ -1,7 +1,7 @@
 # FIRE: IG Analytics Platform Isolation
 **Date:** June 16, 2026
 **Severity:** HIGH
-**Status:** RESOLVED — code fixed, migration file added
+**Status:** RESOLVED — code fixed, migration file added, IG sync/backfill completed
 
 ## What Happened
 
@@ -275,3 +275,100 @@ This is consistent in the audited IG path:
 No lookup mismatch was found in this path. The naming split is intentional, but
 future code should avoid mixing connection provider names with analytics/content
 platform IDs.
+
+## Final Follow-Up Resolution — IG Reels Metrics + Backfill
+
+**Date:** June 17, 2026  
+**Status:** RESOLVED
+
+### Final Root Cause
+
+Two separate issues were blocking IG Analytics from becoming useful:
+
+1. `src/lib/instagram-sync.ts` requested invalid/unsupported Reel insight
+   metrics: `plays` and `impressions`. Instagram rejected the entire insights
+   request, the sync returned an empty metrics object, and portal `views`
+   became `0` even though likes/comments were present from `/media`.
+2. Some linked + POSTED IG pipeline items were historical rows from before S44
+   wired `ensureIGPostsRow()` into IG link save and Mark as Posted. They had
+   `pipeline_items.ig_video_id` but no `posts` row, so IG sync could not write
+   `post_analytics`.
+
+### Final Fix
+
+- Replaced the IG video/Reel insight request with Reels-safe metrics:
+
+```txt
+views,saved,reach,total_interactions,shares,ig_reels_avg_watch_time,ig_reels_video_view_total_time,reels_skip_rate
+```
+
+- Kept the locked portal formula intact by mapping `post_analytics.views` to
+  Graph `reach`, not Graph `views`.
+- Started writing real `shares`, `saves`, and `skip_rate` from Instagram
+  insights into `post_analytics`.
+- Added Graph API error logging with the requested metric list plus
+  message/code/type, so future metric changes do not silently collapse to
+  `views=0`.
+- Added `scripts/backfill-ig-posts-rows.mjs`, dry-run by default. The script
+  mirrors `ensureIGPostsRow()` logic with service-role Supabase access because
+  the server action itself depends on request cookies/auth and cannot be safely
+  imported into a standalone script.
+
+### Preview Before Insert
+
+The exact requested preview query returned 4 rows:
+
+```txt
+#ig0061
+#ig0031 | #tt0001 | #yt0081
+#ig0033 | #tt0003 | #yt0083
+#ig0037 | #tt0007 | #yt0087
+```
+
+`#ig0037` was a false positive because the query only checked exact full
+`pipeline_items.post_id` and did not consider the existing segment row
+`posts.post_id = '#ig0037'`.
+
+The segment-aware preview returned the true missing set:
+
+```txt
+#ig0061 -> #ig0061
+#ig0031 | #tt0001 | #yt0081 -> #ig0031
+#ig0033 | #tt0003 | #yt0083 -> #ig0033
+```
+
+### Backfill Result
+
+Ran:
+
+```bash
+node scripts/backfill-ig-posts-rows.mjs --run
+```
+
+Created exactly 3 rows:
+
+```txt
+#ig0061
+#ig0031
+#ig0033
+```
+
+Post-backfill dry run reported:
+
+```txt
+No missing IG posts rows found.
+```
+
+### Sync Verification
+
+Corrected IG sync populated `ig/live` rows for all four target posts:
+
+| Post ID | Views (Reach) | Likes | Comments | Shares | Saves | Skip Rate |
+|---|---:|---:|---:|---:|---:|---:|
+| `#ig0031` | 2,338 | 128 | 6 | 2 | 7 | 45.7 |
+| `#ig0033` | 1,093 | 75 | 2 | 23 | 2 | 63.4 |
+| `#ig0037` | 5,585 | 325 | 214 | 4 | 4 | 36.5 |
+| `#ig0061` | 221,671 | 15,680 | 190 | 4,616 | 4,623 | 36.3 |
+
+Graph `views` is available separately from reach, but it is not currently stored
+because the locked IG formula defines portal views as reach.
