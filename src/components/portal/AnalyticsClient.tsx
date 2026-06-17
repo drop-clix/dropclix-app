@@ -21,11 +21,28 @@ import { usePillarColors } from '@/hooks/usePillarColors'
 // Pick the right post_analytics row for the active platform filter.
 // 'lf' (Long Form) stores analytics as platform='yt', so map it.
 // Falls back to the flat window field (which prefers 'ig') when platform='all'.
+const ANALYTICS_EMPTY_WIN: WindowData = {
+  views: 0,
+  likes: 0,
+  comments: 0,
+  shares: 0,
+  saves: 0,
+  followers: 0,
+  watch_pct: 0,
+  prevViews: null,
+  prevRecordedAt: null,
+  lastPolledAt: null,
+  recordedAt: null,
+}
+
+function platformWindowKey(platform: string, win: WindowKey): string {
+  const platKey = platform === 'lf' ? 'yt' : platform
+  return `${platKey}_${win}`
+}
+
 function resolveWin(post: PostRow, platform: string, win: WindowKey): WindowData {
   if (platform !== 'all') {
-    const platKey = platform === 'lf' ? 'yt' : platform
-    const hit = post.byPlatformWindow[`${platKey}_${win}`]
-    if (hit) return hit
+    return post.byPlatformWindow[platformWindowKey(platform, win)] ?? ANALYTICS_EMPTY_WIN
   }
   return post[win]
 }
@@ -61,9 +78,10 @@ function pct(n: number): string {
   return n > 0 ? n.toFixed(1) + '%' : '—'
 }
 
-function calcER(w: WindowData, platform?: string[]): number {
+function calcER(w: WindowData, platform?: string[] | string): number {
   if (!w.views) return 0
-  const fourthMetric = platform?.includes('yt') ? w.followers : w.saves
+  const isYt = Array.isArray(platform) ? platform.includes('yt') : platform === 'yt' || platform === 'lf'
+  const fourthMetric = isYt ? w.followers : w.saves
   return ((w.likes + w.comments + w.shares + fourthMetric) / w.views) * 100
 }
 
@@ -90,9 +108,6 @@ const DECISION_STYLES: Record<string, { color: string }> = {
   'Iterate':     { color: '#fbbf24' },
   'Kill':        { color: '#ff3b5f' },
 }
-
-const PLATFORM_LABELS: Record<string, string> = { ig: 'IG', tt: 'TT', yt: 'YT' }
-const PILLARS = ['All','Sales Tips','Self Development','Service/Love','Volume/50-150','Time Management','Other']
 
 type SortKey = 'date' | 'views' | 'likes' | 'comments' | 'saves' | 'shares' | 'er' | 'watch_pct'
 type SortDir = 'asc' | 'desc'
@@ -132,13 +147,14 @@ function AnalyticsTableRow({
   onSave: (uuid: string, field: EditableField, val: number, decision?: string) => void
 }) {
   const w           = resolveWin(post, platform, activeWin)
-  const er          = calcER(w, post.platform)
+  const er          = calcER(w, platform === 'all' ? post.platform : platform)
   const t           = tier(er, w.views > 0)
   const ts          = TIER_STYLES[t]
   const ds          = DECISION_STYLES[post.decision] ?? { color: '#666' }
   const hasData     = w.views > 0
   const pillarColor = pillarColors.get(post.pillar ?? '') ?? '#1a1a1a'
   const displayId   = displayPostId(post, platform)
+  const editPlatform = platform !== 'all' ? (platform === 'lf' ? 'yt' : platform) : (post.platform[0] ?? 'ig')
 
   // Interpolate view count for recently polled videos (within 7 days)
   const liveViews = useInterpolatedStat(
@@ -199,27 +215,27 @@ function AnalyticsTableRow({
       {/* Views — interpolated for recently polled videos */}
       <EditableCell
         value={w.views} displayValue={hasData ? fmt(liveViews) : '—'} color={hasData ? '#f2ede4' : '#3a3a3a'}
-        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="views" isPercent={false}
+        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="views" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <EditableCell
         value={w.likes} displayValue={hasData ? fmt(w.likes) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="likes" isPercent={false}
+        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="likes" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <EditableCell
         value={w.comments} displayValue={hasData ? fmt(w.comments) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="comments" isPercent={false}
+        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="comments" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <EditableCell
         value={w.saves} displayValue={hasData ? fmt(w.saves) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="saves" isPercent={false}
+        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="saves" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <EditableCell
         value={w.shares} displayValue={hasData ? fmt(w.shares) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="shares" isPercent={false}
+        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="shares" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <td className="px-5 py-4">
@@ -239,7 +255,7 @@ function AnalyticsTableRow({
       </td>
       <EditableCell
         value={w.watch_pct} displayValue={hasData ? pct(w.watch_pct) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={post.platform[0] ?? 'ig'} metricWindow={activeWin} field="watch_pct" isPercent={true}
+        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="watch_pct" isPercent={true}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <td className="px-5 py-4">
@@ -387,131 +403,6 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   )
 }
 
-type ReachViewMode = 'top10' | 'last10' | 'all'
-
-function ReachByPostChart({ rows, win, platform }: { rows: PostRow[]; win: WindowKey; platform: string }) {
-  const [mode, setMode] = useState<ReachViewMode>('top10')
-
-  const chartData = useMemo(() => {
-    let sorted = rows.slice().sort((a, b) => b[win].views - a[win].views)
-    if (mode === 'top10')  sorted = sorted.slice(0, 10)
-    if (mode === 'last10') sorted = sorted.slice().sort((a, b) => a[win].views - b[win].views).slice(0, 10)
-    return sorted.map(r => ({
-      name:  displayPostId(r, platform),
-      views: r[win].views,
-      er:    calcER(r[win], r.platform),
-    }))
-  }, [rows, win, mode, platform])
-
-  return (
-    <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '20px 20px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555' }}>
-          Reach by Post
-        </p>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {(['top10', 'last10', 'all'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              style={{
-                fontSize: 8, letterSpacing: '.1em', textTransform: 'uppercase',
-                padding: '3px 8px', cursor: 'pointer',
-                color:      mode === m ? '#c9a96e' : '#555',
-                background: mode === m ? 'rgba(201,169,110,.08)' : 'transparent',
-                border:     `1px solid ${mode === m ? 'rgba(201,169,110,.35)' : '#1e1e1e'}`,
-              }}
-            >
-              {m === 'top10' ? 'Top 10' : m === 'last10' ? 'Last 10' : 'All'}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div style={{ height: 190 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 24, left: -12 }}>
-            <CartesianGrid vertical={false} stroke={CHART_GRID} />
-            <XAxis
-              dataKey="name"
-              tick={{ fill: CHART_TICK, fontSize: 8 }}
-              tickLine={false}
-              axisLine={false}
-              angle={-45}
-              textAnchor="end"
-              interval={0}
-              height={40}
-            />
-            <YAxis tick={{ fill: CHART_TICK, fontSize: 9 }} tickLine={false} axisLine={false} tickFormatter={fmtViews} />
-            <Tooltip content={<ChartTooltip />} />
-            <Bar dataKey="views" name="Views" radius={[2, 2, 0, 0]}>
-              {chartData.map((d, i) => (
-                <Cell key={i} fill={tierColor(d.er)} fillOpacity={0.7} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  )
-}
-
-function EROverTimeChart({ rows, win }: { rows: PostRow[]; win: WindowKey }) {
-  const chartData = useMemo(() =>
-    rows
-      .filter(r => r.date)
-      .slice()
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map(r => ({
-        name: r.date.slice(5),   // "MM-DD"
-        er:   +calcER(r[win], r.platform).toFixed(1),
-        color: tierColor(calcER(r[win], r.platform)),
-      })),
-    [rows, win]
-  )
-
-  return (
-    <div style={{ background: '#0a0a0a', border: '1px solid #141414', padding: '20px 20px 16px' }}>
-      <p style={{ fontSize: 8, letterSpacing: '.14em', textTransform: 'uppercase', color: '#555', marginBottom: 14 }}>
-        ER% Over Time
-      </p>
-      <div style={{ height: 190 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
-            <CartesianGrid vertical={false} stroke={CHART_GRID} />
-            <XAxis
-              dataKey="name"
-              tick={{ fill: CHART_TICK, fontSize: 8 }}
-              tickLine={false}
-              axisLine={false}
-              interval={Math.max(0, Math.floor(chartData.length / 8) - 1)}
-            />
-            <YAxis
-              tick={{ fill: CHART_TICK, fontSize: 9 }}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={v => v + '%'}
-              domain={[0, 'dataMax + 2']}
-            />
-            <Tooltip content={(props: any) => <ChartTooltip active={props.active} payload={props.payload} label={props.label} />} />
-            <Line
-              type="monotone"
-              dataKey="er"
-              name="ER%"
-              stroke="#c9a96e"
-              strokeWidth={1.5}
-              dot={(props: any) => {
-                const { cx, cy, payload } = props
-                return <circle key={payload.name} cx={cx} cy={cy} r={3} fill={payload.color} stroke="none" />
-              }}
-              activeDot={{ r: 5, fill: '#c9a96e' }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  )
-}
-
 function chartGlow(platform: string): string {
   if (platform === 'yt' || platform === 'lf') return '#4cc9ff'
   if (platform === 'tt') return '#2dd4bf'
@@ -575,8 +466,8 @@ function PostSnapshot({
   platform: string
   onClose: () => void
 }) {
-  const metric = post[win]
-  const er = calcER(metric, post.platform)
+  const metric = resolveWin(post, platform, win)
+  const er = calcER(metric, platform === 'all' ? post.platform : platform)
   const g = er >= 12 ? 'A' : er >= 7 ? 'B' : er >= 4 ? 'C' : er >= 2 ? 'D' : 'F'
   const color = er >= 12 ? '#39ff88' : er >= 7 ? '#4cc9ff' : er >= 4 ? '#fbbf24' : '#ff3b5f'
   const stats = [
@@ -650,14 +541,14 @@ function AdvancedAnalyticsCharts({
     if (reachMode === 'last') source = source.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).reverse()
     return source.map(post => {
       const wData = resolveWin(post, platform, win)
-      const er = calcER(wData, post.platform)
+      const er = calcER(wData, platform === 'all' ? post.platform : platform)
       return { name: displayPostId(post, platform), post, views: wData.views, er: +er.toFixed(1), date: post.date.slice(5), color: tierColor(er) }
     })
   }, [rows, win, reachMode, platform])
 
   const erPoints = useMemo(() => rows.slice().sort((a, b) => a.date.localeCompare(b.date)).map(post => {
     const wData = resolveWin(post, platform, win)
-    const er = calcER(wData, post.platform)
+    const er = calcER(wData, platform === 'all' ? post.platform : platform)
     return { name: post.date.slice(5), post, er: +er.toFixed(1), color: tierColor(er) }
   }), [rows, win, platform])
 
@@ -683,7 +574,7 @@ function AdvancedAnalyticsCharts({
     for (const post of rows) {
       const key = post.pillar || 'Other'
       const cur = map.get(key) ?? { pillar: key, er: 0, count: 0 }
-      cur.er += calcER(resolveWin(post, platform, win), post.platform)
+      cur.er += calcER(resolveWin(post, platform, win), platform === 'all' ? post.platform : platform)
       cur.count += 1
       map.set(key, cur)
     }
@@ -784,7 +675,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
     setPosts(prev => prev.map(p => {
       if (p.uuid !== postUUID) return p
       const wk = win as WindowKey
-      const primaryPlatform = p.platform[0] ?? 'ig'
+      const primaryPlatform = platform !== 'all' ? (platform === 'lf' ? 'yt' : platform) : (p.platform[0] ?? 'ig')
       const bpwKey = `${primaryPlatform}_${wk}`
       const winData = { ...resolveWin(p, platform, wk), [field]: value } as WindowData
       const updated = {
@@ -800,12 +691,16 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
 
   const rows = useMemo(() => {
     let filtered = filterByPlatform(posts, platform, p => p.format)
+    if (platform !== 'all') {
+      const wk = win as WindowKey
+      filtered = filtered.filter(p => Boolean(p.byPlatformWindow[platformWindowKey(platform, wk)]))
+    }
     filtered = filterByScope(filtered, scope, from, to)
     if (search.trim()) {
       const q = search.toLowerCase().trim()
       filtered = filtered.filter(p => {
-        const w = p[win as WindowKey]
-        const er = calcER(w, p.platform).toFixed(1)
+        const w = resolveWin(p, platform, win as WindowKey)
+        const er = calcER(w, platform === 'all' ? p.platform : platform).toFixed(1)
         return (
           displayPostId(p, platform).toLowerCase().includes(q) ||
           p.title.toLowerCase().includes(q) ||
@@ -830,7 +725,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       const wb = resolveWin(b, platform, wk)
       let av = 0, bv = 0
       if (sortKey === 'date')          { av = new Date(a.date).getTime(); bv = new Date(b.date).getTime() }
-      else if (sortKey === 'er')       { av = calcER(wa, a.platform); bv = calcER(wb, b.platform) }
+      else if (sortKey === 'er')       { av = calcER(wa, platform === 'all' ? a.platform : platform); bv = calcER(wb, platform === 'all' ? b.platform : platform) }
       else if (sortKey === 'views')    { av = wa.views;    bv = wb.views }
       else if (sortKey === 'likes')    { av = wa.likes;    bv = wb.likes }
       else if (sortKey === 'comments') { av = wa.comments; bv = wb.comments }
@@ -847,9 +742,9 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
     const total = rows.length
     const totalViews = rows.reduce((s, r) => s + resolveWin(r, platform, activeWin).views, 0)
     const withViews  = rows.filter(r => resolveWin(r, platform, activeWin).views > 0)
-    const avgER      = withViews.length ? withViews.reduce((s, r) => s + calcER(resolveWin(r, platform, activeWin), r.platform), 0) / withViews.length : 0
+    const avgER      = withViews.length ? withViews.reduce((s, r) => s + calcER(resolveWin(r, platform, activeWin), platform === 'all' ? r.platform : platform), 0) / withViews.length : 0
     const avgWatch   = withViews.length ? withViews.reduce((s, r) => s + resolveWin(r, platform, activeWin).watch_pct, 0) / withViews.length : 0
-    const eliteCount = withViews.filter(r => calcER(resolveWin(r, platform, activeWin), r.platform) >= 12).length
+    const eliteCount = withViews.filter(r => calcER(resolveWin(r, platform, activeWin), platform === 'all' ? r.platform : platform) >= 12).length
     return { total, totalViews, avgER, avgWatch, eliteCount }
   }, [rows, activeWin, platform])
 
@@ -929,11 +824,11 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
             hook:     slidePost.hook,
             decision: slidePost.decision,
             thumbnailUrl: slidePost.thumbnailUrl,
-            live: slidePost.live,
-            w24: slidePost.w24,
-            w3:  slidePost.w3,
-            w7:  slidePost.w7,
-            eom: slidePost.eom,
+            live: resolveWin(slidePost, platform, 'live'),
+            w24: resolveWin(slidePost, platform, 'w24'),
+            w3:  resolveWin(slidePost, platform, 'w3'),
+            w7:  resolveWin(slidePost, platform, 'w7'),
+            eom: resolveWin(slidePost, platform, 'eom'),
           }}
           onClose={() => setSlidePost(null)}
         />

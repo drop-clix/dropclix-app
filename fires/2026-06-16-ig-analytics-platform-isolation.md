@@ -1,7 +1,7 @@
 # FIRE: IG Analytics Platform Isolation
 **Date:** June 16, 2026
-**Severity:** MEDIUM
-**Status:** OPEN — fix planned for next global session
+**Severity:** HIGH
+**Status:** RESOLVED — code fixed, migration file added
 
 ## What Happened
 
@@ -107,18 +107,30 @@ Either mode causes the YT caption to display, violating the
 **Code location:** `analytics/page.tsx:86` (`pipelineTitleByPostId` population);
 `analytics/page.tsx:138` (title fallback).
 
-## What Was NOT Done
+## What Was Done
 
-No code was changed in this session. This is an audit-only incident report.
+Fixed in the global Analytics isolation session on June 17, 2026:
+
+- `AnalyticsClient.resolveWin()` now returns an empty window when a platform-specific row is missing. It only falls back to the flat `post[win]` window when `platform='all'`.
+- The Analytics rows memo now filters active platform views by actual `byPlatformWindow[platform_window]` existence, so posts tagged IG but missing `ig/live` no longer appear in the IG view.
+- Search, KPI cards, chart ER%, snapshot modal, and slide-over windows now use platform-resolved window data.
+- Inline metric edits now use the active platform pill for platform-specific views instead of `post.platform[0]`.
+- `analytics/page.tsx` now merges `PostRow` objects that resolve to the same `pipeline_items.post_id`, preventing duplicate display rows such as `#ig0037`.
+- `pipelineTitleByPostId` now maps both the full pipe-separated ID and every segment (`#ig0037`, `#tt0007`, `#yt0087`) to the pipeline title.
+- If a pipeline item exists but has no title, Analytics displays `Untitled` instead of falling through to raw `posts.title`.
+- Exact duplicate preview query for `(post_id, client_id)` returned 0 rows.
+- Added migration file `supabase/migrations/session_47_posts_unique_post_id_client_id.sql` for `UNIQUE (post_id, client_id)`.
+
+The migration file is committed with the fix. Production DDL still needs the normal Supabase migration/SQL application path because this repo does not include a Supabase CLI config or DB connection URL.
 
 ## Ranked Fix Plan
 
-| Priority | Fix | Bugs | Location |
-|----------|-----|------|----------|
-| 1 | `resolveWin`: when `platform ≠ 'all'` and `byPlatformWindow[platKey_win]` is absent, return `EMPTY_WIN` instead of `post[win]` | 2, 3 | `AnalyticsClient.tsx:24–31` |
-| 2 | Rows memo: after `filterByPlatform`, exclude posts with no `byPlatformWindow[platKey_live]` entry when `platform ≠ 'all'` | 3 | `AnalyticsClient.tsx:801` |
-| 3 | DB migration: add `UNIQUE (post_id, client_id)` to `posts`; add client-side dedup in page.tsx mapping as short-term guard | 1 | `analytics/page.tsx:102` + Supabase SQL editor |
-| 4 | Title hardening: when `resolvedPipelinePostId` is non-null but title lookup returns undefined, render `resolvedPipelinePostId` (never fall through to `posts.title`) | 4 | `analytics/page.tsx:138` |
+| Priority | Fix | Bugs | Status |
+|----------|-----|------|--------|
+| 1 | `resolveWin`: when `platform ≠ 'all'` and `byPlatformWindow[platKey_win]` is absent, return empty window instead of `post[win]` | 2, 3 | Done |
+| 2 | Rows memo: after `filterByPlatform`, exclude posts with no active platform analytics row when `platform ≠ 'all'` | 3 | Done |
+| 3 | Merge rows by resolved `pipeline_items.post_id`; add migration for `UNIQUE (post_id, client_id)` | 1 | Done in code and migration file |
+| 4 | Title hardening: segment-key pipeline titles and never fall through to `posts.title` when a pipeline item exists | 4 | Done |
 
 Fix 1 is highest leverage — it eliminates the bleed mechanism driving both bugs 2 and 3
 in a single line change, with zero risk to YT or TT views when `platform='all'`.
@@ -134,3 +146,7 @@ in a single line change, with zero risk to YT or TT views when `platform='all'`.
   `ensureYTPostsRow` / `ensureTTPostsRow` from creating duplicates under any call order.
 - `pipelineTitleByPostId` lookup failing must never surface `posts.title` when a
   pipeline item exists — that is the YT caption, not the display title.
+
+## Resolution
+
+[x] RESOLVED

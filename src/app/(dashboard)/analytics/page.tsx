@@ -83,7 +83,8 @@ export default async function AnalyticsPage() {
     const pipelineTitle  = (item as any).title    as string | null
     if (!pipelinePostId) continue
 
-    if (pipelineTitle) pipelineTitleByPostId.set(pipelinePostId, pipelineTitle)
+    const displayTitle = pipelineTitle?.trim() || 'Untitled'
+    pipelineTitleByPostId.set(pipelinePostId, displayTitle)
 
     const ytVideoId = (item as any).yt_video_id as string | null
     const igVideoId = (item as any).ig_video_id as string | null
@@ -95,11 +96,12 @@ export default async function AnalyticsPage() {
 
     for (const part of pipelinePostId.split('|').map(part => part.trim()).filter(Boolean)) {
       pipelineByPostSegment.set(part, pipelinePostId)
+      pipelineTitleByPostId.set(part, displayTitle)
     }
   }
 
   // Flatten into PostRow[]
-  const posts: PostRow[] = (rawPosts ?? []).map(p => {
+  const mappedPosts: PostRow[] = (rawPosts ?? []).map(p => {
     // byPlatformWindow: exact per-platform data, e.g. 'ig_live', 'yt_eom'
     const byPlatformWindow: Record<string, WindowData> = {}
     // byWindow (flat): prefer 'ig' rows; used for platform='all' display
@@ -127,15 +129,19 @@ export default async function AnalyticsPage() {
       }
     }
 
-    const resolvedPipelinePostId = pipelineByVideoId.get((p as any).yt_id ?? '')
+    const ytId = (p as any).yt_id as string | null
+    const resolvedPipelinePostId = (ytId ? pipelineByVideoId.get(ytId) : undefined)
       ?? pipelineByPostSegment.get(p.post_id)
       ?? null
+    const displayTitle = resolvedPipelinePostId
+      ? (pipelineTitleByPostId.get(resolvedPipelinePostId) ?? pipelineTitleByPostId.get(p.post_id) ?? 'Untitled')
+      : (p.title ?? 'Untitled')
 
     return {
       uuid:     p.id,
       postId:   p.post_id,
       pipelinePostId: resolvedPipelinePostId,
-      title:    (resolvedPipelinePostId ? pipelineTitleByPostId.get(resolvedPipelinePostId) : null) ?? p.title,
+      title:    displayTitle,
       platform: p.platform ?? [],
       pillar:   p.pillar   ?? '—',
       hook:     (p as any).hook   ?? '—',
@@ -151,6 +157,34 @@ export default async function AnalyticsPage() {
       eom: byWindow['eom'] ?? { ...EMPTY_WIN },
     }
   })
+
+  const hasAnalytics = (post: PostRow) => Object.keys(post.byPlatformWindow).length > 0
+  const mergeWindows = (target: PostRow, source: PostRow) => {
+    for (const [key, value] of Object.entries(source.byPlatformWindow)) {
+      target.byPlatformWindow[key] ??= value
+    }
+    for (const win of ['live', 'w24', 'w3', 'w7', 'eom'] as const) {
+      if (target[win].views === 0 && target[win].likes === 0 && target[win].comments === 0 && target[win].shares === 0 && target[win].saves === 0) {
+        target[win] = source[win]
+      }
+    }
+  }
+
+  const postsByResolvedId = new Map<string, PostRow>()
+  for (const post of mappedPosts) {
+    const key = post.pipelinePostId ?? post.postId
+    const existing = postsByResolvedId.get(key)
+    if (!existing) {
+      postsByResolvedId.set(key, post)
+      continue
+    }
+
+    const keep = hasAnalytics(existing) || !hasAnalytics(post) ? existing : post
+    const mergeFrom = keep === existing ? post : existing
+    mergeWindows(keep, mergeFrom)
+    postsByResolvedId.set(key, keep)
+  }
+  const posts = [...postsByResolvedId.values()]
 
   return (
     <div className="p-10">
