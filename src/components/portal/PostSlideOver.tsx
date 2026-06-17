@@ -3,7 +3,7 @@
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts'
 
 export type SlideOverWindow = {
-  views: number; likes: number; comments: number
+  views: number; client_views?: number | null; likes: number; comments: number
   shares: number; saves: number; followers: number; watch_pct: number
 }
 
@@ -24,6 +24,11 @@ export type SlideOverPost = {
 }
 
 const EMPTY_WIN: SlideOverWindow = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, followers: 0, watch_pct: 0 }
+
+function displayViewsForWindow(w: SlideOverWindow, platform: string[]): number {
+  if (platform.includes('ig') && w.client_views != null) return w.client_views
+  return w.views
+}
 
 function makeEmpty(): SlideOverPost {
   return { postId: '', title: '', platform: [], date: '', live: EMPTY_WIN, w24: EMPTY_WIN, w3: EMPTY_WIN, w7: EMPTY_WIN, eom: EMPTY_WIN }
@@ -205,7 +210,7 @@ export function PostSlideOver({
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                       {([
-                        ['Views', hasData ? fmt(m.views) : '—'],
+                        ['Views', hasData ? fmt(displayViewsForWindow(m, post.platform)) : '—'],
                         ['ER%',   hasData ? er.toFixed(1) + '%' : '—'],
                         ['Likes', hasData ? fmt(m.likes) : '—'],
                         ['Watch', hasData && m.watch_pct > 0 ? m.watch_pct.toFixed(0) + '%' : '—'],

@@ -23,6 +23,7 @@ import { usePillarColors } from '@/hooks/usePillarColors'
 // Falls back to the flat window field (which prefers 'ig') when platform='all'.
 const ANALYTICS_EMPTY_WIN: WindowData = {
   views: 0,
+  client_views: null,
   likes: 0,
   comments: 0,
   shares: 0,
@@ -45,6 +46,14 @@ function resolveWin(post: PostRow, platform: string, win: WindowKey): WindowData
     return post.byPlatformWindow[platformWindowKey(platform, win)] ?? ANALYTICS_EMPTY_WIN
   }
   return post[win]
+}
+
+function displayViewsFor(post: PostRow, platform: string, win: WindowKey): number {
+  const data = resolveWin(post, platform, win)
+  if (platform === 'ig' && data.client_views != null) {
+    return data.client_views
+  }
+  return data.views
 }
 
 function idForPlatform(postId: string, activePlatform: string): string {
@@ -155,6 +164,7 @@ function AnalyticsTableRow({
   const pillarColor = pillarColors.get(post.pillar ?? '') ?? '#1a1a1a'
   const displayId   = displayPostId(post, platform)
   const editPlatform = platform !== 'all' ? (platform === 'lf' ? 'yt' : platform) : (post.platform[0] ?? 'ig')
+  const displayViews = displayViewsFor(post, platform, activeWin)
 
   // Interpolate view count for recently polled videos (within 7 days)
   const liveViews = useInterpolatedStat(
@@ -214,7 +224,7 @@ function AnalyticsTableRow({
       </td>
       {/* Views — interpolated for recently polled videos */}
       <EditableCell
-        value={w.views} displayValue={hasData ? fmt(liveViews) : '—'} color={hasData ? '#f2ede4' : '#3a3a3a'}
+        value={w.views} displayValue={hasData ? fmt(platform === 'ig' && w.client_views != null ? displayViews : liveViews) : '—'} color={hasData ? '#f2ede4' : '#3a3a3a'}
         postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="views" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
@@ -467,6 +477,7 @@ function PostSnapshot({
   onClose: () => void
 }) {
   const metric = resolveWin(post, platform, win)
+  const displayViews = displayViewsFor(post, platform, win)
   const er = calcER(metric, platform === 'all' ? post.platform : platform)
   const g = er >= 12 ? 'A' : er >= 7 ? 'B' : er >= 4 ? 'C' : er >= 2 ? 'D' : 'F'
   const color = er >= 12 ? '#39ff88' : er >= 7 ? '#4cc9ff' : er >= 4 ? '#fbbf24' : '#ff3b5f'
@@ -493,7 +504,7 @@ function PostSnapshot({
           </div>
           <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
             {[
-              ['Views', fmt(metric.views)],
+              ['Views', fmt(displayViews)],
               ['Watch', pct(metric.watch_pct)],
               ['Followers', fmt(metric.followers)],
             ].map(([label, value]) => (
@@ -537,12 +548,12 @@ function AdvancedAnalyticsCharts({
   const [reachMode, setReachMode] = useState<'top' | 'last' | 'all'>('top')
   const postPoints = useMemo<ChartPostPoint[]>(() => {
     let source = rows.slice()
-    if (reachMode === 'top') source = source.sort((a, b) => resolveWin(b, platform, win).views - resolveWin(a, platform, win).views).slice(0, 10)
+    if (reachMode === 'top') source = source.sort((a, b) => displayViewsFor(b, platform, win) - displayViewsFor(a, platform, win)).slice(0, 10)
     if (reachMode === 'last') source = source.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).reverse()
     return source.map(post => {
       const wData = resolveWin(post, platform, win)
       const er = calcER(wData, platform === 'all' ? post.platform : platform)
-      return { name: displayPostId(post, platform), post, views: wData.views, er: +er.toFixed(1), date: post.date.slice(5), color: tierColor(er) }
+      return { name: displayPostId(post, platform), post, views: displayViewsFor(post, platform, win), er: +er.toFixed(1), date: post.date.slice(5), color: tierColor(er) }
     })
   }, [rows, win, reachMode, platform])
 
@@ -559,7 +570,7 @@ function AdvancedAnalyticsCharts({
       const cur = map.get(key) ?? { month: key.slice(5), posts: 0, reach: 0, followers: 0 }
       const wData = resolveWin(post, platform, win)
       cur.posts += 1
-      cur.reach += wData.views
+      cur.reach += displayViewsFor(post, platform, win)
       cur.followers += wData.followers
       map.set(key, cur)
     }
@@ -709,7 +720,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
           p.hook.toLowerCase().includes(q) ||
           p.format.toLowerCase().includes(q) ||
           (p.decision || '').toLowerCase().includes(q) ||
-          String(w.views).includes(q) ||
+          String(displayViewsFor(p, platform, win as WindowKey)).includes(q) ||
           String(w.likes).includes(q) ||
           String(w.comments).includes(q) ||
           String(w.saves).includes(q) ||
@@ -726,7 +737,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
       let av = 0, bv = 0
       if (sortKey === 'date')          { av = new Date(a.date).getTime(); bv = new Date(b.date).getTime() }
       else if (sortKey === 'er')       { av = calcER(wa, platform === 'all' ? a.platform : platform); bv = calcER(wb, platform === 'all' ? b.platform : platform) }
-      else if (sortKey === 'views')    { av = wa.views;    bv = wb.views }
+      else if (sortKey === 'views')    { av = displayViewsFor(a, platform, wk); bv = displayViewsFor(b, platform, wk) }
       else if (sortKey === 'likes')    { av = wa.likes;    bv = wb.likes }
       else if (sortKey === 'comments') { av = wa.comments; bv = wb.comments }
       else if (sortKey === 'saves')    { av = wa.saves;    bv = wb.saves }
@@ -740,7 +751,7 @@ export function AnalyticsClient({ posts: initialPosts }: { posts: PostRow[] }) {
 
   const kpis = useMemo(() => {
     const total = rows.length
-    const totalViews = rows.reduce((s, r) => s + resolveWin(r, platform, activeWin).views, 0)
+    const totalViews = rows.reduce((s, r) => s + displayViewsFor(r, platform, activeWin), 0)
     const withViews  = rows.filter(r => resolveWin(r, platform, activeWin).views > 0)
     const avgER      = withViews.length ? withViews.reduce((s, r) => s + calcER(resolveWin(r, platform, activeWin), platform === 'all' ? r.platform : platform), 0) / withViews.length : 0
     const avgWatch   = withViews.length ? withViews.reduce((s, r) => s + resolveWin(r, platform, activeWin).watch_pct, 0) / withViews.length : 0

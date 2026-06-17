@@ -213,6 +213,7 @@ export async function syncInstagramForClient(
       platform:       'ig',
       metric_window:  'live',
       views,
+      client_views:   insights.views || 0,
       likes,
       comments,
       shares,

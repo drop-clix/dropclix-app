@@ -153,7 +153,7 @@ in a single line change, with zero risk to YT or TT views when `platform='all'`.
 
 ## Follow-Up Investigation — IG Sync Views + Missing Posts Rows
 
-**Date:** June 17, 2026  
+**Date:** June 17, 2026
 **Scope:** Audit only. No code or data changes.
 
 ### What Was Checked
@@ -278,7 +278,7 @@ platform IDs.
 
 ## Final Follow-Up Resolution — IG Reels Metrics + Backfill
 
-**Date:** June 17, 2026  
+**Date:** June 17, 2026
 **Status:** RESOLVED
 
 ### Final Root Cause
@@ -372,3 +372,71 @@ Corrected IG sync populated `ig/live` rows for all four target posts:
 
 Graph `views` is available separately from reach, but it is not currently stored
 because the locked IG formula defines portal views as reach.
+
+## Final Resolution Addendum — Reach vs Client-Facing Views Split
+
+**Date:** June 17, 2026
+**Status:** RESOLVED
+
+### What Changed
+
+The portal now stores Instagram Reach and Instagram Views separately:
+
+- `post_analytics.views` remains the locked formula metric for IG and means
+  Reach / unique accounts reached.
+- `post_analytics.client_views` is a new display-only column for Instagram
+  Graph API `views` / total plays.
+- YouTube and TikTok continue to use `post_analytics.views` as their real
+  views metric. They do not use `client_views`.
+
+### Schema
+
+Added migration:
+
+```sql
+alter table post_analytics
+add column if not exists client_views integer;
+```
+
+Production Supabase was updated manually through SQL Editor because this repo
+does not include a direct DB URL, `psql`, Supabase CLI config, or an SQL
+execution RPC.
+
+### Sync Verification
+
+The Day 1 Instagram sync wrote both metrics correctly:
+
+| Post ID | Reach (`views`) | Client Views (`client_views`) | ER Source |
+|---|---:|---:|---|
+| `#ig0031` | 2,341 | 3,768 | Reach |
+| `#ig0033` | 1,098 | 1,783 | Reach |
+| `#ig0037` | 5,593 | 7,746 | Reach |
+| `#ig0061` | 221,671 | 301,492 | Reach |
+
+For `#ig0061`, ER remained `11.33%` using Reach:
+
+```txt
+(15,681 likes + 190 comments + 4,616 shares + 4,623 saves) / 221,671 reach
+= 11.33%
+```
+
+That keeps the decision at `Iterate`. If the new client-facing Views value were
+used by mistake, ER would change, so this was explicitly verified.
+
+### Code Resolution
+
+- `src/lib/instagram-sync.ts` writes `client_views: insights.views || 0` while
+  preserving `views: insights.reach || 0`.
+- `src/app/(dashboard)/analytics/page.tsx` selects and maps `client_views`.
+- `src/components/portal/AnalyticsClient.tsx` uses `client_views` only for
+  IG display surfaces: Views column, Total Views KPI, search/sort by views,
+  snapshot modal, slide-over data handoff, and chart view counts.
+- `src/components/portal/PostSlideOver.tsx` displays IG `client_views` in the
+  metric window grid while its ER calculation still uses Reach.
+
+### Prevention
+
+- Never rename `post_analytics.views`; for IG it means Reach.
+- Never feed `client_views` into ER%, Decision, or threshold logic.
+- Any future admin edit path for client-facing IG Views must write
+  `client_views` and must not recompute Decision.

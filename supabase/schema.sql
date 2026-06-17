@@ -52,6 +52,7 @@ create table post_analytics (
   metric_window text not null check (metric_window in ('live','w24','w3','w7','eom')),
   platform text not null,
   views integer default 0,
+  client_views integer,
   likes integer default 0,
   comments integer default 0,
   shares integer default 0,

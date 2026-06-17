@@ -5,6 +5,7 @@ import { FilterBar } from '@/components/portal/FilterBar'
 // ── Types shared with AnalyticsClient ──────────────────────────────────────
 export type WindowData = {
   views: number
+  client_views: number | null
   likes: number
   comments: number
   shares: number
@@ -40,7 +41,7 @@ export type PostRow = {
 }
 
 const EMPTY_WIN: WindowData = {
-  views: 0, likes: 0, comments: 0, shares: 0,
+  views: 0, client_views: null, likes: 0, comments: 0, shares: 0,
   saves: 0, followers: 0, watch_pct: 0,
   prevViews: null, prevRecordedAt: null, lastPolledAt: null, recordedAt: null,
 }
@@ -56,7 +57,7 @@ export default async function AnalyticsPage() {
     .select(`
       id, post_id, title, platform, pillar, hook, format, date, decision, yt_id,
       thumbnail_url,
-      post_analytics(platform, metric_window, views, likes, comments, shares, saves, followers, watch_pct, prev_views, prev_recorded_at, last_polled_at, recorded_at)
+      post_analytics(platform, metric_window, views, client_views, likes, comments, shares, saves, followers, watch_pct, prev_views, prev_recorded_at, last_polled_at, recorded_at)
     `)
     .eq('client_id', clientId ?? fallback)
     .order('date', { ascending: false })
@@ -110,6 +111,7 @@ export default async function AnalyticsPage() {
     for (const a of p.post_analytics ?? []) {
       const data: WindowData = {
         views:          a.views           ?? 0,
+        client_views:   (a as any).client_views ?? null,
         likes:          a.likes           ?? 0,
         comments:       a.comments        ?? 0,
         shares:         a.shares          ?? 0,

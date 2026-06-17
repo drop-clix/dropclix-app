@@ -305,6 +305,17 @@ src/
 `(likes + comments + shares + saves) / views × 100`
 Decision thresholds: ≥12% = Double Down, 4–11.9% = Iterate, <4% = Kill.
 
+### Instagram Reach vs Client-Facing Views
+
+**Locked architecture from S55. Do not rename `post_analytics.views`.**
+
+- For Instagram only, `post_analytics.views` means **Reach** (unique accounts reached).
+- Instagram ER% and Decision thresholds must always use `post_analytics.views` / Reach.
+- `post_analytics.client_views` stores the real Instagram Graph API `views` metric (total plays).
+- Client-facing Analytics table/KPI/chart displays use `client_views` for IG when present.
+- YouTube and TikTok are unaffected and continue using `post_analytics.views` as real views. Do not add `client_views` logic to YT/TT unless explicitly requested.
+- Historical IG rows may have `client_views = null` until the next IG sync. Do not estimate or backfill unless explicitly requested.
+
 ### YouTube ER%
 `(likes + comments + shares + subscribers_gained) / views × 100`
 `subscribers_gained` maps to `post_analytics.followers`. `saves` is `null` for all YT rows.
@@ -372,6 +383,15 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Fix: Active platform views now require `byPlatformWindow[platform_window]`; missing IG/TT/YT rows return an empty window and are filtered out for platform-specific views. Inline metric edits also use the active platform pill unless the view is `all`. This preserves the no-query-on-filter-change UX while stopping cross-platform metric bleed.
 - Fix: `analytics/page.tsx` merges multiple `posts` rows that resolve to the same pipeline item, keys pipeline titles by full pipe ID and every segment, and uses `'Untitled'` when a pipeline item exists without a title instead of falling through to raw `posts.title`.
 - Migration: `supabase/migrations/session_47_posts_unique_post_id_client_id.sql` adds `UNIQUE (post_id, client_id)`. The required preview query returned 0 exact duplicate `(post_id, client_id)` groups before the migration file was added.
+
+## S55 Bug Fix Notes
+
+- Issue: Instagram Graph API returns both `reach` and `views`, but the portal had only one `post_analytics.views` column. Showing that column to clients made IG "Views" look smaller than the Instagram app because the portal uses `views` as Reach for the locked ER% formula.
+- Root cause: The schema did not have a second display-only metric for real IG plays. Reusing `views` for display would break ER% and Double Down / Iterate / Kill decisions.
+- Fix: Added `post_analytics.client_views` via `supabase/migrations/session_55_ig_client_views.sql` and applied the production DDL manually in Supabase SQL Editor. IG sync now writes `views = insights.reach` and `client_views = insights.views`.
+- Fix: Analytics fetch/mapping carries `client_views`; IG-only display surfaces use `client_views` for the client-facing Views column, Total Views KPI, search/sort by views, snapshot modal, slide-over window grid, and the Monthly Views / Reach chart. `resolveWin()` and all ER/Decision code still read `views` as Reach.
+- Verification: Day 1 IG sync populated `#ig0061` with `views/reach=221671` and `client_views=301492`. ER remained 11.33% and the computed decision remained `Iterate`, proving formulas stayed on Reach.
+- Gotcha: Admin inline editing of the Analytics "Views" cell still writes to `views` / Reach through the existing `updateAnalyticsMetric()` path. If client-facing manual editing of Graph views is needed later, add an explicit `client_views` edit path that does not recompute Decision.
 
 ## S45 Bug Fix Notes
 
