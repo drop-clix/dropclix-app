@@ -286,7 +286,7 @@ export async function disconnectTikTok(clientId: string): Promise<{ error?: stri
 export async function deleteClient(clientId: string, clientName: string): Promise<{ error?: string }> {
   if (!await assertAdmin()) return { error: 'Unauthorized' }
 
-  if (clientName === 'Nick Nascimento' || clientName === 'Day 1 | D 1') {
+  if (clientName === 'Nick Nascimento' || clientName === 'Day 1 | D 1' || clientName === 'Jacob Perkins') {
     return { error: 'Cannot delete protected clients.' }
   }
 
