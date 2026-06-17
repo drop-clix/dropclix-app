@@ -150,3 +150,128 @@ in a single line change, with zero risk to YT or TT views when `platform='all'`.
 ## Resolution
 
 [x] RESOLVED
+
+## Follow-Up Investigation — IG Sync Views + Missing Posts Rows
+
+**Date:** June 17, 2026  
+**Scope:** Audit only. No code or data changes.
+
+### What Was Checked
+
+- `src/lib/instagram-sync.ts`
+- `src/app/api/admin/sync-instagram/route.ts`
+- `src/app/(dashboard)/edit-actions.ts`
+- `src/components/portal/PipelineClient.tsx`
+- Read-only Supabase checks for `#ig0061`, `#ig0031`, `#ig0033`, `#ig0037`
+- Read-only Instagram Graph API checks with token values redacted from output
+
+### Confirmed Data State
+
+- `platform_connections` has a valid Day 1 Instagram connection:
+  `_chasevans_`, `channel_id=17841404687918692`, token expiry `2026-08-14`,
+  follower count `3641`, last synced `2026-06-17`.
+- Pipeline items exist and have IG links:
+  - `#ig0061` → `ig_video_id=DV3uKcijuWl`
+  - `#ig0031 | #tt0001 | #yt0081` → `ig_video_id=DZlyOU8NMo1`
+  - `#ig0033 | #tt0003 | #yt0083` → `ig_video_id=DZgas-3P05b`
+  - `#ig0037 | #tt0007 | #yt0087` → `ig_video_id=DZjhk1-t59c`
+- `posts` has a row for `#ig0037` only. It has no rows for `#ig0061`,
+  `#ig0031`, or `#ig0033`.
+- `post_analytics` has `ig/live` for `#ig0037` with `views=0`, `likes=325`,
+  `comments=214`, `saves=0`.
+
+### Finding 1 — Why IG Views Are 0
+
+`instagram-sync.ts` requests these insight metrics for IG videos:
+
+```txt
+reach,saved,plays,impressions
+```
+
+The live Graph API response rejects the request because `plays` is not a valid
+metric for these media objects. The error says valid metrics include `views`,
+`reach`, `saved`, `shares`, `total_interactions`, `ig_reels_avg_watch_time`,
+`ig_reels_video_view_total_time`, and `reels_skip_rate`.
+
+Because the request fails as a whole, `fetchIGMediaInsights()` returns the empty
+fallback:
+
+```ts
+{ reach: 0, saved: 0, plays: null, impressions: 0 }
+```
+
+The sync then stores `views = insights.reach || 0`, while likes/comments still
+come from the separate `/media` response. That is why rows can show real likes
+and comments but `views=0`.
+
+A read-only replacement check against `#ig0037` using:
+
+```txt
+views,saved,reach,total_interactions,shares,ig_reels_avg_watch_time,ig_reels_video_view_total_time,reels_skip_rate
+```
+
+returned successfully with:
+
+```txt
+views=7735
+reach=5585
+saved=4
+shares=4
+reels_skip_rate=36.6
+```
+
+`impressions` is also unsupported for this media product type, so including it
+in the same metric request causes the entire insights call to fail.
+
+**Proposed fix:** Update IG sync to request Reels-safe metrics. Preserve the
+locked portal formula by continuing to map portal `views` to `reach` unless
+Chase explicitly changes the IG definition. Store `shares` and `saves` from the
+insights response. If/when schema supports it, store Graph `views` separately
+from portal `views/reach`.
+
+### Finding 2 — Why Some IG Pipeline Items Have No Posts Row
+
+Current code paths are correct for new actions:
+
+- IG link modal save calls `ensureIGPostsRow(item.id)` after `updatePipelineItem()`
+  when `ig_video_id` is parsed.
+- Mark as Posted calls `ensureIGPostsRow(item.id)` when an IG URL/ID is present.
+- `ensureIGPostsRow()` delegates to `ensureSocialPostsRow()`, which reads
+  `pipeline_items`, extracts the `#ig` segment, checks existing `posts` rows by
+  full pipe ID and segment, then inserts a stub row if missing.
+
+The missing rows are almost certainly historical: the audited pipeline items
+already had `ig_video_id` values but were created/linked before the S44
+`ensureIGPostsRow()` wiring existed, or were updated through a path that did not
+invoke the helper at the time. Since the sync resolver requires a matching
+`posts` row after it finds the linked pipeline item, these items cannot receive
+`post_analytics` rows until the missing stubs are backfilled.
+
+**Proposed fix:** Run a scoped backfill for posted pipeline items where
+`ig_video_id IS NOT NULL` and no `posts` row exists for the `#ig` segment. Do a
+dry-run SELECT first and insert only missing stubs using the same logic as
+`ensureIGPostsRow()`.
+
+### Finding 3 — Platform Naming Consistency
+
+The code intentionally uses full provider names in `platform_connections`:
+
+```txt
+instagram, youtube, tiktok
+```
+
+Content and analytics tables use portal platform IDs:
+
+```txt
+ig, yt, tt, lf
+```
+
+This is consistent in the audited IG path:
+
+- `/api/admin/sync-instagram` loads `platform_connections.platform='instagram'`.
+- `syncInstagramForClient()` writes `post_analytics.platform='ig'`.
+- `ensureIGPostsRow()` inserts `posts.platform=['ig']`.
+
+No lookup mismatch was found in this path. The naming split is intentional, but
+future code should avoid mixing connection provider names with analytics/content
+platform IDs.
