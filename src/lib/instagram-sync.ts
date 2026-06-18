@@ -244,3 +244,70 @@ export async function syncInstagramForClient(
 
   return result
 }
+
+export async function syncSingleIGVideo(
+  clientId: string,
+  igVideoId: string,
+): Promise<{ synced: number; error?: string }> {
+  const admin = createAdminClient()
+
+  const { data: connection, error: connectionError } = await admin
+    .from('platform_connections')
+    .select('access_token, channel_id')
+    .eq('client_id', clientId)
+    .eq('platform', 'instagram')
+    .maybeSingle()
+
+  if (connectionError || !connection) {
+    return { synced: 0, error: connectionError?.message ?? 'No Instagram connection found' }
+  }
+
+  const accessToken = (connection as any).access_token as string | null
+  const igAccountId = (connection as any).channel_id as string | null
+  if (!accessToken || !igAccountId) {
+    return { synced: 0, error: 'Instagram connection is missing token or channel_id' }
+  }
+
+  const media = await fetchIGMedia(accessToken, igAccountId)
+  const item = media.find(mediaItem => shortcodeFromPermalink(mediaItem.permalink) === igVideoId)
+  if (!item) {
+    return { synced: 0, error: `No Instagram media found for ${igVideoId}` }
+  }
+
+  const resolved = await resolveIGPostsUUID(admin, igVideoId, clientId)
+  if (!resolved) {
+    return { synced: 0, error: `No posts row found for Instagram video ${igVideoId}` }
+  }
+
+  const insights = await fetchIGMediaInsights(item.id, accessToken, item.media_type)
+  const views = insights.reach || 0
+  const likes = item.like_count || 0
+  const comments = item.comments_count || 0
+  const saves = insights.saved || 0
+  const shares = insights.shares || 0
+
+  const { error } = await admin.from('post_analytics').upsert({
+    post_id: resolved.postUUID,
+    client_id: clientId,
+    platform: 'ig',
+    metric_window: 'live',
+    views,
+    client_views: insights.views || 0,
+    likes,
+    comments,
+    shares,
+    saves,
+    watch_pct: 0,
+    skip_rate: insights.skipRate,
+    last_polled_at: new Date().toISOString(),
+    recorded_at: new Date().toISOString(),
+  }, { onConflict: 'post_id,platform,metric_window' })
+
+  if (error) {
+    console.error(`[ig-sync] single-video upsert failed for ${igVideoId}:`, error.message)
+    return { synced: 0, error: error.message }
+  }
+
+  console.log(`[ig-sync] single ✓ ${igVideoId} — reach=${views} graph_views=${insights.views} likes=${likes} comments=${comments} shares=${shares} saves=${saves}`)
+  return { synced: 1 }
+}

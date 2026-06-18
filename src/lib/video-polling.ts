@@ -393,6 +393,30 @@ export async function pollPipelineItem(
   return { polled: true }
 }
 
+export async function syncSingleYTVideo(
+  clientId: string,
+  ytVideoId: string,
+): Promise<{ synced: number; error?: string }> {
+  const admin = createAdminClient()
+  const { data: item, error } = await admin
+    .from('pipeline_items')
+    .select('id, post_id, client_id, platform, posted_at, yt_video_id, tt_video_id, ig_video_id')
+    .eq('client_id', clientId)
+    .eq('yt_video_id', ytVideoId)
+    .maybeSingle()
+
+  if (error || !item) {
+    return { synced: 0, error: error?.message ?? `No pipeline item found for YouTube video ${ytVideoId}` }
+  }
+
+  const result = await pollPipelineItem(admin, item as PollablePipelineItem)
+  if (!result.polled) {
+    return { synced: 0, error: result.reason ?? `YouTube video ${ytVideoId} was not synced` }
+  }
+
+  return { synced: 1 }
+}
+
 // ── Query helpers for cron routes ─────────────────────────────────────────
 //
 // Only returns POSTED items with at least one linked platform video ID.

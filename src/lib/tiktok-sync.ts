@@ -276,3 +276,86 @@ export async function syncTikTokForClient(clientId: string): Promise<TikTokSyncR
 
   return result
 }
+
+export async function syncSingleTTVideo(
+  clientId: string,
+  ttVideoId: string,
+): Promise<{ synced: number; error?: string }> {
+  const admin = createAdminClient()
+  const connection = await getTikTokConnection(clientId)
+
+  const { data: rawItem, error: itemErr } = await admin
+    .from('pipeline_items')
+    .select('id, post_id, title, pillar, posted_at, tt_video_id')
+    .eq('client_id', clientId)
+    .eq('tt_video_id', ttVideoId)
+    .maybeSingle()
+
+  if (itemErr || !rawItem) {
+    return { synced: 0, error: itemErr?.message ?? `No pipeline item found for TikTok video ${ttVideoId}` }
+  }
+
+  const item = rawItem as PipelineItem
+  const post = await ensureTTPostsRowForPipeline(admin, clientId, item)
+  if (!post) {
+    return { synced: 0, error: `No posts row found for TikTok video ${ttVideoId}` }
+  }
+
+  const [video] = await fetchTikTokVideoStats(connection.accessToken, [ttVideoId])
+  if (!video) {
+    return { synced: 0, error: `No TikTok stats returned for ${ttVideoId}` }
+  }
+
+  const views = video.view_count ?? 0
+  const likes = video.like_count ?? 0
+  const comments = video.comment_count ?? 0
+  const shares = video.share_count ?? 0
+  const now = new Date().toISOString()
+
+  if (video.cover_image_url) {
+    const [{ error: postMetaErr }, { error: pipeMetaErr }] = await Promise.all([
+      admin
+        .from('posts')
+        .update({
+          ...(video.title ? { title: video.title } : {}),
+          thumbnail_url: video.cover_image_url,
+        })
+        .eq('id', post.id)
+        .eq('client_id', clientId),
+      admin
+        .from('pipeline_items')
+        .update({ thumbnail_url: video.cover_image_url })
+        .eq('id', item.id)
+        .eq('client_id', clientId),
+    ])
+    if (postMetaErr) console.error('[tt-sync] single posts metadata update failed:', postMetaErr.message)
+    if (pipeMetaErr) console.error('[tt-sync] single pipeline thumbnail update failed:', pipeMetaErr.message)
+  }
+
+  const { error } = await admin.from('post_analytics').upsert({
+    post_id: post.id,
+    client_id: clientId,
+    platform: 'tt',
+    metric_window: 'live',
+    views,
+    client_views: views,
+    likes,
+    comments,
+    shares,
+    saves: 0,
+    last_polled_at: now,
+    recorded_at: now,
+  }, { onConflict: 'post_id,platform,metric_window' })
+
+  if (error) {
+    console.error(`[tt-sync] single upsert failed for ${ttVideoId}:`, error.message, error.code, error.details)
+    return { synced: 0, error: error.message }
+  }
+
+  if (item.posted_at) {
+    await scheduleSnapshotsIfNew(admin, post.id, clientId, item.id, item.posted_at)
+  }
+
+  console.log(`[tt-sync] single ✓ ${ttVideoId} — views=${views} likes=${likes} comments=${comments} shares=${shares}`)
+  return { synced: 1 }
+}

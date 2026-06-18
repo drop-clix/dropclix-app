@@ -403,6 +403,14 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Fix: `runDueSnapshots()` now iterates all live platform rows for a job and writes each locked window with the source row's platform. `analytics_snapshots` remains one row per post/window because its schema has no platform column; platform-specific truth lives in `post_analytics`.
 - Verification: Live Day 1 TikTok API sync returned and wrote `#tt0001` (553 views, 28 likes, 3 comments, 0 shares) and `#tt0003` (629 views, 31 likes, 1 comment, 1 share).
 
+## S57 Bug Fix Notes
+
+- Issue: After TikTok sync shipped, IG Analytics dropped `#ig0031` and `#ig0033`. Root cause: `analytics/page.tsx` deduped rows by resolved pipeline ID but kept the first row's identity. TikTok rows with `date=null` sorted first, won the merge, and left the merged row with `platform=['tt']`, so the IG/YT pills filtered it out even though IG/YT analytics were present.
+- Fix: Analytics dedup now builds a true multi-platform merged row per pipeline item: platform arrays are unioned, all `byPlatformWindow` entries are preserved, flat windows are rebuilt from platform-specific rows, and `uuidByPlatform` tracks the correct `posts.id` for inline edits on IG/TT/YT.
+- Issue: `#ig0062` could display an API caption instead of the curated pipeline title. Root cause: merged row identity could inherit `posts.title` from whichever row won. Fix: pipeline title resolution is enforced after merge; `pipeline_items.title` remains the only display title source when a pipeline item exists, with the pipeline post ID as fallback if the title is blank.
+- Build: Added per-video auto-sync after link save and Mark as Posted. `syncLinkedVideoNow()` dispatches to `syncSingleIGVideo()`, `syncSingleTTVideo()`, or `syncSingleYTVideo()` after `ensure*PostsRow()` succeeds. Sync errors are logged and non-blocking; the manual Sync Now buttons remain the fallback.
+- Known issue to fix later: `updateAnalyticsMetric()` recomputes Decision with `(likes + comments + shares + saves) / views` for every platform. YouTube's locked formula should use `subscribers_gained` / `followers`, not `saves`. This bug pre-existed S57 and was documented only, not fixed.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

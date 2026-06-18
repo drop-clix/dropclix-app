@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems, bulkCreatePipelineItems, ensureYTPostsRow, ensureIGPostsRow, ensureTTPostsRow } from '@/app/(dashboard)/edit-actions'
+import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems, bulkCreatePipelineItems, ensureYTPostsRow, ensureIGPostsRow, ensureTTPostsRow, syncLinkedVideoNow } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
 import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
@@ -182,6 +182,10 @@ function YTLinkModal({
     // linkYouTubeVideo saves yt_video_id to pipeline_items; ensureYTPostsRow
     // reads it back and creates a stub posts row if none exists.
     await ensureYTPostsRow(item.id)
+    toast('Syncing YouTube analytics…', 'info')
+    void syncLinkedVideoNow(item.id, 'yt').then(syncResult => {
+      if (syncResult.error) console.warn('[pipeline] YouTube auto-sync failed:', syncResult.error)
+    })
     setSaving(false)
     if (result.note) toast(result.note, 'info')
     onLinked(result.ytId!)
@@ -300,6 +304,7 @@ function PlatformLinkModal({
   onLinked: (url: string, videoId: string) => void
 }) {
   const cfg = PLAT_LINK_CFG[plat]
+  const { toast } = useToast()
   const [input, setInput]   = useState(() => {
     if (plat === 'ig') {
       if (item.igVideoId) return `https://www.instagram.com/reel/${item.igVideoId}/`
@@ -327,8 +332,20 @@ function PlatformLinkModal({
     const result = await updatePipelineItem(item.id, update)
     setSaving(false)
     if (result.error) { setErrMsg(result.error); return }
-    if (plat === 'ig' && videoId) await ensureIGPostsRow(item.id)
-    if (plat === 'tt' && videoId) await ensureTTPostsRow(item.id)
+    if (plat === 'ig' && videoId) {
+      await ensureIGPostsRow(item.id)
+      toast('Syncing Instagram analytics…', 'info')
+      void syncLinkedVideoNow(item.id, 'ig').then(syncResult => {
+        if (syncResult.error) console.warn('[pipeline] Instagram auto-sync failed:', syncResult.error)
+      })
+    }
+    if (plat === 'tt' && videoId) {
+      await ensureTTPostsRow(item.id)
+      toast('Syncing TikTok analytics…', 'info')
+      void syncLinkedVideoNow(item.id, 'tt').then(syncResult => {
+        if (syncResult.error) console.warn('[pipeline] TikTok auto-sync failed:', syncResult.error)
+      })
+    }
     onLinked(val, videoId)
     onClose()
   }
@@ -1208,9 +1225,24 @@ function MarkAsPostedModal({
 
     // Ensure a posts row exists so the cron can write to post_analytics.
     // Handles multi-platform items (pipe-separated post_id) via 3-strategy lookup.
-    if (parsedIds.yt) await ensureYTPostsRow(item.id)
-    if (parsedIds.ig) await ensureIGPostsRow(item.id)
-    if (parsedIds.tt) await ensureTTPostsRow(item.id)
+    if (parsedIds.yt) {
+      await ensureYTPostsRow(item.id)
+      void syncLinkedVideoNow(item.id, 'yt').then(syncResult => {
+        if (syncResult.error) console.warn('[pipeline] YouTube auto-sync failed:', syncResult.error)
+      })
+    }
+    if (parsedIds.ig) {
+      await ensureIGPostsRow(item.id)
+      void syncLinkedVideoNow(item.id, 'ig').then(syncResult => {
+        if (syncResult.error) console.warn('[pipeline] Instagram auto-sync failed:', syncResult.error)
+      })
+    }
+    if (parsedIds.tt) {
+      await ensureTTPostsRow(item.id)
+      void syncLinkedVideoNow(item.id, 'tt').then(syncResult => {
+        if (syncResult.error) console.warn('[pipeline] TikTok auto-sync failed:', syncResult.error)
+      })
+    }
 
     setSaving(false)
     onPosted(iso, parsedIds)

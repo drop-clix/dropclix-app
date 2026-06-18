@@ -6,6 +6,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { cookies } from 'next/headers'
 import { erToDecision } from '@/lib/decision'
 import { fetchYouTubePublicVideo } from '@/lib/youtube-public'
+import { syncSingleIGVideo } from '@/lib/instagram-sync'
+import { syncSingleTTVideo } from '@/lib/tiktok-sync'
+import { syncSingleYTVideo } from '@/lib/video-polling'
 
 const IMPERSONATE = 'dropclix_impersonate_client_id'
 
@@ -926,6 +929,55 @@ export async function ensureTTPostsRow(
   pipelineItemId: string,
 ): Promise<{ error?: string; postId?: string; created?: boolean }> {
   return ensureSocialPostsRow(pipelineItemId, 'tt')
+}
+
+export async function syncLinkedVideoNow(
+  pipelineItemId: string,
+  platform: 'ig' | 'tt' | 'yt',
+  clientId?: string,
+): Promise<{ synced?: number; error?: string }> {
+  const c = await getCtx()
+  if (!c) return { error: 'Not authenticated' }
+
+  const targetClientId = clientId ?? c.cid
+  if (!targetClientId) return { error: 'No active client selected' }
+  if (c.role !== 'admin' && c.cid !== targetClientId) return { error: 'Unauthorized' }
+
+  const { data: item, error } = await c.admin
+    .from('pipeline_items')
+    .select('id, client_id, ig_video_id, tt_video_id, yt_video_id')
+    .eq('id', pipelineItemId)
+    .eq('client_id', targetClientId)
+    .maybeSingle()
+
+  if (error || !item) {
+    return { error: error?.message ?? 'Pipeline item not found' }
+  }
+
+  const row = item as any
+  const videoId = platform === 'ig'
+    ? row.ig_video_id
+    : platform === 'tt'
+      ? row.tt_video_id
+      : row.yt_video_id
+
+  if (!videoId) return { error: `No ${platform.toUpperCase()} video ID linked` }
+
+  try {
+    const result = platform === 'ig'
+      ? await syncSingleIGVideo(targetClientId, videoId)
+      : platform === 'tt'
+        ? await syncSingleTTVideo(targetClientId, videoId)
+        : await syncSingleYTVideo(targetClientId, videoId)
+
+    revalidatePath('/analytics')
+    revalidatePath('/pipeline')
+    return result
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Sync failed'
+    console.error(`[syncLinkedVideoNow] ${platform} sync failed for pipeline item ${pipelineItemId}:`, message)
+    return { error: message }
+  }
 }
 
 // ── Content Approval Workflow ────────────────────────────────────────────────

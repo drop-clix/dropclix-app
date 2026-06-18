@@ -164,6 +164,7 @@ function AnalyticsTableRow({
   const pillarColor = pillarColors.get(post.pillar ?? '') ?? '#1a1a1a'
   const displayId   = displayPostId(post, platform)
   const editPlatform = platform !== 'all' ? (platform === 'lf' ? 'yt' : platform) : (post.platform[0] ?? 'ig')
+  const editPostUUID = post.uuidByPlatform[editPlatform] ?? post.uuid
   const displayViews = displayViewsFor(post, platform, activeWin)
 
   // Interpolate view count for recently polled videos (within 7 days)
@@ -225,27 +226,27 @@ function AnalyticsTableRow({
       {/* Views — interpolated for recently polled videos */}
       <EditableCell
         value={w.views} displayValue={hasData ? fmt(platform === 'ig' && w.client_views != null ? displayViews : liveViews) : '—'} color={hasData ? '#f2ede4' : '#3a3a3a'}
-        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="views" isPercent={false}
+        postUUID={editPostUUID} platform={editPlatform} metricWindow={activeWin} field="views" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <EditableCell
         value={w.likes} displayValue={hasData ? fmt(w.likes) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="likes" isPercent={false}
+        postUUID={editPostUUID} platform={editPlatform} metricWindow={activeWin} field="likes" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <EditableCell
         value={w.comments} displayValue={hasData ? fmt(w.comments) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="comments" isPercent={false}
+        postUUID={editPostUUID} platform={editPlatform} metricWindow={activeWin} field="comments" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <EditableCell
         value={w.saves} displayValue={hasData ? fmt(w.saves) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="saves" isPercent={false}
+        postUUID={editPostUUID} platform={editPlatform} metricWindow={activeWin} field="saves" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <EditableCell
         value={w.shares} displayValue={hasData ? fmt(w.shares) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="shares" isPercent={false}
+        postUUID={editPostUUID} platform={editPlatform} metricWindow={activeWin} field="shares" isPercent={false}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <td className="px-5 py-4">
@@ -265,7 +266,7 @@ function AnalyticsTableRow({
       </td>
       <EditableCell
         value={w.watch_pct} displayValue={hasData ? pct(w.watch_pct) : '—'} color={hasData ? '#aaa' : '#3a3a3a'}
-        postUUID={post.uuid} platform={editPlatform} metricWindow={activeWin} field="watch_pct" isPercent={true}
+        postUUID={editPostUUID} platform={editPlatform} metricWindow={activeWin} field="watch_pct" isPercent={true}
         onSave={(f, v, d) => onSave(post.uuid, f, v, d)}
       />
       <td className="px-5 py-4">

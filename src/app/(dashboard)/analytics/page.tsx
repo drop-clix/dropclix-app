@@ -20,6 +20,7 @@ export type WindowData = {
 
 export type PostRow = {
   uuid: string      // posts.id — needed to target post_analytics rows
+  uuidByPlatform: Record<string, string>
   postId: string
   pipelinePostId: string | null
   title: string
@@ -105,6 +106,7 @@ export default async function AnalyticsPage() {
   const mappedPosts: PostRow[] = (rawPosts ?? []).map(p => {
     // byPlatformWindow: exact per-platform data, e.g. 'ig_live', 'yt_eom'
     const byPlatformWindow: Record<string, WindowData> = {}
+    const uuidByPlatform: Record<string, string> = {}
     // byWindow (flat): prefer 'ig' rows; used for platform='all' display
     const byWindow: Record<string, WindowData> = {}
 
@@ -124,11 +126,15 @@ export default async function AnalyticsPage() {
         recordedAt:     (a as any).recorded_at      ?? null,
       }
       const rowPlatform = (a as any).platform as string ?? 'ig'
+      uuidByPlatform[rowPlatform] ??= p.id
       byPlatformWindow[`${rowPlatform}_${a.metric_window}`] = data
       // Flat: prefer 'ig', then first-seen for each window
       if (!byWindow[a.metric_window] || rowPlatform === 'ig') {
         byWindow[a.metric_window] = data
       }
+    }
+    for (const rowPlatform of p.platform ?? []) {
+      uuidByPlatform[rowPlatform] ??= p.id
     }
 
     const ytId = (p as any).yt_id as string | null
@@ -141,6 +147,7 @@ export default async function AnalyticsPage() {
 
     return {
       uuid:     p.id,
+      uuidByPlatform,
       postId:   p.post_id,
       pipelinePostId: resolvedPipelinePostId,
       title:    displayTitle,
@@ -160,15 +167,63 @@ export default async function AnalyticsPage() {
     }
   })
 
-  const hasAnalytics = (post: PostRow) => Object.keys(post.byPlatformWindow).length > 0
-  const mergeWindows = (target: PostRow, source: PostRow) => {
-    for (const [key, value] of Object.entries(source.byPlatformWindow)) {
-      target.byPlatformWindow[key] ??= value
+  const flatWindowFromPlatformMap = (
+    byPlatformWindow: Record<string, WindowData>,
+    win: 'live' | 'w24' | 'w3' | 'w7' | 'eom',
+  ): WindowData => {
+    for (const platform of ['ig', 'tt', 'yt', 'lf']) {
+      const data = byPlatformWindow[`${platform}_${win}`]
+      if (data) return data
     }
-    for (const win of ['live', 'w24', 'w3', 'w7', 'eom'] as const) {
-      if (target[win].views === 0 && target[win].likes === 0 && target[win].comments === 0 && target[win].shares === 0 && target[win].saves === 0) {
-        target[win] = source[win]
-      }
+    return { ...EMPTY_WIN }
+  }
+
+  const firstNonEmpty = (...values: (string | null | undefined)[]) =>
+    values.find(value => typeof value === 'string' && value.trim().length > 0) ?? null
+
+  const isEarlierDate = (candidate: string, current: string) => {
+    if (!candidate) return false
+    if (!current) return true
+    return new Date(candidate).getTime() < new Date(current).getTime()
+  }
+
+  const mergePostRows = (existing: PostRow, next: PostRow, key: string): PostRow => {
+    const pipelinePostId = existing.pipelinePostId ?? next.pipelinePostId
+    const mergedByPlatformWindow = {
+      ...existing.byPlatformWindow,
+      ...next.byPlatformWindow,
+    }
+    const mergedPlatforms = Array.from(new Set([
+      ...existing.platform,
+      ...next.platform,
+      ...Object.keys(mergedByPlatformWindow).map(windowKey => windowKey.split('_')[0]),
+    ].filter(Boolean)))
+    const uuidByPlatform = {
+      ...existing.uuidByPlatform,
+      ...next.uuidByPlatform,
+    }
+
+    const identitySource = isEarlierDate(next.date, existing.date) ? next : existing
+    const resolvedPipelineTitle = pipelinePostId
+      ? (pipelineTitleByPostId.get(pipelinePostId) ?? pipelineTitleByPostId.get(key) ?? pipelinePostId)
+      : null
+
+    return {
+      ...identitySource,
+      uuid: existing.uuid,
+      uuidByPlatform,
+      postId: pipelinePostId ?? existing.postId,
+      pipelinePostId,
+      title: resolvedPipelineTitle ?? firstNonEmpty(identitySource.title, existing.title, next.title) ?? 'Untitled',
+      platform: mergedPlatforms,
+      date: firstNonEmpty(identitySource.date, existing.date, next.date) ?? '',
+      thumbnailUrl: firstNonEmpty(identitySource.thumbnailUrl, existing.thumbnailUrl, next.thumbnailUrl),
+      byPlatformWindow: mergedByPlatformWindow,
+      live: flatWindowFromPlatformMap(mergedByPlatformWindow, 'live'),
+      w24: flatWindowFromPlatformMap(mergedByPlatformWindow, 'w24'),
+      w3:  flatWindowFromPlatformMap(mergedByPlatformWindow, 'w3'),
+      w7:  flatWindowFromPlatformMap(mergedByPlatformWindow, 'w7'),
+      eom: flatWindowFromPlatformMap(mergedByPlatformWindow, 'eom'),
     }
   }
 
@@ -181,10 +236,7 @@ export default async function AnalyticsPage() {
       continue
     }
 
-    const keep = hasAnalytics(existing) || !hasAnalytics(post) ? existing : post
-    const mergeFrom = keep === existing ? post : existing
-    mergeWindows(keep, mergeFrom)
-    postsByResolvedId.set(key, keep)
+    postsByResolvedId.set(key, mergePostRows(existing, post, key))
   }
   const posts = [...postsByResolvedId.values()]
 
