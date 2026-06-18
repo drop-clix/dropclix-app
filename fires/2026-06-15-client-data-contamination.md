@@ -82,3 +82,21 @@ WHERE client_id='913f1794-1506-4449-b56c-b683809cefc3'
 AND platform='yt' AND metric_window='live';
 ```
 All three should be ≥ 354.
+
+## Follow-up Discovery — June 18, 2026
+A ghost `ig/live` row with 0 views and 74 likes was found on
+posts row `#yt0083` (UUID: `d1fcdc2d-9217-41e8-9bc3-41ee37d19560`).
+This row survived the original June 15 contamination cleanup. It was
+overwriting `#ig0033`'s real `ig/live` analytics (1,124 views) during
+the dedup merge introduced today.
+
+Fix applied via SQL:
+1. Updated `#yt0083` platform from `['ig','tt','yt']` to `['yt']`
+2. Deleted ghost `post_analytics` row
+   (`id: 4d0a0732-74d7-4483-9811-14911ac328ba`)
+
+Prevention: The `UNIQUE (post_id, client_id)` constraint on `posts`
+prevents new contamination but does not prevent a single row from
+having an incorrect platform array. Future audits should check for
+posts rows where platform array includes platforms that don't match
+the `post_id` prefix.
