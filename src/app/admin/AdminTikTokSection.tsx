@@ -9,6 +9,7 @@ type TikTokConn = {
   openId: string | null
   followerCount: number | null
   createdAt: string | null
+  lastSyncedAt: string | null
 }
 
 function fmt(n: number) {
@@ -33,6 +34,8 @@ export function AdminTikTokSection({
 }) {
   const [notice, setNotice] = useState('')
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [syncStates,  setSyncStates]  = useState<Record<string, 'idle' | 'syncing' | 'done' | 'error'>>({})
+  const [syncResults, setSyncResults] = useState<Record<string, string>>({})
   const [, startTransition] = useTransition()
   const connMap = new Map(connections.map(c => [c.clientId, c]))
 
@@ -42,6 +45,26 @@ export function AdminTikTokSection({
       return
     }
     window.location.href = `/api/auth/tiktok?client_id=${clientId}`
+  }
+
+  async function handleSync(clientId: string) {
+    setSyncStates(s  => ({ ...s, [clientId]: 'syncing' }))
+    setSyncResults(r => ({ ...r, [clientId]: '' }))
+    try {
+      const res = await fetch('/api/admin/sync-tiktok', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Sync failed')
+      setSyncResults(r => ({ ...r, [clientId]: `${data.synced} posts synced · ${data.skipped} skipped` }))
+      setSyncStates(s  => ({ ...s, [clientId]: 'done' }))
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      setSyncResults(r => ({ ...r, [clientId]: msg }))
+      setSyncStates(s  => ({ ...s, [clientId]: 'error' }))
+    }
   }
 
   return (
@@ -63,6 +86,8 @@ export function AdminTikTokSection({
       <div className="flex flex-col gap-px" style={{ background: '#141414' }}>
         {clients.map(client => {
           const conn = connMap.get(client.id)
+          const syncState = syncStates[client.id] ?? 'idle'
+          const syncResult = syncResults[client.id] ?? ''
           return (
             <div key={client.id} style={{ background: '#0a0a0a', padding: '18px 24px' }}>
               <div className="flex items-center justify-between flex-wrap gap-3">
@@ -101,6 +126,12 @@ export function AdminTikTokSection({
                       <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Connected</p>
                       <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(conn.createdAt)}</p>
                     </div>
+                    {conn.lastSyncedAt && (
+                      <div>
+                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Last Sync</p>
+                        <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(conn.lastSyncedAt)}</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -108,6 +139,20 @@ export function AdminTikTokSection({
                 <div className="flex items-center gap-3">
                   {conn ? (
                     <>
+                      <button
+                        type="button"
+                        onClick={() => handleSync(client.id)}
+                        disabled={syncState === 'syncing'}
+                        className="text-[9px] tracking-[.14em] uppercase px-3 py-1.5 font-medium cursor-pointer"
+                        style={{
+                          background: syncState === 'done' ? 'rgba(57,255,136,.1)' : 'rgba(45,212,191,.1)',
+                          color: syncState === 'done' ? '#39ff88' : syncState === 'error' ? '#ff3b5f' : '#2dd4bf',
+                          border: `1px solid ${syncState === 'done' ? 'rgba(57,255,136,.3)' : syncState === 'error' ? 'rgba(255,59,95,.3)' : 'rgba(45,212,191,.3)'}`,
+                          opacity: syncState === 'syncing' ? 0.6 : 1,
+                        }}
+                      >
+                        {syncState === 'syncing' ? 'Syncing...' : syncState === 'done' ? 'Synced' : 'Sync Now'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleConnect(client.id)}
@@ -159,6 +204,12 @@ export function AdminTikTokSection({
                   )}
                 </div>
               </div>
+
+              {syncResult && (
+                <p className="text-[9px] font-light mt-2" style={{ color: syncState === 'error' ? '#ff3b5f' : '#555' }}>
+                  {syncResult}
+                </p>
+              )}
             </div>
           )
         })}

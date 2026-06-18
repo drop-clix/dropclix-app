@@ -5,6 +5,7 @@ type SupabaseAdmin = ReturnType<typeof createAdminClient>
 type MetricWindow = 'live' | 'w24' | 'w3' | 'w7' | 'eom'
 type PollStats = {
   views: number
+  client_views?: number | null
   likes: number
   comments: number
   shares?: number | null
@@ -84,6 +85,7 @@ export async function upsertPolledStats(
   }
 
   if (stats.shares !== undefined) payload.shares = stats.shares
+  if (stats.client_views !== undefined) payload.client_views = stats.client_views
   if (stats.saves !== undefined) payload.saves = stats.saves
   if (stats.followers !== undefined) payload.followers = stats.followers
   if (stats.watch_pct !== undefined) payload.watch_pct = stats.watch_pct
@@ -170,59 +172,85 @@ export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
     const metricWindow = windowTypeToMetricWindow(job.window_type)
     if (!metricWindow) continue
 
-    const { data: existingLocked } = await admin
+    const { data: liveRows } = await admin
       .from('post_analytics')
-      .select('id')
-      .eq('post_id', job.post_id)
-      .eq('client_id', job.client_id)
-      .eq('metric_window', metricWindow)
-      .limit(1)
-
-    if (existingLocked && existingLocked.length > 0) {
-      await admin.from('snapshot_jobs').update({ captured: true }).eq('id', job.id)
-      continue
-    }
-
-    const { data: live } = await admin
-      .from('post_analytics')
-      .select('views, likes, comments, shares, saves, followers, watch_pct, impressions, ctr, yt_id, yt_video_id')
+      .select('platform, views, client_views, likes, comments, shares, saves, followers, watch_pct, impressions, ctr, yt_id, yt_video_id')
       .eq('post_id', job.post_id)
       .eq('client_id', job.client_id)
       .eq('metric_window', 'live')
-      .maybeSingle()
+      .limit(10)
 
-    if (!live) continue
+    if (!liveRows || liveRows.length === 0) continue
 
-    const views     = (live as any).views     ?? 0
-    const likes     = (live as any).likes     ?? 0
-    const comments  = (live as any).comments  ?? 0
-    const shares    = (live as any).shares    ?? 0
-    const saves     = (live as any).saves     ?? 0
-    const followers = (live as any).followers ?? 0
-    const erPct = views > 0 ? ((likes + comments + shares + saves + followers) / views) * 100 : 0
+    let wroteAnyWindow = false
+    let snapshotWritten = false
 
-    await upsertPolledStats(admin, job.post_id, job.client_id, 'yt', metricWindow, {
-      views, likes, comments, shares, saves,
-      followers,
-      watch_pct: (live as any).watch_pct ?? 0,
-      impressions: (live as any).impressions ?? 0,
-      ctr: (live as any).ctr ?? 0,
-      yt_id: (live as any).yt_id ?? null,
-      yt_video_id: (live as any).yt_video_id ?? null,
-    })
+    for (const live of liveRows as any[]) {
+      const platform = live.platform ?? 'yt'
+      const { data: existingLocked } = await admin
+        .from('post_analytics')
+        .select('id')
+        .eq('post_id', job.post_id)
+        .eq('client_id', job.client_id)
+        .eq('platform', platform)
+        .eq('metric_window', metricWindow)
+        .limit(1)
 
-    await admin.from('analytics_snapshots').upsert({
-      post_id:          job.post_id,
-      client_id:        job.client_id,
-      pipeline_item_id: job.pipeline_item_id,
-      window_type:      job.window_type,
-      views, likes, comments, shares, saves,
-      er_pct: erPct,
-      captured_at: now,
-    }, { onConflict: 'post_id,window_type', ignoreDuplicates: true })
+      if (existingLocked && existingLocked.length > 0) {
+        wroteAnyWindow = true
+        continue
+      }
 
-    await admin.from('snapshot_jobs').update({ captured: true }).eq('id', job.id)
-    captured++
+      const views     = live.views     ?? 0
+      const likes     = live.likes     ?? 0
+      const comments  = live.comments  ?? 0
+      const shares    = live.shares    ?? 0
+      const saves     = live.saves     ?? 0
+      const followers = live.followers ?? 0
+      const didUpsert = await upsertPolledStats(admin, job.post_id, job.client_id, platform, metricWindow, {
+        views,
+        client_views: live.client_views ?? null,
+        likes,
+        comments,
+        shares,
+        saves,
+        followers,
+        watch_pct: live.watch_pct ?? 0,
+        impressions: live.impressions ?? 0,
+        ctr: live.ctr ?? 0,
+        yt_id: live.yt_id ?? null,
+        yt_video_id: live.yt_video_id ?? null,
+      })
+
+      if (!didUpsert) continue
+      wroteAnyWindow = true
+
+      // analytics_snapshots has no platform column, so preserve its legacy
+      // one-row-per-post/window record while platform-specific locked rows
+      // live in post_analytics above.
+      if (!snapshotWritten) {
+        const erNumerator = platform === 'yt'
+          ? likes + comments + shares + followers
+          : likes + comments + shares + saves
+        const erPct = views > 0 ? (erNumerator / views) * 100 : 0
+
+        await admin.from('analytics_snapshots').upsert({
+          post_id:          job.post_id,
+          client_id:        job.client_id,
+          pipeline_item_id: job.pipeline_item_id,
+          window_type:      job.window_type,
+          views, likes, comments, shares, saves,
+          er_pct: erPct,
+          captured_at: now,
+        }, { onConflict: 'post_id,window_type', ignoreDuplicates: true })
+        snapshotWritten = true
+      }
+    }
+
+    if (wroteAnyWindow) {
+      await admin.from('snapshot_jobs').update({ captured: true }).eq('id', job.id)
+      captured++
+    }
   }
 
   return captured
@@ -367,7 +395,7 @@ export async function pollPipelineItem(
 
 // ── Query helpers for cron routes ─────────────────────────────────────────
 //
-// Only returns POSTED items where yt_video_id IS NOT NULL.
+// Only returns POSTED items with at least one linked platform video ID.
 // Archive tier (maxAgeDays=null) includes items with posted_at IS NULL
 // so historical imports without a posted date still get polled.
 
@@ -385,7 +413,7 @@ export async function getPostableItemsInAgeRange(
     .from('pipeline_items')
     .select('id, post_id, client_id, platform, posted_at, yt_video_id, tt_video_id, ig_video_id')
     .eq('status', 'POSTED')
-    .not('yt_video_id', 'is', null)
+    .or('yt_video_id.not.is.null,tt_video_id.not.is.null,ig_video_id.not.is.null')
 
   if (maxAgeDays === null) {
     // Archive tier: posted_at older than minAgeDays OR posted_at IS NULL
@@ -407,9 +435,9 @@ export async function getPostableItemsInAgeRange(
     ? `${minAgeDays}d+`
     : `${minAgeDays}–${maxAgeDays}d`
 
-  console.log(`[poll] getPostableItemsInAgeRange(${tierLabel}): ${items.length} items with yt_video_id`)
+  console.log(`[poll] getPostableItemsInAgeRange(${tierLabel}): ${items.length} items with linked platform video IDs`)
   for (const item of items) {
-    console.log(`[poll]   ${item.post_id} (${item.id}) yt_video_id=${item.yt_video_id} posted_at=${item.posted_at ?? 'NULL'}`)
+    console.log(`[poll]   ${item.post_id} (${item.id}) yt=${item.yt_video_id ?? 'NULL'} ig=${item.ig_video_id ?? 'NULL'} tt=${item.tt_video_id ?? 'NULL'} posted_at=${item.posted_at ?? 'NULL'}`)
   }
 
   return items
