@@ -281,6 +281,21 @@ export async function disconnectTikTok(clientId: string): Promise<{ error?: stri
   return {}
 }
 
+// ── Meta Ads disconnect ───────────────────────────────────────────────────────
+
+export async function disconnectMetaAds(clientId: string): Promise<{ error?: string }> {
+  if (!await assertAdmin()) return { error: 'Unauthorized' }
+  const adm = createAdminClient()
+  const { error } = await adm
+    .from('platform_connections')
+    .delete()
+    .eq('client_id', clientId)
+    .eq('platform', 'meta_ads')
+  if (error) return { error: error.message }
+  revalidatePath('/admin')
+  return {}
+}
+
 // ── Delete client (all data) ──────────────────────────────────────────────────
 
 export async function deleteClient(clientId: string, clientName: string): Promise<{ error?: string }> {

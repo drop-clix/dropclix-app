@@ -411,6 +411,14 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Build: Added per-video auto-sync after link save and Mark as Posted. `syncLinkedVideoNow()` dispatches to `syncSingleIGVideo()`, `syncSingleTTVideo()`, or `syncSingleYTVideo()` after `ensure*PostsRow()` succeeds. Sync errors are logged and non-blocking; the manual Sync Now buttons remain the fallback.
 - Known issue to fix later: `updateAnalyticsMetric()` recomputes Decision with `(likes + comments + shares + saves) / views` for every platform. YouTube's locked formula should use `subscribers_gained` / `followers`, not `saves`. This bug pre-existed S57 and was documented only, not fixed.
 
+## S58 Meta Ads API Notes
+
+- Build: Added Meta Ads OAuth using the same Meta app credentials as Instagram (`INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET`) with scope `ads_read` only. Routes: `/api/auth/meta-ads` and `/api/auth/meta-ads/callback`. Redirect env var: `META_ADS_REDIRECT_URI=https://portal.drop-clix.com/api/auth/meta-ads/callback`.
+- Schema: `ad_campaigns.meta_campaign_id text` added in Supabase and documented in `supabase/migrations/session_58_meta_ads_campaign_id.sql`; unique partial index `ad_campaigns_client_meta_campaign` enforces one API-backed campaign per client/account campaign ID.
+- Sync: `src/lib/meta-ads-sync.ts` fetches `{adAccountId}/campaigns` and lifetime `{campaign.id}/insights`, then upserts API-sourced fields only: `meta_campaign_id`, `name`, `date`, `objective`, `status`, `spend`, `impressions`, `reach`, `clicks`, `ctr`, `cpm`, `cpc`. Never overwrite manual fields: `leads`, `hires`, `roas`, `revenue`, `cpl`, `cph`.
+- Admin: New `AdminMetaAdsSection` under TikTok connections. Connect/reconnect uses `/api/auth/meta-ads?client_id=...`; Sync Now posts to `/api/admin/sync-meta-ads`; Disconnect deletes `platform_connections.platform='meta_ads'`.
+- Gotcha: Meta Ads account IDs should be stored in `platform_connections.channel_id` with the `act_` prefix from Graph `/me/adaccounts`. For Day 1 the expected account is `act_1196633849221825`.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

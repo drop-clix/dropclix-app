@@ -107,6 +107,7 @@ create table approvals (
 create table ad_campaigns (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references clients(id),
+  meta_campaign_id text,
   name text not null,
   date date,
   objective text,
@@ -218,5 +219,8 @@ create index on post_analytics(client_id);
 create index on pipeline_items(client_id);
 create index on pipeline_items(status);
 create index on ad_campaigns(client_id);
+create unique index ad_campaigns_client_meta_campaign
+  on ad_campaigns(client_id, meta_campaign_id)
+  where meta_campaign_id is not null;
 create index on calendar_events(client_id);
 create index on calendar_events(event_date);

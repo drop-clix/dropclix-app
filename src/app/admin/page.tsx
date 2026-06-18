@@ -4,6 +4,7 @@ import { SignOutButton } from '@/components/portal/SignOutButton'
 import { AdminYouTubeSection } from './AdminYouTubeSection'
 import { AdminInstagramSection } from './AdminInstagramSection'
 import { AdminTikTokSection } from './AdminTikTokSection'
+import { AdminMetaAdsSection } from './AdminMetaAdsSection'
 import { AdminClientsSection, type ClientRow } from './AdminClientsSection'
 
 export default async function AdminPage() {
@@ -29,11 +30,12 @@ export default async function AdminPage() {
     'Authorization': `Bearer ${key}`,
   }
 
-  const [clientsJson, connectionsJson, igConnectionsJson, ttConnectionsJson, postsJson] = await Promise.all([
+  const [clientsJson, connectionsJson, igConnectionsJson, ttConnectionsJson, metaAdsConnectionsJson, postsJson] = await Promise.all([
     fetch(`${base}/rest/v1/clients?select=id,name,email,slug,created_at,monthly_retainer,enabled_platforms,enabled_tabs&order=created_at.desc`, { headers, cache: 'no-store' }).then(r => r.json()),
     fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,subscriber_count,created_at,last_synced_at&platform=eq.youtube`, { headers, cache: 'no-store' }).then(r => r.json()),
     fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,subscriber_count,created_at,last_synced_at,token_expires_at&platform=eq.instagram`, { headers, cache: 'no-store' }).then(r => r.json()),
     fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,subscriber_count,created_at,last_synced_at&platform=eq.tiktok`, { headers, cache: 'no-store' }).then(r => r.json()),
+    fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,created_at,last_synced_at&platform=eq.meta_ads`, { headers, cache: 'no-store' }).then(r => r.json()),
     fetch(`${base}/rest/v1/posts?select=client_id,date&order=date.desc`,  { headers, cache: 'no-store' }).then(r => r.json()),
   ])
 
@@ -56,12 +58,17 @@ export default async function AdminPage() {
     client_id: string; channel_name: string | null; channel_id: string | null
     subscriber_count: number | null; created_at: string | null; last_synced_at: string | null
   }
+  type RawMetaAdsConn = {
+    client_id: string; channel_name: string | null; channel_id: string | null
+    created_at: string | null; last_synced_at: string | null
+  }
 
   const rawClients:       RawClient[]  = Array.isArray(clientsJson)      ? clientsJson      : []
   const allPosts:         RawPost[]    = Array.isArray(postsJson)        ? postsJson        : []
   const ytConnections:    RawYTConn[]  = Array.isArray(connectionsJson)  ? connectionsJson  : []
   const igConnectionsRaw: RawIGConn[]  = Array.isArray(igConnectionsJson) ? igConnectionsJson : []
   const ttConnectionsRaw: RawTTConn[]  = Array.isArray(ttConnectionsJson) ? ttConnectionsJson : []
+  const metaAdsConnectionsRaw: RawMetaAdsConn[] = Array.isArray(metaAdsConnectionsJson) ? metaAdsConnectionsJson : []
 
   const postCountMap    = new Map<string, number>()
   const lastActivityMap = new Map<string, string | null>()
@@ -111,6 +118,14 @@ export default async function AdminPage() {
     lastSyncedAt:  c.last_synced_at,
   }))
 
+  const metaAdsSectionConnections = metaAdsConnectionsRaw.map(c => ({
+    clientId:      c.client_id,
+    adAccountName: c.channel_name,
+    adAccountId:   c.channel_id,
+    createdAt:     c.created_at,
+    lastSyncedAt:  c.last_synced_at,
+  }))
+
   return (
     <div className="min-h-screen" style={{ background: '#060606', padding: '48px 40px' }}>
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
@@ -150,6 +165,12 @@ export default async function AdminPage() {
                 clients={clients.map(c => ({ id: c.id, name: c.name }))}
                 connections={ttSectionConnections}
                 tiktokConfigured={!!(process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET)}
+              />
+            </div>
+            <div style={{ marginTop: 40 }}>
+              <AdminMetaAdsSection
+                clients={clients.map(c => ({ id: c.id, name: c.name }))}
+                connections={metaAdsSectionConnections}
               />
             </div>
           </>
