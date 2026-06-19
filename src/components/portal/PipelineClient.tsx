@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { updatePipelineItem, deletePipelineItem, linkYouTubeVideo, createPipelineItem, bulkDeletePipelineItems, bulkCreatePipelineItems, ensureYTPostsRow, ensureIGPostsRow, ensureTTPostsRow, syncLinkedVideoNow } from '@/app/(dashboard)/edit-actions'
 import type { PipelineItem } from '@/app/(dashboard)/pipeline/page'
-import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePortalFilters'
+import { usePortalFilters, filterByScope } from '@/hooks/usePortalFilters'
 import { Paginator } from '@/components/portal/Paginator'
 import { PlatformPills, ScopeDropdown } from '@/components/portal/FilterBar'
 import { EmptyState } from '@/components/portal/EmptyState'
@@ -1096,15 +1096,6 @@ function parsePlatformVideoId(url: string, plat: string): string {
   }
   if (!s.startsWith('http')) return s
   return ''
-}
-
-function parseVideoUrl(url: string, platforms: string[]): string {
-  for (const p of platforms) {
-    const id = parsePlatformVideoId(url, p)
-    if (id) return id
-  }
-  if (!url.trim().startsWith('http')) return url.trim()
-  return url.trim()
 }
 
 // ── Platform logo SVGs (inline, accurate brand marks) ──────────────────────
@@ -2496,7 +2487,6 @@ export function PipelineClient({
                 const pCfg      = PRIORITY_CFG[item.priority] ?? PRIORITY_CFG[4]
                 const isEditing = editingId === item.id
                 const isHovered = hoveredId === item.id
-                const pillarColor = pillarColors.get(item.pillar ?? '') ?? '#2a2a2a'
                 const primaryPlatColor = PLAT_CFG[item.platform[0]] ? PLAT_CFG[item.platform[0]].color : '#2a2a2a'
                 const igLinked = isPlatLinked(item, 'ig')
                 const ttLinked = isPlatLinked(item, 'tt')

@@ -332,8 +332,6 @@ function ActionCard({
   if (d.fromStatus)     dataRows.push({ label: 'From',     value: String(d.fromStatus) })
   if (d.toStatus)       dataRows.push({ label: 'To',       value: String(d.toStatus) })
 
-  const isDone = status === 'success' || status === 'error'
-
   return (
     <div style={{
       background: '#0c0c0c',

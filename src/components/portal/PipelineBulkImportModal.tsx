@@ -176,12 +176,6 @@ export function PipelineBulkImportModal({
     onClose()
   }
 
-  const inp = {
-    background: '#080808', border: '1px solid #1e1e1e',
-    color: '#f2ede4', padding: '7px 10px', fontSize: 12,
-    fontFamily: 'DM Sans, sans-serif', outline: 'none', width: '100%',
-  } as const
-
   return (
     <div
       style={{

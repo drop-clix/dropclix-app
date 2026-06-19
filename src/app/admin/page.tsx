@@ -32,10 +32,10 @@ export default async function AdminPage() {
 
   const [clientsJson, connectionsJson, igConnectionsJson, ttConnectionsJson, metaAdsConnectionsJson, postsJson] = await Promise.all([
     fetch(`${base}/rest/v1/clients?select=id,name,email,slug,created_at,monthly_retainer,enabled_platforms,enabled_tabs&order=created_at.desc`, { headers, cache: 'no-store' }).then(r => r.json()),
-    fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,subscriber_count,created_at,last_synced_at&platform=eq.youtube`, { headers, cache: 'no-store' }).then(r => r.json()),
+    fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,subscriber_count,created_at,last_synced_at,token_expires_at&platform=eq.youtube`, { headers, cache: 'no-store' }).then(r => r.json()),
     fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,subscriber_count,created_at,last_synced_at,token_expires_at&platform=eq.instagram`, { headers, cache: 'no-store' }).then(r => r.json()),
-    fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,subscriber_count,created_at,last_synced_at&platform=eq.tiktok`, { headers, cache: 'no-store' }).then(r => r.json()),
-    fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,created_at,last_synced_at&platform=eq.meta_ads`, { headers, cache: 'no-store' }).then(r => r.json()),
+    fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,subscriber_count,created_at,last_synced_at,token_expires_at&platform=eq.tiktok`, { headers, cache: 'no-store' }).then(r => r.json()),
+    fetch(`${base}/rest/v1/platform_connections?select=client_id,channel_name,channel_id,created_at,last_synced_at,token_expires_at&platform=eq.meta_ads`, { headers, cache: 'no-store' }).then(r => r.json()),
     fetch(`${base}/rest/v1/posts?select=client_id,date&order=date.desc`,  { headers, cache: 'no-store' }).then(r => r.json()),
   ])
 
@@ -47,7 +47,8 @@ export default async function AdminPage() {
   type RawPost       = { client_id: string; date: string | null }
   type RawYTConn = {
     client_id: string; channel_name: string | null; channel_id: string | null
-    subscriber_count: number | null; created_at: string | null; last_synced_at: string | null
+    subscriber_count: number | null; created_at: string | null
+    last_synced_at: string | null; token_expires_at: string | null
   }
   type RawIGConn = {
     client_id: string; channel_name: string | null; channel_id: string | null
@@ -56,11 +57,12 @@ export default async function AdminPage() {
   }
   type RawTTConn = {
     client_id: string; channel_name: string | null; channel_id: string | null
-    subscriber_count: number | null; created_at: string | null; last_synced_at: string | null
+    subscriber_count: number | null; created_at: string | null
+    last_synced_at: string | null; token_expires_at: string | null
   }
   type RawMetaAdsConn = {
     client_id: string; channel_name: string | null; channel_id: string | null
-    created_at: string | null; last_synced_at: string | null
+    created_at: string | null; last_synced_at: string | null; token_expires_at: string | null
   }
 
   const rawClients:       RawClient[]  = Array.isArray(clientsJson)      ? clientsJson      : []
@@ -97,6 +99,7 @@ export default async function AdminPage() {
     subscriberCount: c.subscriber_count,
     createdAt:       c.created_at,
     lastSyncedAt:    c.last_synced_at,
+    tokenExpiresAt:  c.token_expires_at,
   }))
 
   const igSectionConnections = igConnectionsRaw.map(c => ({
@@ -116,6 +119,7 @@ export default async function AdminPage() {
     followerCount: c.subscriber_count,
     createdAt:     c.created_at,
     lastSyncedAt:  c.last_synced_at,
+    tokenExpiresAt: c.token_expires_at,
   }))
 
   const metaAdsSectionConnections = metaAdsConnectionsRaw.map(c => ({
@@ -124,6 +128,7 @@ export default async function AdminPage() {
     adAccountId:   c.channel_id,
     createdAt:     c.created_at,
     lastSyncedAt:  c.last_synced_at,
+    tokenExpiresAt: c.token_expires_at,
   }))
 
   return (

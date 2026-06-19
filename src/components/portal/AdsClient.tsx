@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid,
-  AreaChart, Area,
+  Area,
 } from 'recharts'
 import type { AdCampaign, AdCreative } from '@/app/(dashboard)/ads/page'
 import {

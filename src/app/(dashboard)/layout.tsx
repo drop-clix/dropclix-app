@@ -9,19 +9,6 @@ import { ToastProvider } from '@/components/portal/Toast'
 
 const IMPERSONATE_COOKIE = 'dropclix_impersonate_client_id'
 
-// Map URL segment → tab key used in enabled_tabs
-const PATH_TO_TAB: Record<string, string> = {
-  '/':            'dashboard',
-  '/analytics':   'analytics',
-  '/angles':      'angles',
-  '/pipeline':    'pipeline',
-  '/studio':      'studio',
-  '/ads':         'ads',
-  '/calendar':    'calendar',
-  '/goals':       'goals',
-  '/report-card': 'goals', // report-card is folded into goals
-}
-
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

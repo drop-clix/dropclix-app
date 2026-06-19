@@ -54,7 +54,7 @@ export default async function PipelinePage() {
 
   // Fetch yt_id for each post: pipeline post_id (text) → posts.id (UUID) → post_analytics.yt_id
   const postTextIds = [...new Set(rows.map(r => r.post_id).filter(Boolean))]
-  let ytIdByTextPostId: Record<string, string> = {}
+  const ytIdByTextPostId: Record<string, string> = {}
 
   if (postTextIds.length > 0) {
     const { data: postRows } = await supabase

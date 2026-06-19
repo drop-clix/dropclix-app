@@ -10,6 +10,7 @@ type TikTokConn = {
   followerCount: number | null
   createdAt: string | null
   lastSyncedAt: string | null
+  tokenExpiresAt: string | null
 }
 
 function fmt(n: number) {
@@ -21,6 +22,16 @@ function fmt(n: number) {
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function tokenExpiryState(tokenExpiresAt: string | null): { label: string; color: string } | null {
+  if (!tokenExpiresAt) return null
+  const expiresAt = new Date(tokenExpiresAt).getTime()
+  if (!Number.isFinite(expiresAt)) return null
+  const ms = expiresAt - Date.now()
+  if (ms <= 0) return { label: 'Token expired — reconnect needed', color: '#ff3b5f' }
+  const days = Math.ceil(ms / 86_400_000)
+  return { label: `Expires in ${days} day${days === 1 ? '' : 's'}`, color: '#555' }
 }
 
 export function AdminTikTokSection({
@@ -88,6 +99,7 @@ export function AdminTikTokSection({
           const conn = connMap.get(client.id)
           const syncState = syncStates[client.id] ?? 'idle'
           const syncResult = syncResults[client.id] ?? ''
+          const tokenExpiry = conn ? tokenExpiryState(conn.tokenExpiresAt) : null
           return (
             <div key={client.id} style={{ background: '#0a0a0a', padding: '18px 24px' }}>
               <div className="flex items-center justify-between flex-wrap gap-3">
@@ -204,6 +216,12 @@ export function AdminTikTokSection({
                   )}
                 </div>
               </div>
+
+              {tokenExpiry && (
+                <p className="text-[9px] font-light mt-2" style={{ color: tokenExpiry.color }}>
+                  {tokenExpiry.label}
+                </p>
+              )}
 
               {syncResult && (
                 <p className="text-[9px] font-light mt-2" style={{ color: syncState === 'error' ? '#ff3b5f' : '#555' }}>

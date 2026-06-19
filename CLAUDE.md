@@ -428,6 +428,13 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Sync behavior: `syncTikTokForClient()` and `syncSingleTTVideo()` both load TikTok connections through the refresh-aware path before calling `video/query`. If refresh fails, `/api/admin/sync-tiktok` returns `Token expired, please reconnect` with a 401 instead of a generic sync failure.
 - Gotcha: Do not log raw TikTok access or refresh tokens. Refresh logs should include status/error context only. Manual reconnect remains the fallback if TikTok rejects the stored refresh token.
 
+## S60 Global Cleanup + Admin Token Expiry Notes
+
+- Cleanup: Removed confirmed-unused `PortalNav.tsx` and `DashboardCharts.tsx`, plus dead locals/imports in Dashboard layout, Ads, AI command bar, Analytics, Pipeline import modal, Pipeline, Studio CSV import, and Pipeline page.
+- Admin: YouTube, Instagram, TikTok, and Meta Ads admin sections now all fetch and display `platform_connections.token_expires_at` with consistent labels: `Expires in X days` or `Token expired — reconnect needed`.
+- Gotcha: TikTok has 24-hour access tokens with automatic refresh. Its admin section displays the expiry but only treats an actually expired token as a warning/reconnect state, so routine near-term expiry does not look broken.
+- Deferred: Admin connection UI still has duplicated `fmt` / `fmtDate` / state patterns by design; consolidate in a separate dedicated session if needed.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

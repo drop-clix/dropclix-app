@@ -672,7 +672,6 @@ const WIN_COLOR: Record<string, string> = {
 
 function CSVImporter({ nextPostId }: { nextPostId: string }) {
   const [stage,       setStage      ] = useState<'upload' | 'checking' | 'preview' | 'importing' | 'done'>('upload')
-  const [rawRows,     setRawRows    ] = useState<Record<string, string>[]>([])
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([])
   const [existingIds, setExistingIds] = useState<Set<string>>(new Set())
   const [skipSet,     setSkipSet    ] = useState<Set<string>>(new Set())
@@ -695,7 +694,6 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
     const { rows } = parseCSV(text)
     if (!rows.length) { setError('No data rows found in CSV'); return }
     const preview = buildPreviewRows(rows, nextPostId)
-    setRawRows(rows)
     setPreviewRows(preview)
     setSkipSet(new Set())
     setStage('checking')
@@ -731,7 +729,7 @@ function CSVImporter({ nextPostId }: { nextPostId: string }) {
   }
 
   function reset() {
-    setStage('upload'); setRawRows([]); setPreviewRows([])
+    setStage('upload'); setPreviewRows([])
     setExistingIds(new Set()); setSkipSet(new Set()); setResult(null); setError('')
   }
 

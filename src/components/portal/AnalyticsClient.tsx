@@ -352,23 +352,6 @@ function EditableCell({
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
-function FilterTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="text-[9px] font-medium tracking-[.16em] uppercase px-4 py-2.5 transition-colors"
-      style={{
-        color:      active ? '#c9a96e' : '#666',
-        background: active ? 'rgba(201,169,110,.07)' : 'transparent',
-        border:     `1px solid ${active ? 'rgba(201,169,110,.4)' : '#1a1a1a'}`,
-        cursor: 'pointer',
-      }}
-    >
-      {label}
-    </button>
-  )
-}
-
 function KpiCard({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
     <div

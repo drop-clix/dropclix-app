@@ -24,10 +24,17 @@ function fmtDate(iso: string | null) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function daysUntilExpiry(tokenExpiresAt: string | null): number | null {
+function tokenExpiryState(tokenExpiresAt: string | null): { label: string; color: string } | null {
   if (!tokenExpiresAt) return null
-  const ms = new Date(tokenExpiresAt).getTime() - Date.now()
-  return Math.floor(ms / 86_400_000)
+  const expiresAt = new Date(tokenExpiresAt).getTime()
+  if (!Number.isFinite(expiresAt)) return null
+  const ms = expiresAt - Date.now()
+  if (ms <= 0) return { label: 'Token expired — reconnect needed', color: '#ff3b5f' }
+  const days = Math.ceil(ms / 86_400_000)
+  return {
+    label: `Expires in ${days} day${days === 1 ? '' : 's'}`,
+    color: days <= 7 ? '#fbbf24' : '#555',
+  }
 }
 
 export function AdminInstagramSection({
@@ -91,8 +98,7 @@ export function AdminInstagramSection({
           const conn       = connMap.get(client.id)
           const syncState  = syncStates[client.id]  ?? 'idle'
           const syncResult = syncResults[client.id] ?? ''
-          const daysLeft   = conn ? daysUntilExpiry(conn.tokenExpiresAt) : null
-          const tokenWarn  = daysLeft !== null && daysLeft <= 7
+          const tokenExpiry = conn ? tokenExpiryState(conn.tokenExpiresAt) : null
 
           return (
             <div key={client.id} style={{ background: '#0a0a0a', padding: '18px 24px' }}>
@@ -188,10 +194,9 @@ export function AdminInstagramSection({
                 </div>
               </div>
 
-              {/* Token expiry warning */}
-              {tokenWarn && (
-                <p className="text-[9px] font-light mt-2" style={{ color: '#fbbf24' }}>
-                  ⚠ Token expires in {daysLeft} day{daysLeft === 1 ? '' : 's'} — reconnect to refresh.
+              {tokenExpiry && (
+                <p className="text-[9px] font-light mt-2" style={{ color: tokenExpiry.color }}>
+                  {tokenExpiry.label}
                 </p>
               )}
 
