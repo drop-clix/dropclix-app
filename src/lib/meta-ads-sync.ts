@@ -25,6 +25,22 @@ export type MetaAdsSyncResult = {
   errors: string[]
 }
 
+type MetaAdsCampaignPayload = {
+  client_id: string
+  meta_campaign_id: string
+  name: string
+  date: string | null
+  objective: string | null
+  status: string
+  spend: number
+  impressions: number
+  reach: number
+  clicks: number
+  ctr: number
+  cpm: number
+  cpc: number
+}
+
 function sanitizeForLog(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitizeForLog)
   if (!value || typeof value !== 'object') return value
@@ -112,11 +128,41 @@ async function fetchCampaignInsights(
     `${campaignId}/insights`,
     {
       fields: 'spend,impressions,reach,clicks,ctr,cpm,cpc',
-      date_preset: 'lifetime',
+      date_preset: 'maximum',
     },
     accessToken,
   )
   return json.data?.[0] ?? null
+}
+
+async function saveCampaignMetrics(
+  admin: ReturnType<typeof createAdminClient>,
+  payload: MetaAdsCampaignPayload,
+): Promise<{ error?: { message: string; code?: string; details?: string } }> {
+  const { data: existing, error: lookupError } = await admin
+    .from('ad_campaigns')
+    .select('id')
+    .eq('client_id', payload.client_id)
+    .eq('meta_campaign_id', payload.meta_campaign_id)
+    .maybeSingle()
+
+  if (lookupError) return { error: lookupError }
+
+  if (existing?.id) {
+    const { client_id: _clientId, meta_campaign_id: _metaCampaignId, ...apiFields } = payload
+    const { error } = await admin
+      .from('ad_campaigns')
+      .update(apiFields)
+      .eq('id', (existing as { id: string }).id)
+      .eq('client_id', payload.client_id)
+    return { error: error ?? undefined }
+  }
+
+  const { error } = await admin
+    .from('ad_campaigns')
+    .insert(payload)
+
+  return { error: error ?? undefined }
 }
 
 export async function syncMetaAdsForClient(
@@ -154,9 +200,7 @@ export async function syncMetaAdsForClient(
         cpc: parseNumber(insights?.cpc),
       }
 
-      const { error } = await admin
-        .from('ad_campaigns')
-        .upsert(payload, { onConflict: 'client_id,meta_campaign_id' })
+      const { error } = await saveCampaignMetrics(admin, payload)
 
       if (error) {
         console.error(`[meta-ads-sync] upsert failed for campaign ${campaign.id}:`, error.message, error.code, error.details)
