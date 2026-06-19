@@ -5,6 +5,8 @@ type AdminClient = ReturnType<typeof createAdminClient>
 
 type TikTokConnection = {
   accessToken: string
+  refreshToken: string | null
+  tokenExpiresAt: string | null
   channelName: string | null
   subscriberCount: number | null
 }
@@ -42,6 +44,8 @@ export type TikTokSyncResult = {
 }
 
 const TIKTOK_VIDEO_FIELDS = 'id,title,view_count,like_count,comment_count,share_count,cover_image_url'
+const TIKTOK_RECONNECT_REQUIRED = 'Token expired, please reconnect'
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000
 
 function extractPlatformPostId(rawPostId: string, platform: 'tt'): string | null {
   const prefix = `#${platform}`
@@ -53,13 +57,20 @@ function postIdParts(rawPostId: string): string[] {
   return rawPostId.split('|').map(part => part.trim()).filter(Boolean)
 }
 
+function shouldRefreshTikTokToken(tokenExpiresAt: string | null): boolean {
+  if (!tokenExpiresAt) return true
+  const expiryMs = new Date(tokenExpiresAt).getTime()
+  if (Number.isNaN(expiryMs)) return true
+  return expiryMs <= Date.now() + TOKEN_REFRESH_BUFFER_MS
+}
+
 // ── Connection ───────────────────────────────────────────────────────────────
 
 export async function getTikTokConnection(clientId: string): Promise<TikTokConnection> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('platform_connections')
-    .select('access_token, channel_name, subscriber_count')
+    .select('access_token, refresh_token, token_expires_at, channel_name, subscriber_count')
     .eq('client_id', clientId)
     .eq('platform', 'tiktok')
     .single()
@@ -73,8 +84,110 @@ export async function getTikTokConnection(clientId: string): Promise<TikTokConne
     throw new Error(`TikTok connection for client ${clientId} is missing an access token`)
   }
 
+  const connection: TikTokConnection = {
+    accessToken: conn.access_token,
+    refreshToken: conn.refresh_token ?? null,
+    tokenExpiresAt: conn.token_expires_at ?? null,
+    channelName: conn.channel_name ?? null,
+    subscriberCount: conn.subscriber_count ?? null,
+  }
+
+  if (shouldRefreshTikTokToken(connection.tokenExpiresAt)) {
+    const refreshed = await refreshTikTokToken(clientId)
+    if (!refreshed) throw new Error(TIKTOK_RECONNECT_REQUIRED)
+    return refreshed
+  }
+
+  return connection
+}
+
+export async function refreshTikTokToken(clientId: string): Promise<TikTokConnection | null> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('platform_connections')
+    .select('refresh_token, channel_name, subscriber_count')
+    .eq('client_id', clientId)
+    .eq('platform', 'tiktok')
+    .single()
+
+  if (error || !data) {
+    console.error('[tt-sync] token refresh failed: no TikTok connection found', error?.message)
+    return null
+  }
+
+  const current = data as any
+  const refreshToken = current.refresh_token as string | null
+  if (!refreshToken) {
+    console.error('[tt-sync] token refresh failed: no refresh token stored for client', clientId)
+    return null
+  }
+
+  console.log('[tt-sync] refreshing TikTok access token for client', clientId)
+
+  const res = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_key: process.env.TIKTOK_CLIENT_KEY ?? '',
+      client_secret: process.env.TIKTOK_CLIENT_SECRET ?? '',
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }),
+  })
+
+  const rawText = await res.text()
+  let json: any = null
+  try {
+    json = rawText ? JSON.parse(rawText) : null
+  } catch {
+    console.error('[tt-sync] token refresh returned non-JSON response:', res.status, rawText)
+    return null
+  }
+
+  if (!res.ok) {
+    console.error('[tt-sync] token refresh HTTP failed:', res.status, json?.error ?? json)
+    return null
+  }
+
+  const nested = json?.data as Record<string, unknown> | undefined
+  const accessToken = (nested?.access_token as string | undefined) ?? (json?.access_token as string | undefined)
+  const nextRefreshToken = (nested?.refresh_token as string | undefined) ?? (json?.refresh_token as string | undefined)
+  const expiresIn = Number(nested?.expires_in ?? json?.expires_in ?? 86400)
+  const apiError = json?.error as Record<string, unknown> | undefined
+
+  if (apiError?.code || !accessToken || Number.isNaN(expiresIn)) {
+    console.error('[tt-sync] token refresh API failed:', apiError ?? 'missing access_token/expires_in')
+    return null
+  }
+
+  const expiry = new Date(Date.now() + expiresIn * 1000).toISOString()
+  const now = new Date().toISOString()
+
+  const { data: updated, error: updateErr } = await admin
+    .from('platform_connections')
+    .update({
+      access_token: accessToken,
+      refresh_token: nextRefreshToken ?? refreshToken,
+      token_expires_at: expiry,
+      updated_at: now,
+    })
+    .eq('client_id', clientId)
+    .eq('platform', 'tiktok')
+    .select('access_token, refresh_token, token_expires_at, channel_name, subscriber_count')
+    .single()
+
+  if (updateErr || !updated) {
+    console.error('[tt-sync] token refresh DB update failed:', updateErr?.message)
+    return null
+  }
+
+  console.log('[tt-sync] TikTok access token refreshed; expires_at=', expiry)
+
+  const conn = updated as any
   return {
     accessToken: conn.access_token,
+    refreshToken: conn.refresh_token ?? null,
+    tokenExpiresAt: conn.token_expires_at ?? null,
     channelName: conn.channel_name ?? null,
     subscriberCount: conn.subscriber_count ?? null,
   }
@@ -282,7 +395,13 @@ export async function syncSingleTTVideo(
   ttVideoId: string,
 ): Promise<{ synced: number; error?: string }> {
   const admin = createAdminClient()
-  const connection = await getTikTokConnection(clientId)
+  let connection: TikTokConnection
+  try {
+    connection = await getTikTokConnection(clientId)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : TIKTOK_RECONNECT_REQUIRED
+    return { synced: 0, error: message === TIKTOK_RECONNECT_REQUIRED ? TIKTOK_RECONNECT_REQUIRED : message }
+  }
 
   const { data: rawItem, error: itemErr } = await admin
     .from('pipeline_items')

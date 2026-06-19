@@ -47,6 +47,9 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'TikTok sync failed'
     console.error('[tt-sync-route] failed:', message)
+    if (message === 'Token expired, please reconnect') {
+      return NextResponse.json({ success: false, error: message }, { status: 401 })
+    }
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

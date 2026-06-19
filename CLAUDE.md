@@ -421,6 +421,13 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - S58 follow-up: Meta Insights does NOT support `date_preset=lifetime`; it returns HTTP 400 `(#100) lifetime is not a valid date_preset`. Use `date_preset=maximum` for campaign insights. Empty successful insights (`data: []`) are normal for brand-new campaigns and must still insert/update the campaign row with zero metrics so it appears in Ads immediately.
 - S58 follow-up gotcha: Supabase/PostgREST `upsert(... onConflict: 'client_id,meta_campaign_id')` failed against the partial unique index with `there is no unique or exclusion constraint matching the ON CONFLICT specification`. Meta Ads sync now uses explicit lookup by `client_id + meta_campaign_id`, then updates only API-sourced columns or inserts a new row. Do not switch back to PostgREST upsert unless the DB has a full unique constraint compatible with `ON CONFLICT`.
 
+## S59 TikTok Token Refresh Notes
+
+- Issue: TikTok access tokens expire after roughly 24 hours, so daily syncs returned 401 errors and required manual reconnect even though `platform_connections.refresh_token` was stored.
+- Fix: `src/lib/tiktok-sync.ts` now includes `refreshTikTokToken(clientId)` and refreshes automatically when `token_expires_at` is missing, invalid, expired, or within 5 minutes of expiry. The refresh path updates `access_token`, `refresh_token`, `token_expires_at`, and `updated_at` using `createAdminClient()`.
+- Sync behavior: `syncTikTokForClient()` and `syncSingleTTVideo()` both load TikTok connections through the refresh-aware path before calling `video/query`. If refresh fails, `/api/admin/sync-tiktok` returns `Token expired, please reconnect` with a 401 instead of a generic sync failure.
+- Gotcha: Do not log raw TikTok access or refresh tokens. Refresh logs should include status/error context only. Manual reconnect remains the fallback if TikTok rejects the stored refresh token.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.
