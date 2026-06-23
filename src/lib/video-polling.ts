@@ -3,6 +3,7 @@ import { fetchYouTubePublicVideo, type YouTubePublicVideo } from '@/lib/youtube-
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 type MetricWindow = 'live' | 'w24' | 'w3' | 'w7' | 'eom'
+type PlatformKey = 'ig' | 'tt' | 'yt'
 type PollStats = {
   views: number
   client_views?: number | null
@@ -17,6 +18,8 @@ type PollStats = {
   yt_id?: string | null
   yt_video_id?: string | null
 }
+
+const SNAPSHOT_JOB_LIMIT = 30
 
 // ── YouTube Data API v3 (public stats — YOUTUBE_API_KEY, no OAuth) ────────
 
@@ -153,6 +156,185 @@ function windowTypeToMetricWindow(windowType: string): MetricWindow | null {
   return null
 }
 
+// ── Pipeline item type ────────────────────────────────────────────────────
+
+export type PollablePipelineItem = {
+  id: string
+  post_id: string
+  client_id: string
+  platform: string[]
+  posted_at: string | null
+  yt_video_id: string | null
+  tt_video_id: string | null
+  ig_video_id: string | null
+}
+
+async function fetchSnapshotPipelineItem(
+  admin: SupabaseAdmin,
+  pipelineItemId: string | null,
+): Promise<PollablePipelineItem | null> {
+  if (!pipelineItemId) return null
+
+  const { data, error } = await admin
+    .from('pipeline_items')
+    .select('id, post_id, client_id, platform, posted_at, yt_video_id, tt_video_id, ig_video_id')
+    .eq('id', pipelineItemId)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[snapshots] pipeline item lookup failed:', error.message, error.code, error.details)
+    return null
+  }
+
+  if (!data) return null
+
+  const item = data as any
+  return {
+    id: item.id,
+    post_id: item.post_id,
+    client_id: item.client_id,
+    platform: Array.isArray(item.platform) ? item.platform : [],
+    posted_at: item.posted_at ?? null,
+    yt_video_id: item.yt_video_id ?? null,
+    tt_video_id: item.tt_video_id ?? null,
+    ig_video_id: item.ig_video_id ?? null,
+  }
+}
+
+function isPlatformKey(value: unknown): value is PlatformKey {
+  return value === 'ig' || value === 'tt' || value === 'yt'
+}
+
+function applicablePlatforms(
+  postPlatforms: unknown[],
+  item: PollablePipelineItem | null,
+  liveRows: any[],
+): PlatformKey[] {
+  const platforms = new Set<PlatformKey>()
+
+  for (const platform of postPlatforms) {
+    if (isPlatformKey(platform)) platforms.add(platform)
+  }
+
+  for (const live of liveRows) {
+    if (isPlatformKey(live.platform)) platforms.add(live.platform)
+  }
+
+  if (platforms.size === 0) {
+    if (item?.ig_video_id) platforms.add('ig')
+    if (item?.tt_video_id) platforms.add('tt')
+    if (item?.yt_video_id) platforms.add('yt')
+  }
+
+  return [...platforms]
+}
+
+async function fetchSnapshotPostPlatforms(
+  admin: SupabaseAdmin,
+  postId: string,
+): Promise<PlatformKey[]> {
+  const { data, error } = await admin
+    .from('posts')
+    .select('platform')
+    .eq('id', postId)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[snapshots] post platform lookup failed:', error.message, error.code, error.details)
+    return []
+  }
+
+  const platforms = Array.isArray((data as any)?.platform) ? (data as any).platform : []
+  return platforms.filter(isPlatformKey)
+}
+
+async function fetchLiveRowsForSnapshot(
+  admin: SupabaseAdmin,
+  postId: string,
+  clientId: string,
+): Promise<any[]> {
+  const { data, error } = await admin
+    .from('post_analytics')
+    .select('platform, views, client_views, likes, comments, shares, saves, followers, watch_pct, impressions, ctr, yt_id, yt_video_id')
+    .eq('post_id', postId)
+    .eq('client_id', clientId)
+    .eq('metric_window', 'live')
+    .limit(10)
+
+  if (error) {
+    console.error('[snapshots] live analytics lookup failed:', error.message, error.code, error.details)
+    return []
+  }
+
+  return (data ?? []) as any[]
+}
+
+async function fetchLockedPlatformsForSnapshot(
+  admin: SupabaseAdmin,
+  postId: string,
+  clientId: string,
+  metricWindow: MetricWindow,
+): Promise<Set<PlatformKey>> {
+  const { data, error } = await admin
+    .from('post_analytics')
+    .select('platform')
+    .eq('post_id', postId)
+    .eq('client_id', clientId)
+    .eq('metric_window', metricWindow)
+    .limit(10)
+
+  if (error) {
+    console.error('[snapshots] locked analytics lookup failed:', error.message, error.code, error.details)
+    return new Set()
+  }
+
+  return new Set((data ?? []).map((row: any) => row.platform).filter(isPlatformKey))
+}
+
+async function refreshLiveBeforeSnapshot(
+  admin: SupabaseAdmin,
+  clientId: string,
+  platform: PlatformKey,
+  item: PollablePipelineItem | null,
+): Promise<void> {
+  if (!item) {
+    console.log('[snapshots] no pipeline item available for live refresh:', { clientId, platform })
+    return
+  }
+
+  try {
+    if (platform === 'yt') {
+      if (!item.yt_video_id) return
+      const result = await pollPipelineItem(admin, item)
+      if (!result.polled) {
+        console.log('[snapshots] yt live refresh skipped:', { postId: item.post_id, reason: result.reason })
+      }
+      return
+    }
+
+    if (platform === 'ig') {
+      if (!item.ig_video_id) return
+      const { syncSingleIGVideo } = await import('@/lib/instagram-sync')
+      const result = await syncSingleIGVideo(clientId, item.ig_video_id)
+      if ('error' in result && result.error) {
+        console.error('[snapshots] ig live refresh failed:', result.error)
+      }
+      return
+    }
+
+    if (platform === 'tt') {
+      if (!item.tt_video_id) return
+      const { syncSingleTTVideo } = await import('@/lib/tiktok-sync')
+      const result = await syncSingleTTVideo(clientId, item.tt_video_id)
+      if ('error' in result && result.error) {
+        console.error('[snapshots] tt live refresh failed:', result.error)
+      }
+    }
+  } catch (error) {
+    console.error('[snapshots] live refresh threw:', platform, error)
+  }
+}
+
 // ── Execute due snapshot jobs ─────────────────────────────────────────────
 
 export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
@@ -163,7 +345,7 @@ export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
     .select('id, post_id, client_id, pipeline_item_id, window_type')
     .eq('captured', false)
     .lte('target_time', now)
-    .limit(20)
+    .limit(SNAPSHOT_JOB_LIMIT)
 
   if (!jobs || jobs.length === 0) return 0
 
@@ -172,32 +354,39 @@ export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
     const metricWindow = windowTypeToMetricWindow(job.window_type)
     if (!metricWindow) continue
 
-    const { data: liveRows } = await admin
-      .from('post_analytics')
-      .select('platform, views, client_views, likes, comments, shares, saves, followers, watch_pct, impressions, ctr, yt_id, yt_video_id')
-      .eq('post_id', job.post_id)
-      .eq('client_id', job.client_id)
-      .eq('metric_window', 'live')
-      .limit(10)
+    const pipelineItem = await fetchSnapshotPipelineItem(admin, job.pipeline_item_id)
+    const postPlatforms = await fetchSnapshotPostPlatforms(admin, job.post_id)
+    let liveRows = await fetchLiveRowsForSnapshot(admin, job.post_id, job.client_id)
+    const platforms = applicablePlatforms(postPlatforms, pipelineItem, liveRows)
 
-    if (!liveRows || liveRows.length === 0) continue
+    if (platforms.length === 0) {
+      console.log('[snapshots] no applicable platforms for due job:', { jobId: job.id, postId: job.post_id })
+      continue
+    }
+
+    for (const platform of platforms) {
+      await refreshLiveBeforeSnapshot(admin, job.client_id, platform, pipelineItem)
+    }
+
+    liveRows = await fetchLiveRowsForSnapshot(admin, job.post_id, job.client_id)
+    const liveByPlatform = new Map<PlatformKey, any>(
+      (liveRows as any[])
+        .filter(live => isPlatformKey(live.platform))
+        .map(live => [live.platform as PlatformKey, live]),
+    )
+    const lockedPlatforms = await fetchLockedPlatformsForSnapshot(admin, job.post_id, job.client_id, metricWindow)
 
     let wroteAnyWindow = false
     let snapshotWritten = false
 
-    for (const live of liveRows as any[]) {
-      const platform = live.platform ?? 'yt'
-      const { data: existingLocked } = await admin
-        .from('post_analytics')
-        .select('id')
-        .eq('post_id', job.post_id)
-        .eq('client_id', job.client_id)
-        .eq('platform', platform)
-        .eq('metric_window', metricWindow)
-        .limit(1)
+    for (const platform of platforms) {
+      if (lockedPlatforms.has(platform)) {
+        continue
+      }
 
-      if (existingLocked && existingLocked.length > 0) {
-        wroteAnyWindow = true
+      const live = liveByPlatform.get(platform)
+      if (!live) {
+        console.log('[snapshots] waiting on live row before capture:', { jobId: job.id, postId: job.post_id, platform, metricWindow })
         continue
       }
 
@@ -224,6 +413,7 @@ export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
 
       if (!didUpsert) continue
       wroteAnyWindow = true
+      lockedPlatforms.add(platform)
 
       // analytics_snapshots has no platform column, so preserve its legacy
       // one-row-per-post/window record while platform-specific locked rows
@@ -247,26 +437,24 @@ export async function runDueSnapshots(admin: SupabaseAdmin): Promise<number> {
       }
     }
 
-    if (wroteAnyWindow) {
+    const missingPlatforms = platforms.filter(platform => !lockedPlatforms.has(platform))
+    if (missingPlatforms.length > 0) {
+      console.log('[snapshots] leaving job open until all platforms captured:', {
+        jobId: job.id,
+        postId: job.post_id,
+        metricWindow,
+        missingPlatforms,
+      })
+      continue
+    }
+
+    if (wroteAnyWindow || platforms.length > 0) {
       await admin.from('snapshot_jobs').update({ captured: true }).eq('id', job.id)
       captured++
     }
   }
 
   return captured
-}
-
-// ── Pipeline item type ────────────────────────────────────────────────────
-
-export type PollablePipelineItem = {
-  id: string
-  post_id: string
-  client_id: string
-  platform: string[]
-  posted_at: string | null
-  yt_video_id: string | null
-  tt_video_id: string | null
-  ig_video_id: string | null
 }
 
 // ── Resolve posts UUID from a pipeline item (3 strategies) ───────────────
