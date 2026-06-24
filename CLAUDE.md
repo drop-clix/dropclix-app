@@ -444,6 +444,13 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Verification note: Local manual cron pass processed 30 due jobs successfully (`snapshots=30`) and wrote locked rows, but the local `.env.local` YouTube API key returned `API_KEY_INVALID / API key expired`, so YT live refresh skipped and copied existing live rows. Confirm/rotate the local key if local YT refresh testing is needed. Production Vercel key may differ.
 - Gotcha: This fix prevents future premature job closure but does not backfill windows that were already marked captured before S61. Historical repair still needs an explicit backfill session.
 
+## S62 Admin Token Expiry UI Notes
+
+- Issue: Admin Sync Now could refresh or update connection data in `platform_connections`, but YouTube/TikTok/Instagram/Meta Ads admin sections kept rendering the initial server-fetched `token_expires_at` and `last_synced_at` props until a page reload.
+- Root cause: `admin/page.tsx` fetches connection rows server-side once. The client Sync Now handlers updated sync result text and a few platform-specific values, but they did not update local expiry/sync timestamp state from the route response.
+- Fix: `/api/admin/sync-youtube`, `/api/admin/sync-tiktok`, `/api/admin/sync-instagram`, and `/api/admin/sync-meta-ads` now return the persisted `lastSyncedAt` and `tokenExpiresAt` from `platform_connections` after sync. All four admin sections store those values locally after a successful Sync Now.
+- Gotcha: Do not change token refresh logic to fix stale warning UI. The correct pattern is backend refresh/update first, route returns the updated display fields second, admin component updates local state third.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

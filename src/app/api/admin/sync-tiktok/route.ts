@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString()
 
     const admin = createAdminClient()
-    await admin
+    const { data: updatedConn } = await admin
       .from('platform_connections')
       .update({
         last_synced_at: now,
@@ -36,13 +36,16 @@ export async function POST(req: NextRequest) {
       })
       .eq('client_id', clientId)
       .eq('platform', 'tiktok')
+      .select('last_synced_at, token_expires_at')
+      .maybeSingle()
 
     return NextResponse.json({
       success: true,
       synced: result.synced,
       skipped: result.skipped,
       errors: result.errors,
-      lastSyncedAt: now,
+      lastSyncedAt: (updatedConn as any)?.last_synced_at ?? now,
+      tokenExpiresAt: (updatedConn as any)?.token_expires_at ?? null,
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'TikTok sync failed'

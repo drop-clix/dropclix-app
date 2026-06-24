@@ -44,18 +44,21 @@ export async function POST(req: NextRequest) {
     const result = await syncMetaAdsForClient(clientId, accessToken, adAccountId)
     const now = new Date().toISOString()
 
-    await admin
+    const { data: updatedConn } = await admin
       .from('platform_connections')
       .update({ last_synced_at: now, updated_at: now })
       .eq('client_id', clientId)
       .eq('platform', 'meta_ads')
+      .select('last_synced_at, token_expires_at')
+      .maybeSingle()
 
     return NextResponse.json({
       success: true,
       synced: result.synced,
       skipped: result.skipped,
       errors: result.errors,
-      lastSyncedAt: now,
+      lastSyncedAt: (updatedConn as any)?.last_synced_at ?? now,
+      tokenExpiresAt: (updatedConn as any)?.token_expires_at ?? null,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Meta Ads sync failed'

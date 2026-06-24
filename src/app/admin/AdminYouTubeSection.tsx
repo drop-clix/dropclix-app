@@ -37,6 +37,10 @@ function tokenExpiryState(tokenExpiresAt: string | null): { label: string; color
   }
 }
 
+function stateValue<T>(record: Record<string, T>, key: string, fallback: T): T {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : fallback
+}
+
 export function AdminYouTubeSection({
   clients,
   connections,
@@ -49,6 +53,12 @@ export function AdminYouTubeSection({
   // Track subscriber counts in state so Sync Now updates the display without a reload
   const [subCounts, setSubCounts] = useState<Record<string, number | null>>(
     Object.fromEntries(connections.map(c => [c.clientId, c.subscriberCount ?? null]))
+  )
+  const [lastSyncedAtByClient, setLastSyncedAtByClient] = useState<Record<string, string | null>>(
+    Object.fromEntries(connections.map(c => [c.clientId, c.lastSyncedAt ?? null]))
+  )
+  const [tokenExpiresAtByClient, setTokenExpiresAtByClient] = useState<Record<string, string | null>>(
+    Object.fromEntries(connections.map(c => [c.clientId, c.tokenExpiresAt ?? null]))
   )
 
   const connMap = new Map(connections.map(c => [c.clientId, c]))
@@ -69,6 +79,12 @@ export function AdminYouTubeSection({
       // Update subscriber count if the route returned a fresh value
       if (data.subscriberCount != null) {
         setSubCounts(s => ({ ...s, [clientId]: data.subscriberCount }))
+      }
+      if ('lastSyncedAt' in data) {
+        setLastSyncedAtByClient(s => ({ ...s, [clientId]: data.lastSyncedAt ?? null }))
+      }
+      if ('tokenExpiresAt' in data) {
+        setTokenExpiresAtByClient(s => ({ ...s, [clientId]: data.tokenExpiresAt ?? null }))
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
@@ -92,7 +108,9 @@ export function AdminYouTubeSection({
           const conn = connMap.get(client.id)
           const syncState = syncStates[client.id] ?? 'idle'
           const syncResult = syncResults[client.id] ?? ''
-          const tokenExpiry = conn ? tokenExpiryState(conn.tokenExpiresAt) : null
+          const lastSyncedAt = conn ? stateValue(lastSyncedAtByClient, client.id, conn.lastSyncedAt) : null
+          const tokenExpiresAt = conn ? stateValue(tokenExpiresAtByClient, client.id, conn.tokenExpiresAt) : null
+          const tokenExpiry = conn ? tokenExpiryState(tokenExpiresAt) : null
 
           return (
             <div
@@ -161,13 +179,13 @@ export function AdminYouTubeSection({
                         {fmtDate(conn.createdAt)}
                       </p>
                     </div>
-                    {conn.lastSyncedAt && (
+                    {lastSyncedAt && (
                       <div>
                         <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>
                           Last Sync
                         </p>
                         <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>
-                          {fmtDate(conn.lastSyncedAt)}
+                          {fmtDate(lastSyncedAt)}
                         </p>
                       </div>
                     )}

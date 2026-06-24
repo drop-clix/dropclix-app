@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString()
 
   // Update last_synced_at + subscriber_count
-  await admin
+  const { data: updatedConn } = await admin
     .from('platform_connections')
     .update({
       last_synced_at:   now,
@@ -60,12 +60,15 @@ export async function POST(req: NextRequest) {
     })
     .eq('client_id', clientId)
     .eq('platform', 'instagram')
+    .select('last_synced_at, token_expires_at, subscriber_count')
+    .maybeSingle()
 
   return NextResponse.json({
     synced:          result.synced,
     skipped:         result.skipped,
     errors:          result.errors,
-    followersCount:  result.followersCount,
-    lastSyncedAt:    now,
+    followersCount:  (updatedConn as any)?.subscriber_count ?? result.followersCount,
+    lastSyncedAt:    (updatedConn as any)?.last_synced_at ?? now,
+    tokenExpiresAt:  (updatedConn as any)?.token_expires_at ?? (conn as any).token_expires_at ?? null,
   })
 }

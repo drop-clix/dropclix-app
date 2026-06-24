@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
   const channelInfo = await fetchChannelInfo(conn.access_token)
   if (channelInfo) subscriberCount = channelInfo.subscriberCount
 
-  await admin
+  const { data: updatedConn } = await admin
     .from('platform_connections')
     .update({
       last_synced_at:   now,
@@ -192,6 +192,13 @@ export async function POST(req: NextRequest) {
     })
     .eq('client_id', clientId)
     .eq('platform', 'youtube')
+    .select('last_synced_at, token_expires_at, subscriber_count')
+    .maybeSingle()
 
-  return NextResponse.json({ ...result, subscriberCount })
+  return NextResponse.json({
+    ...result,
+    subscriberCount: (updatedConn as any)?.subscriber_count ?? subscriberCount,
+    lastSyncedAt: (updatedConn as any)?.last_synced_at ?? now,
+    tokenExpiresAt: (updatedConn as any)?.token_expires_at ?? conn.token_expires_at ?? null,
+  })
 }

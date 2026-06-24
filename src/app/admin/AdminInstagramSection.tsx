@@ -37,6 +37,10 @@ function tokenExpiryState(tokenExpiresAt: string | null): { label: string; color
   }
 }
 
+function stateValue<T>(record: Record<string, T>, key: string, fallback: T): T {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : fallback
+}
+
 export function AdminInstagramSection({
   clients,
   connections,
@@ -48,6 +52,12 @@ export function AdminInstagramSection({
   const [syncResults, setSyncResults] = useState<Record<string, string>>({})
   const [followerCounts, setFollowerCounts] = useState<Record<string, number | null>>(
     Object.fromEntries(connections.map(c => [c.clientId, c.followerCount ?? null]))
+  )
+  const [lastSyncedAtByClient, setLastSyncedAtByClient] = useState<Record<string, string | null>>(
+    Object.fromEntries(connections.map(c => [c.clientId, c.lastSyncedAt ?? null]))
+  )
+  const [tokenExpiresAtByClient, setTokenExpiresAtByClient] = useState<Record<string, string | null>>(
+    Object.fromEntries(connections.map(c => [c.clientId, c.tokenExpiresAt ?? null]))
   )
 
   const connMap = new Map(connections.map(c => [c.clientId, c]))
@@ -67,6 +77,12 @@ export function AdminInstagramSection({
       setSyncStates(s  => ({ ...s, [clientId]: 'done' }))
       if (data.followersCount != null) {
         setFollowerCounts(f => ({ ...f, [clientId]: data.followersCount }))
+      }
+      if ('lastSyncedAt' in data) {
+        setLastSyncedAtByClient(s => ({ ...s, [clientId]: data.lastSyncedAt ?? null }))
+      }
+      if ('tokenExpiresAt' in data) {
+        setTokenExpiresAtByClient(s => ({ ...s, [clientId]: data.tokenExpiresAt ?? null }))
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
@@ -98,7 +114,9 @@ export function AdminInstagramSection({
           const conn       = connMap.get(client.id)
           const syncState  = syncStates[client.id]  ?? 'idle'
           const syncResult = syncResults[client.id] ?? ''
-          const tokenExpiry = conn ? tokenExpiryState(conn.tokenExpiresAt) : null
+          const lastSyncedAt = conn ? stateValue(lastSyncedAtByClient, client.id, conn.lastSyncedAt) : null
+          const tokenExpiresAt = conn ? stateValue(tokenExpiresAtByClient, client.id, conn.tokenExpiresAt) : null
+          const tokenExpiry = conn ? tokenExpiryState(tokenExpiresAt) : null
 
           return (
             <div key={client.id} style={{ background: '#0a0a0a', padding: '18px 24px' }}>
@@ -141,10 +159,10 @@ export function AdminInstagramSection({
                       <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Connected</p>
                       <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(conn.createdAt)}</p>
                     </div>
-                    {conn.lastSyncedAt && (
+                    {lastSyncedAt && (
                       <div>
                         <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Last Sync</p>
-                        <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(conn.lastSyncedAt)}</p>
+                        <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(lastSyncedAt)}</p>
                       </div>
                     )}
                   </div>

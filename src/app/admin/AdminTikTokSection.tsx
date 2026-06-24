@@ -34,6 +34,10 @@ function tokenExpiryState(tokenExpiresAt: string | null): { label: string; color
   return { label: `Expires in ${days} day${days === 1 ? '' : 's'}`, color: '#555' }
 }
 
+function stateValue<T>(record: Record<string, T>, key: string, fallback: T): T {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : fallback
+}
+
 export function AdminTikTokSection({
   clients,
   connections,
@@ -47,6 +51,12 @@ export function AdminTikTokSection({
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
   const [syncStates,  setSyncStates]  = useState<Record<string, 'idle' | 'syncing' | 'done' | 'error'>>({})
   const [syncResults, setSyncResults] = useState<Record<string, string>>({})
+  const [lastSyncedAtByClient, setLastSyncedAtByClient] = useState<Record<string, string | null>>(
+    Object.fromEntries(connections.map(c => [c.clientId, c.lastSyncedAt ?? null]))
+  )
+  const [tokenExpiresAtByClient, setTokenExpiresAtByClient] = useState<Record<string, string | null>>(
+    Object.fromEntries(connections.map(c => [c.clientId, c.tokenExpiresAt ?? null]))
+  )
   const [, startTransition] = useTransition()
   const connMap = new Map(connections.map(c => [c.clientId, c]))
 
@@ -71,6 +81,12 @@ export function AdminTikTokSection({
       if (!res.ok) throw new Error(data.error ?? 'Sync failed')
       setSyncResults(r => ({ ...r, [clientId]: `${data.synced} posts synced · ${data.skipped} skipped` }))
       setSyncStates(s  => ({ ...s, [clientId]: 'done' }))
+      if ('lastSyncedAt' in data) {
+        setLastSyncedAtByClient(s => ({ ...s, [clientId]: data.lastSyncedAt ?? null }))
+      }
+      if ('tokenExpiresAt' in data) {
+        setTokenExpiresAtByClient(s => ({ ...s, [clientId]: data.tokenExpiresAt ?? null }))
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
       setSyncResults(r => ({ ...r, [clientId]: msg }))
@@ -99,7 +115,9 @@ export function AdminTikTokSection({
           const conn = connMap.get(client.id)
           const syncState = syncStates[client.id] ?? 'idle'
           const syncResult = syncResults[client.id] ?? ''
-          const tokenExpiry = conn ? tokenExpiryState(conn.tokenExpiresAt) : null
+          const lastSyncedAt = conn ? stateValue(lastSyncedAtByClient, client.id, conn.lastSyncedAt) : null
+          const tokenExpiresAt = conn ? stateValue(tokenExpiresAtByClient, client.id, conn.tokenExpiresAt) : null
+          const tokenExpiry = conn ? tokenExpiryState(tokenExpiresAt) : null
           return (
             <div key={client.id} style={{ background: '#0a0a0a', padding: '18px 24px' }}>
               <div className="flex items-center justify-between flex-wrap gap-3">
@@ -138,10 +156,10 @@ export function AdminTikTokSection({
                       <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Connected</p>
                       <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(conn.createdAt)}</p>
                     </div>
-                    {conn.lastSyncedAt && (
+                    {lastSyncedAt && (
                       <div>
                         <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>Last Sync</p>
-                        <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(conn.lastSyncedAt)}</p>
+                        <p className="text-[11px] font-light mt-0.5" style={{ color: '#f2ede4' }}>{fmtDate(lastSyncedAt)}</p>
                       </div>
                     )}
                   </div>
