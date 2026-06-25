@@ -1,5 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { FACEBOOK_RECONNECT_REQUIRED, refreshFacebookToken } from '@/lib/facebook-auth'
+import { fillPublishDatesIfMissing } from '@/lib/publish-date'
+import { scheduleSnapshotsIfNew } from '@/lib/video-polling'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -208,6 +210,12 @@ export async function syncInstagramForClient(
     }
 
     const insights = await fetchIGMediaInsights(item.id, activeToken, item.media_type)
+    const publishedAt = await fillPublishDatesIfMissing(admin, {
+      clientId,
+      postUUID: resolved.postUUID,
+      pipelineItemId: resolved.pipelineItemId,
+      publishedAt: item.timestamp,
+    })
 
     // IG ER% formula: (likes + comments + shares + saves) / views × 100
     // views = reach (unique accounts reached)
@@ -248,6 +256,9 @@ export async function syncInstagramForClient(
       result.errors.push(`${shortcode}: ${uErr.message}`)
     } else {
       console.log(`[ig-sync] ✓ ${shortcode} — reach=${views} graph_views=${insights.views} likes=${likes} comments=${comments} shares=${shares} saves=${saves} skip_rate=${insights.skipRate ?? 'n/a'}`)
+      if (publishedAt?.iso && resolved.pipelineItemId) {
+        await scheduleSnapshotsIfNew(admin, resolved.postUUID, clientId, resolved.pipelineItemId, publishedAt.iso)
+      }
       result.synced++
     }
   }
@@ -295,6 +306,12 @@ export async function syncSingleIGVideo(
   }
 
   const insights = await fetchIGMediaInsights(item.id, activeToken, item.media_type)
+  const publishedAt = await fillPublishDatesIfMissing(admin, {
+    clientId,
+    postUUID: resolved.postUUID,
+    pipelineItemId: resolved.pipelineItemId,
+    publishedAt: item.timestamp,
+  })
   const views = insights.reach || 0
   const likes = item.like_count || 0
   const comments = item.comments_count || 0
@@ -321,6 +338,10 @@ export async function syncSingleIGVideo(
   if (error) {
     console.error(`[ig-sync] single-video upsert failed for ${igVideoId}:`, error.message)
     return { synced: 0, error: error.message }
+  }
+
+  if (publishedAt?.iso && resolved.pipelineItemId) {
+    await scheduleSnapshotsIfNew(admin, resolved.postUUID, clientId, resolved.pipelineItemId, publishedAt.iso)
   }
 
   console.log(`[ig-sync] single ✓ ${igVideoId} — reach=${views} graph_views=${insights.views} likes=${likes} comments=${comments} shares=${shares} saves=${saves}`)

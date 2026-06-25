@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchYouTubePublicVideo, type YouTubePublicVideo } from '@/lib/youtube-public'
+import { fillPublishDatesIfMissing } from '@/lib/publish-date'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 type MetricWindow = 'live' | 'w24' | 'w3' | 'w7' | 'eom'
@@ -497,7 +498,7 @@ async function updateVideoMetadata(
   item: PollablePipelineItem,
   postUUID: string,
   video: YouTubePublicVideo,
-): Promise<void> {
+): Promise<string | null> {
   // pipeline_items.title is the source of truth — never overwrite it from the API
   const pipelineUpdate: Record<string, string> = {}
   if (video.thumbnailUrl) pipelineUpdate.thumbnail_url = video.thumbnailUrl
@@ -524,6 +525,15 @@ async function updateVideoMetadata(
       .eq('client_id', item.client_id)
     if (postErr) console.error('[poll] posts metadata update failed:', postErr.message)
   }
+
+  const publishedAt = await fillPublishDatesIfMissing(admin, {
+    clientId: item.client_id,
+    pipelineItemId: item.id,
+    postUUID,
+    publishedAt: video.publishedAt,
+  })
+
+  return publishedAt?.iso ?? null
 }
 
 // ── Poll a single pipeline item ───────────────────────────────────────────
@@ -560,7 +570,7 @@ export async function pollPipelineItem(
     return { polled: false, reason: 'no_posts_row' }
   }
 
-  await updateVideoMetadata(admin, item, postUUID, video)
+  const publishedAt = await updateVideoMetadata(admin, item, postUUID, video)
 
   console.log(`[poll] ${item.post_id} → posts UUID=${postUUID} — writing to post_analytics live`)
 
@@ -573,8 +583,9 @@ export async function pollPipelineItem(
     return { polled: false, reason: 'upsert_failed' }
   }
 
-  if (item.posted_at) {
-    await scheduleSnapshotsIfNew(admin, postUUID, item.client_id, item.id, item.posted_at)
+  const snapshotPostedAt = item.posted_at ?? publishedAt
+  if (snapshotPostedAt) {
+    await scheduleSnapshotsIfNew(admin, postUUID, item.client_id, item.id, snapshotPostedAt)
   }
 
   console.log(`[poll] ✓ ${item.post_id} written — views=${stats.views} likes=${stats.likes} comments=${stats.comments}`)

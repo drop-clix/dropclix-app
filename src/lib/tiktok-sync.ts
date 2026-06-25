@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { scheduleSnapshotsIfNew } from '@/lib/video-polling'
+import { fillPublishDatesIfMissing } from '@/lib/publish-date'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -19,6 +20,7 @@ type TikTokVideoStat = {
   comment_count?: number | null
   share_count?: number | null
   cover_image_url?: string | null
+  create_time?: number | null
 }
 
 type PipelineItem = {
@@ -43,7 +45,7 @@ export type TikTokSyncResult = {
   subscriberCount: number | null
 }
 
-const TIKTOK_VIDEO_FIELDS = 'id,title,view_count,like_count,comment_count,share_count,cover_image_url'
+const TIKTOK_VIDEO_FIELDS = 'id,title,view_count,like_count,comment_count,share_count,cover_image_url,create_time'
 const TIKTOK_RECONNECT_REQUIRED = 'Token expired, please reconnect'
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000
 
@@ -336,6 +338,12 @@ export async function syncTikTokForClient(clientId: string): Promise<TikTokSyncR
     const likes = video.like_count ?? 0
     const comments = video.comment_count ?? 0
     const shares = video.share_count ?? 0
+    const publishedAt = await fillPublishDatesIfMissing(admin, {
+      clientId,
+      postUUID: resolved.post.id,
+      pipelineItemId: resolved.item.id,
+      publishedAt: video.create_time,
+    })
     const now = new Date().toISOString()
 
     if (video.cover_image_url) {
@@ -379,8 +387,9 @@ export async function syncTikTokForClient(clientId: string): Promise<TikTokSyncR
       continue
     }
 
-    if (resolved.item.posted_at) {
-      await scheduleSnapshotsIfNew(admin, resolved.post.id, clientId, resolved.item.id, resolved.item.posted_at)
+    const snapshotPostedAt = resolved.item.posted_at ?? publishedAt?.iso
+    if (snapshotPostedAt) {
+      await scheduleSnapshotsIfNew(admin, resolved.post.id, clientId, resolved.item.id, snapshotPostedAt)
     }
 
     console.log(`[tt-sync] ✓ ${videoId} — views=${views} likes=${likes} comments=${comments} shares=${shares}`)
@@ -429,6 +438,12 @@ export async function syncSingleTTVideo(
   const likes = video.like_count ?? 0
   const comments = video.comment_count ?? 0
   const shares = video.share_count ?? 0
+  const publishedAt = await fillPublishDatesIfMissing(admin, {
+    clientId,
+    postUUID: post.id,
+    pipelineItemId: item.id,
+    publishedAt: video.create_time,
+  })
   const now = new Date().toISOString()
 
   if (video.cover_image_url) {
@@ -471,8 +486,9 @@ export async function syncSingleTTVideo(
     return { synced: 0, error: error.message }
   }
 
-  if (item.posted_at) {
-    await scheduleSnapshotsIfNew(admin, post.id, clientId, item.id, item.posted_at)
+  const snapshotPostedAt = item.posted_at ?? publishedAt?.iso
+  if (snapshotPostedAt) {
+    await scheduleSnapshotsIfNew(admin, post.id, clientId, item.id, snapshotPostedAt)
   }
 
   console.log(`[tt-sync] single ✓ ${ttVideoId} — views=${views} likes=${likes} comments=${comments} shares=${shares}`)

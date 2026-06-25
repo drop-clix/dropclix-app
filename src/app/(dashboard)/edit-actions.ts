@@ -9,6 +9,7 @@ import { fetchYouTubePublicVideo } from '@/lib/youtube-public'
 import { syncSingleIGVideo } from '@/lib/instagram-sync'
 import { syncSingleTTVideo } from '@/lib/tiktok-sync'
 import { syncSingleYTVideo } from '@/lib/video-polling'
+import { fillPublishDatesIfMissing, normalizePublishDate } from '@/lib/publish-date'
 
 const IMPERSONATE = 'dropclix_impersonate_client_id'
 
@@ -667,8 +668,9 @@ export async function linkYouTubeVideo(
     .eq('client_id', c.cid)
     .single()
 
+  let postUuid: string | null = null
   if (postRow) {
-    const postUuid = (postRow as unknown as { id: string }).id
+    postUuid = (postRow as unknown as { id: string }).id
     if (Object.keys(postMetadataUpdate).length > 0) {
       await c.admin
         .from('posts')
@@ -681,6 +683,13 @@ export async function linkYouTubeVideo(
       .update({ yt_id: ytId, yt_video_id: ytId })
       .eq('post_id', postUuid)
   }
+
+  await fillPublishDatesIfMissing(c.admin, {
+    clientId: c.cid,
+    pipelineItemId,
+    postUUID: postUuid,
+    publishedAt: video?.publishedAt,
+  })
 
   revalidatePath('/pipeline')
   revalidatePath('/analytics')
@@ -728,6 +737,7 @@ export async function ensureYTPostsRow(
   console.log(`[ensureYTPostsRow] post_id=${item.post_id} yt_video_id=${item.yt_video_id}`)
 
   const video = await fetchYouTubePublicVideo(item.yt_video_id)
+  const publishedAt = normalizePublishDate(video?.publishedAt)
 
   // pipeline_items.title is the source of truth — never overwrite it from the API
   const pipelineUpdate: Record<string, string> = {}
@@ -754,6 +764,12 @@ export async function ensureYTPostsRow(
     if (Object.keys(postMetadataUpdate).length > 0) {
       await c.admin.from('posts').update(postMetadataUpdate).eq('id', (exact as any).id)
     }
+    await fillPublishDatesIfMissing(c.admin, {
+      clientId: c.cid,
+      pipelineItemId,
+      postUUID: (exact as any).id,
+      publishedAt: video?.publishedAt,
+    })
     return { postId: (exact as any).post_id, created: false }
   }
 
@@ -767,6 +783,12 @@ export async function ensureYTPostsRow(
         if (Object.keys(postMetadataUpdate).length > 0) {
           await c.admin.from('posts').update(postMetadataUpdate).eq('id', (data as any).id)
         }
+        await fillPublishDatesIfMissing(c.admin, {
+          clientId: c.cid,
+          pipelineItemId,
+          postUUID: (data as any).id,
+          publishedAt: video?.publishedAt,
+        })
         return { postId: (data as any).post_id, created: false }
       }
     }
@@ -780,6 +802,12 @@ export async function ensureYTPostsRow(
     if (Object.keys(postMetadataUpdate).length > 0) {
       await c.admin.from('posts').update(postMetadataUpdate).eq('id', (byYt as any).id)
     }
+    await fillPublishDatesIfMissing(c.admin, {
+      clientId: c.cid,
+      pipelineItemId,
+      postUUID: (byYt as any).id,
+      publishedAt: video?.publishedAt,
+    })
     return { postId: (byYt as any).post_id, created: false }
   }
 
@@ -818,12 +846,20 @@ export async function ensureYTPostsRow(
     ? (item.platform as string[])
     : ['yt']
 
+  if (publishedAt) {
+    await fillPublishDatesIfMissing(c.admin, {
+      clientId: c.cid,
+      pipelineItemId,
+      publishedAt: publishedAt.iso,
+    })
+  }
+
   const { error: insErr } = await c.admin.from('posts').insert({
     client_id: c.cid,
     post_id:   newPostId,
     title:     item.title ?? '(YouTube video)',
     platform,
-    date:      item.posted_at ? (item.posted_at as string).slice(0, 10) : null,
+    date:      publishedAt?.date ?? (item.posted_at ? (item.posted_at as string).slice(0, 10) : null),
     yt_id:     item.yt_video_id,
     thumbnail_url: video?.thumbnailUrl ?? null,
   })

@@ -459,6 +459,15 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Meta Ads: `syncMetaAdsForClient()` now calls the shared helper before campaign/insights calls. If refresh fails, `/api/admin/sync-meta-ads` returns the same reconnect-needed 401 pattern as TikTok.
 - Verification: Day 1 live tokens were outside the refresh window after build: Instagram expires `2026-08-17T18:16:57.232Z`; Meta Ads expires `2026-08-18T19:52:33.628Z`. All four platform connections now have auto-refresh coverage: YouTube (`youtube-auth.ts`), TikTok (`tiktok-sync.ts`), Instagram/Meta Ads (`facebook-auth.ts`).
 
+## S64 Publish Date Auto-Fill Notes
+
+- Issue: Analytics displayed `posts.date` while Pipeline displayed `pipeline_items.posted_at`, but IG/TT/YT sync/link paths did not save real platform publish dates. Newly linked videos could show blank or portal-entered dates instead of the original publish date.
+- Fix: Added shared `src/lib/publish-date.ts`. `fillPublishDatesIfMissing()` normalizes platform timestamps and fills both `pipeline_items.posted_at` and `posts.date` only when those fields are null. It never overwrites an existing/manual date.
+- Instagram: `instagram-sync.ts` now maps the already-fetched Graph `timestamp` into the shared helper during full-client sync and single-video sync.
+- YouTube: `youtube-public.ts` now returns `snippet.publishedAt`; `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` use it to fill missing publish dates.
+- TikTok: Live API test confirmed `create_time` is the correct field and returns Unix seconds. `tiktok-sync.ts` now requests `create_time` and maps it through the shared helper during full-client sync and single-video sync.
+- Gotcha: This is not a historical backfill. Existing rows are updated only when they pass through a normal link/sync path and their date fields are missing. If a one-time historical cleanup is needed, run a separate scoped audit/backfill session.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

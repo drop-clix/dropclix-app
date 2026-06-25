@@ -2,6 +2,7 @@ export type YouTubePublicVideo = {
   videoId: string
   title: string | null
   thumbnailUrl: string | null
+  publishedAt: string | null
   stats: {
     views: number
     likes: number
@@ -48,6 +49,7 @@ export async function fetchYouTubePublicVideo(videoId: string): Promise<YouTubeP
     videoId,
     title: item.snippet?.title ?? null,
     thumbnailUrl: thumb,
+    publishedAt: item.snippet?.publishedAt ?? null,
     stats: {
       views:    parseCount(stats.viewCount),
       likes:    parseCount(stats.likeCount),
