@@ -451,6 +451,14 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Fix: `/api/admin/sync-youtube`, `/api/admin/sync-tiktok`, `/api/admin/sync-instagram`, and `/api/admin/sync-meta-ads` now return the persisted `lastSyncedAt` and `tokenExpiresAt` from `platform_connections` after sync. All four admin sections store those values locally after a successful Sync Now.
 - Gotcha: Do not change token refresh logic to fix stale warning UI. The correct pattern is backend refresh/update first, route returns the updated display fields second, admin component updates local state third.
 
+## S63 Facebook Token Refresh Notes
+
+- Issue: Instagram and Meta Ads both used 60-day Facebook long-lived tokens but had no refresh-before-sync path. Instagram's expired-token failure mode could look like false success because `/media` errors returned an empty array and the sync could report 0 posts synced.
+- Fix: Added shared `src/lib/facebook-auth.ts` with `refreshFacebookToken(clientId, platform)`, where `platform` is `'instagram' | 'meta_ads'`. It uses the same 5-minute safety window as TikTok/YouTube, refreshes via Graph `grant_type=fb_exchange_token`, updates `platform_connections.access_token`, `token_expires_at`, and `updated_at`, and never logs token values.
+- Instagram: `syncInstagramForClient()` and `syncSingleIGVideo()` now call the shared helper before any Graph API calls. If refresh fails, they stop immediately with `Token expired, please reconnect` instead of calling `/media` and returning a misleading empty sync.
+- Meta Ads: `syncMetaAdsForClient()` now calls the shared helper before campaign/insights calls. If refresh fails, `/api/admin/sync-meta-ads` returns the same reconnect-needed 401 pattern as TikTok.
+- Verification: Day 1 live tokens were outside the refresh window after build: Instagram expires `2026-08-17T18:16:57.232Z`; Meta Ads expires `2026-08-18T19:52:33.628Z`. All four platform connections now have auto-refresh coverage: YouTube (`youtube-auth.ts`), TikTok (`tiktok-sync.ts`), Instagram/Meta Ads (`facebook-auth.ts`).
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

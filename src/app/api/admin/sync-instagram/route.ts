@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncInstagramForClient } from '@/lib/instagram-sync'
+import { FACEBOOK_RECONNECT_REQUIRED } from '@/lib/facebook-auth'
 
 export async function POST(req: NextRequest) {
   // Auth: admin session required
@@ -47,6 +48,12 @@ export async function POST(req: NextRequest) {
 
   // Run sync
   const result = await syncInstagramForClient(admin, clientId, accessToken, igAccountId)
+  if (result.reconnectNeeded) {
+    return NextResponse.json(
+      { error: FACEBOOK_RECONNECT_REQUIRED, synced: 0, skipped: 0, errors: result.errors },
+      { status: 401 },
+    )
+  }
 
   const now = new Date().toISOString()
 

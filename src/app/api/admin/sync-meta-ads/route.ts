@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncMetaAdsForClient } from '@/lib/meta-ads-sync'
+import { FACEBOOK_RECONNECT_REQUIRED } from '@/lib/facebook-auth'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -42,6 +43,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await syncMetaAdsForClient(clientId, accessToken, adAccountId)
+    if (result.reconnectNeeded) {
+      return NextResponse.json(
+        { success: false, error: FACEBOOK_RECONNECT_REQUIRED, synced: 0, skipped: 0, errors: result.errors },
+        { status: 401 },
+      )
+    }
+
     const now = new Date().toISOString()
 
     const { data: updatedConn } = await admin

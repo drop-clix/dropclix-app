@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { FACEBOOK_RECONNECT_REQUIRED, refreshFacebookToken } from '@/lib/facebook-auth'
 
 type MetaCampaign = {
   id: string
@@ -23,6 +24,7 @@ export type MetaAdsSyncResult = {
   synced: number
   skipped: number
   errors: string[]
+  reconnectNeeded?: boolean
 }
 
 type MetaAdsCampaignPayload = {
@@ -172,8 +174,16 @@ export async function syncMetaAdsForClient(
 ): Promise<MetaAdsSyncResult> {
   const admin = createAdminClient()
   const result: MetaAdsSyncResult = { synced: 0, skipped: 0, errors: [] }
+  const activeToken = await refreshFacebookToken(clientId, 'meta_ads')
+  if (!activeToken) {
+    return {
+      ...result,
+      errors: [FACEBOOK_RECONNECT_REQUIRED],
+      reconnectNeeded: true,
+    }
+  }
 
-  const campaigns = await fetchCampaigns(accessToken, adAccountId)
+  const campaigns = await fetchCampaigns(activeToken, adAccountId)
   if (campaigns.length === 0) return result
 
   for (const campaign of campaigns) {
@@ -183,7 +193,7 @@ export async function syncMetaAdsForClient(
     }
 
     try {
-      const insights = await fetchCampaignInsights(accessToken, campaign.id)
+      const insights = await fetchCampaignInsights(activeToken, campaign.id)
       const payload = {
         client_id: clientId,
         meta_campaign_id: campaign.id,

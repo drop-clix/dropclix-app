@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { FACEBOOK_RECONNECT_REQUIRED, refreshFacebookToken } from '@/lib/facebook-auth'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -30,6 +31,7 @@ export type IGSyncResult = {
   skipped: number
   errors: string[]
   followersCount: number | null
+  reconnectNeeded?: boolean
 }
 
 // ── Fetch all media for the connected account ─────────────────────────────────
@@ -179,11 +181,19 @@ export async function syncInstagramForClient(
   igAccountId: string,
 ): Promise<IGSyncResult> {
   const result: IGSyncResult = { synced: 0, skipped: 0, errors: [], followersCount: null }
+  const activeToken = await refreshFacebookToken(clientId, 'instagram')
+  if (!activeToken) {
+    return {
+      ...result,
+      errors: [FACEBOOK_RECONNECT_REQUIRED],
+      reconnectNeeded: true,
+    }
+  }
 
-  const followersCount = await fetchIGFollowersCount(accessToken, igAccountId)
+  const followersCount = await fetchIGFollowersCount(activeToken, igAccountId)
   result.followersCount = followersCount
 
-  const media = await fetchIGMedia(accessToken, igAccountId)
+  const media = await fetchIGMedia(activeToken, igAccountId)
   console.log(`[ig-sync] fetched ${media.length} media items for client ${clientId}`)
 
   for (const item of media) {
@@ -197,7 +207,7 @@ export async function syncInstagramForClient(
       continue
     }
 
-    const insights = await fetchIGMediaInsights(item.id, accessToken, item.media_type)
+    const insights = await fetchIGMediaInsights(item.id, activeToken, item.media_type)
 
     // IG ER% formula: (likes + comments + shares + saves) / views × 100
     // views = reach (unique accounts reached)
@@ -268,7 +278,12 @@ export async function syncSingleIGVideo(
     return { synced: 0, error: 'Instagram connection is missing token or channel_id' }
   }
 
-  const media = await fetchIGMedia(accessToken, igAccountId)
+  const activeToken = await refreshFacebookToken(clientId, 'instagram')
+  if (!activeToken) {
+    return { synced: 0, error: FACEBOOK_RECONNECT_REQUIRED }
+  }
+
+  const media = await fetchIGMedia(activeToken, igAccountId)
   const item = media.find(mediaItem => shortcodeFromPermalink(mediaItem.permalink) === igVideoId)
   if (!item) {
     return { synced: 0, error: `No Instagram media found for ${igVideoId}` }
@@ -279,7 +294,7 @@ export async function syncSingleIGVideo(
     return { synced: 0, error: `No posts row found for Instagram video ${igVideoId}` }
   }
 
-  const insights = await fetchIGMediaInsights(item.id, accessToken, item.media_type)
+  const insights = await fetchIGMediaInsights(item.id, activeToken, item.media_type)
   const views = insights.reach || 0
   const likes = item.like_count || 0
   const comments = item.comments_count || 0
