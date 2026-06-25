@@ -8,6 +8,7 @@ export type PortalContext = {
   supabase: Awaited<ReturnType<typeof createClient>>
   clientId: string | null
   userEmail: string | null
+  clientName: string | null
   isImpersonating: boolean
   isAdmin: boolean
   enabledPlatforms: string[]
@@ -41,10 +42,11 @@ export async function getPortalContext(): Promise<PortalContext> {
     // Fetch the impersonated client's config
     const { data: clientRow } = await supabase
       .from('clients')
-      .select('enabled_platforms, enabled_tabs')
+      .select('name, enabled_platforms, enabled_tabs')
       .eq('id', impersonateId)
       .single()
 
+    const clientName = (clientRow?.name as string | null) ?? null
     const enabledPlatforms = (clientRow?.enabled_platforms as string[] | null) ?? ALL_PLATFORMS
     const enabledTabs      = (clientRow?.enabled_tabs      as string[] | null) ?? ALL_TABS
 
@@ -52,6 +54,7 @@ export async function getPortalContext(): Promise<PortalContext> {
       supabase,
       clientId: impersonateId,
       userEmail: profile.email as string | null,
+      clientName,
       isImpersonating: true,
       isAdmin: true,
       enabledPlatforms,
@@ -64,14 +67,16 @@ export async function getPortalContext(): Promise<PortalContext> {
 
   let enabledPlatforms = ['ig']
   let enabledTabs      = ALL_TABS
+  let clientName: string | null = null
 
   if (clientId) {
     const { data: clientRow } = await supabase
       .from('clients')
-      .select('enabled_platforms, enabled_tabs')
+      .select('name, enabled_platforms, enabled_tabs')
       .eq('id', clientId)
       .single()
 
+    clientName = (clientRow?.name as string | null) ?? null
     enabledPlatforms = (clientRow?.enabled_platforms as string[] | null) ?? ['ig']
     enabledTabs      = (clientRow?.enabled_tabs      as string[] | null) ?? ALL_TABS
   }
@@ -80,6 +85,7 @@ export async function getPortalContext(): Promise<PortalContext> {
     supabase,
     clientId,
     userEmail: profile.email as string | null,
+    clientName,
     isImpersonating: false,
     isAdmin: false,
     enabledPlatforms,

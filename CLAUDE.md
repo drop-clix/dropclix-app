@@ -468,6 +468,13 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - TikTok: Live API test confirmed `create_time` is the correct field and returns Unix seconds. `tiktok-sync.ts` now requests `create_time` and maps it through the shared helper during full-client sync and single-video sync.
 - Gotcha: This is not a historical backfill. Existing rows are updated only when they pass through a normal link/sync path and their date fields are missing. If a one-time historical cleanup is needed, run a separate scoped audit/backfill session.
 
+## S65 Dashboard Greeting Name Fix
+
+- Issue: Dashboard greeting used `userEmail.split('@')[0]`, which rendered email fragments like "chase" instead of the actual client display name.
+- Root cause: `getPortalContext()` fetched each client's config but did not expose `clients.name` to the dashboard page.
+- Fix: `getPortalContext()` now returns `clientName` from `clients.name`, and `src/app/(dashboard)/page.tsx` passes that value to `DashboardClient`, falling back to the email fragment only if the client name is unavailable.
+- Gotcha: No `public.users.full_name` / `display_name` column is needed. Portal-wide client display names should continue to use `clients.name` as the source of truth.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

@@ -3,7 +3,7 @@ import { DashboardClient } from '@/components/portal/DashboardClient'
 import type { RawDashPost, RawDashPipeline, RawDashCalendar, RawDashGoal, RawDashCampaign } from '@/components/portal/DashboardClient'
 
 export default async function DashboardPage() {
-  const { supabase, clientId, userEmail } = await getPortalContext()
+  const { supabase, clientId, userEmail, clientName: portalClientName } = await getPortalContext()
   const cid = clientId ?? '00000000-0000-0000-0000-000000000000'
 
   const thirtyDaysAgo = new Date()
@@ -44,7 +44,7 @@ export default async function DashboardPage() {
   const rawGoals     = (goalsRes.data    ?? []) as unknown as RawDashGoal[]
   const rawCampaigns = (adsRes.data      ?? []) as unknown as RawDashCampaign[]
 
-  const clientName = userEmail?.split('@')[0] ?? 'there'
+  const clientName = portalClientName ?? userEmail?.split('@')[0] ?? 'there'
 
   return (
     <DashboardClient
