@@ -42,3 +42,19 @@ with another client's UUID and attach a platform token to the wrong client row.
 
 ## Resolution
 [x] RESOLVED
+
+## Follow-up Build — Client Settings Connections
+After the signed-state/session authorization fix was in place, a
+client-facing `/settings` page was added as the first self-service account
+surface. Clients can now connect or reconnect Instagram, TikTok, and YouTube
+from their own portal session without a `client_id` query string.
+
+This keeps the S66 protection intact:
+- Admin-origin OAuth still redirects back to `/admin`.
+- Client-origin OAuth now redirects back to `/settings`.
+- The signed OAuth state includes the origin and the authorized client ID.
+- The Settings page fetches only safe connection metadata and never exposes
+  `access_token` or `refresh_token` to browser-visible props.
+
+Business impact: this unblocks Nick's pending YouTube reconnection because he
+can replace the wrong connected channel from his own client portal session.

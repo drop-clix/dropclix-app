@@ -484,6 +484,16 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Gotcha: RLS is not a substitute here because callbacks write through `createAdminClient()`. Future `/api/auth/*` integrations must use signed state plus session authorization, never a trusted query-string client ID.
 - Fire doc: `fires/2026-06-26-oauth-client-id-trust.md`.
 
+## S67 Client Settings + Self-Service Connections
+
+- Build: Added client-facing `/settings` under the dashboard shell as the future home for self-service account features. The first section is Platform Connections for Instagram, TikTok, and YouTube.
+- Security: `/settings` resolves the current client through `getPortalContext()` first, then server-fetches only safe `platform_connections` fields with `createAdminClient()`: `platform`, `channel_name`, `channel_id`, `subscriber_count`, `created_at`, `last_synced_at`, `token_expires_at`. Never pass `access_token` or `refresh_token` to client components.
+- OAuth redirects: `src/lib/oauth-state.ts` state payload now includes signed `origin: 'admin' | 'client'`. Admin-initiated IG/TT/YT callbacks still redirect to `/admin` with the existing query params. Client-initiated callbacks redirect to `/settings` with the same success/error query params.
+- Client UX: `SettingsClient` exposes Connect/Reconnect only. No client-facing Sync Now exists; Sync Now remains admin-only. Reconnect links intentionally omit `client_id`, relying on the S66 session-secured initiation routes to resolve the logged-in client's own `client_id`.
+- Navigation: Settings was added to `SidebarShell` and default enabled-tab fallbacks. It is always visible in the sidebar for existing clients whose saved `enabled_tabs` arrays predate the Settings tab, because account/platform self-service should not be hidden by content-tab configuration.
+- Gotcha: True admins without impersonation still redirect to `/admin` through `getPortalContext()`. Admins can view `/settings` only while impersonating a client, which matches the existing dashboard support model.
+- Business unblock: Nick can now reconnect his own YouTube account from the client portal instead of needing an admin-initiated OAuth flow.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

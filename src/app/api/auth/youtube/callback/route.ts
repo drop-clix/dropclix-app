@@ -21,9 +21,13 @@ export async function GET(req: NextRequest) {
     return redirect(`${adminBase}?yt_error=unauthorized`)
   }
   const clientId = stateCheck.context.clientId
+  const callbackBase = new URL(
+    stateCheck.context.origin === 'client' ? '/settings' : '/admin',
+    req.url,
+  ).toString()
 
   if (error || !code) {
-    return redirect(`${adminBase}?yt_error=access_denied`)
+    return redirect(`${callbackBase}?yt_error=access_denied`)
   }
 
   // Exchange code for tokens
@@ -41,7 +45,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok) {
     console.error('YouTube token exchange failed:', await tokenRes.text())
-    return redirect(`${adminBase}?yt_error=token_failed`)
+    return redirect(`${callbackBase}?yt_error=token_failed`)
   }
 
   const tokens = await tokenRes.json()
@@ -78,8 +82,8 @@ export async function GET(req: NextRequest) {
 
   if (dbErr) {
     console.error('Failed to save YouTube connection:', dbErr.message)
-    return redirect(`${adminBase}?yt_error=db_failed`)
+    return redirect(`${callbackBase}?yt_error=db_failed`)
   }
 
-  return redirect(`${adminBase}?yt_connected=1`)
+  return redirect(`${callbackBase}?yt_connected=1`)
 }

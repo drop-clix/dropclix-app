@@ -73,6 +73,11 @@ const NAV_ITEMS = [
     label: 'Inbox',
     icon: <Ico d="M2 5l6 4 6-4M2 5v7h12V5" />,
   },
+  {
+    href: '/settings',
+    label: 'Settings',
+    icon: <Ico d="M3 8a5 5 0 0110 0 5 5 0 01-10 0zM8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.8 3.8l1.4 1.4M10.8 10.8l1.4 1.4M12.2 3.8l-1.4 1.4M5.2 10.8l-1.4 1.4" />,
+  },
 ]
 
 // ── Hamburger icon ────────────────────────────────────────────────────────
@@ -112,6 +117,7 @@ const TAB_HREFS: Record<string, string> = {
   calendar:  '/calendar',
   goals:     '/goals',
   docs:      '/docs',
+  settings:  '/settings',
   // inbox intentionally omitted — not gated by enabled_tabs while stub
 }
 
@@ -140,6 +146,7 @@ export function SidebarShell({
     if (adminOnly && !isAdmin) return false
     if (adminOnly && isAdmin) return true  // admin-only items always visible to admins
     const tabKey = Object.entries(TAB_HREFS).find(([, href]) => href === item.href)?.[0]
+    if (tabKey === 'settings') return true
     return tabKey ? enabledTabs.includes(tabKey) : true
   })
 

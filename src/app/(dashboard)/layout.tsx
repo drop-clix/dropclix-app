@@ -51,7 +51,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ?? ['ig','tt','yt','lf']
 
   const enabledTabs: string[] = (client?.enabled_tabs as string[] | null)
-    ?? ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals']
+    ?? ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals','settings']
 
   const clientName = client?.name ?? profile?.email?.split('@')[0] ?? 'Portal'
   const userEmail  = profile?.email ?? user.email ?? null

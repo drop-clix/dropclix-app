@@ -15,7 +15,7 @@ export type PortalContext = {
   enabledTabs: string[]
 }
 
-const ALL_TABS      = ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals']
+const ALL_TABS      = ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals','settings']
 const ALL_PLATFORMS = ['ig','tt','yt','lf']
 
 export async function getPortalContext(): Promise<PortalContext> {

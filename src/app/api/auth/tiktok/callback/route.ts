@@ -20,9 +20,13 @@ export async function GET(req: NextRequest) {
     return redirect(`${adminBase}?tt_error=unauthorized`)
   }
   const clientId = stateCheck.context.clientId
+  const callbackBase = new URL(
+    stateCheck.context.origin === 'client' ? '/settings' : '/admin',
+    req.url,
+  ).toString()
 
   if (error || !code) {
-    return redirect(`${adminBase}?tt_error=access_denied`)
+    return redirect(`${callbackBase}?tt_error=access_denied`)
   }
 
   // Exchange code for access token
@@ -44,7 +48,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok) {
     console.error('[TikTok callback] token exchange HTTP error:', tokenRes.status)
-    return redirect(`${adminBase}?tt_error=token_failed`)
+    return redirect(`${callbackBase}?tt_error=token_failed`)
   }
 
   let tokenData: Record<string, unknown>
@@ -52,7 +56,7 @@ export async function GET(req: NextRequest) {
     tokenData = JSON.parse(rawText)
   } catch {
     console.error('[TikTok callback] failed to parse token JSON')
-    return redirect(`${adminBase}?tt_error=token_failed`)
+    return redirect(`${callbackBase}?tt_error=token_failed`)
   }
 
   // TikTok returns either { access_token, open_id, ... } or { data: { access_token, open_id, ... } }
@@ -70,7 +74,7 @@ export async function GET(req: NextRequest) {
 
   if (apiError?.code || !access_token || !open_id) {
     console.error('[TikTok callback] token error:', apiError ?? 'missing access_token or open_id')
-    return redirect(`${adminBase}?tt_error=token_failed`)
+    return redirect(`${callbackBase}?tt_error=token_failed`)
   }
 
   const expiry = new Date(Date.now() + expires_in * 1000).toISOString()
@@ -113,8 +117,8 @@ export async function GET(req: NextRequest) {
 
   if (dbErr) {
     console.error('[TikTok callback] failed to save connection:', dbErr.message)
-    return redirect(`${adminBase}?tt_error=db_failed`)
+    return redirect(`${callbackBase}?tt_error=db_failed`)
   }
 
-  return redirect(`${adminBase}?tt_connected=1`)
+  return redirect(`${callbackBase}?tt_connected=1`)
 }

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL(`/login?error=${auth.error}`, req.url))
   }
 
-  const { state, nonce } = createOAuthState('instagram', auth.context.clientId)
+  const { state, nonce } = createOAuthState('instagram', auth.context.clientId, auth.context.role)
 
   const params = new URLSearchParams({
     client_id:     process.env.INSTAGRAM_APP_ID ?? '',

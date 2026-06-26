@@ -81,9 +81,13 @@ export async function GET(req: NextRequest) {
     return redirect(`${adminBase}?ig_error=unauthorized`)
   }
   const clientId = stateCheck.context.clientId
+  const callbackBase = new URL(
+    stateCheck.context.origin === 'client' ? '/settings' : '/admin',
+    req.url,
+  ).toString()
 
   if (error || !code) {
-    return redirect(`${adminBase}?ig_error=access_denied`)
+    return redirect(`${callbackBase}?ig_error=access_denied`)
   }
 
   // Exchange code for short-lived Facebook User Access Token
@@ -103,7 +107,7 @@ export async function GET(req: NextRequest) {
   if (!tokenRes.ok) {
     const body = await tokenRes.text()
     console.error('Instagram (FB) token exchange failed:', tokenRes.status, body)
-    return redirect(`${adminBase}?ig_error=token_failed`)
+    return redirect(`${callbackBase}?ig_error=token_failed`)
   }
 
   // Facebook response: { access_token, token_type, expires_in }
@@ -229,7 +233,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (!igAccountId) {
-    return redirect(`${adminBase}?ig_error=no_instagram_account`)
+    return redirect(`${callbackBase}?ig_error=no_instagram_account`)
   }
 
   const admin = createAdminClient()
@@ -254,8 +258,8 @@ export async function GET(req: NextRequest) {
 
   if (dbErr) {
     console.error('Failed to save Instagram connection:', dbErr.message)
-    return redirect(`${adminBase}?ig_error=db_failed`)
+    return redirect(`${callbackBase}?ig_error=db_failed`)
   }
 
-  return redirect(`${adminBase}?ig_connected=1`)
+  return redirect(`${callbackBase}?ig_connected=1`)
 }

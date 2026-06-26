@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL(`/login?error=${auth.error}`, req.url))
   }
 
-  const { state, nonce } = createOAuthState('tiktok', auth.context.clientId)
+  const { state, nonce } = createOAuthState('tiktok', auth.context.clientId, auth.context.role)
 
   const params = new URLSearchParams({
     client_key:    process.env.TIKTOK_CLIENT_KEY ?? '',

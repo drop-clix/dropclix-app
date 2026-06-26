@@ -10,7 +10,7 @@ export type ClientConfig = {
 
 const DEFAULT_CONFIG: ClientConfig = {
   enabledPlatforms: ['ig', 'tt', 'yt', 'lf'],
-  enabledTabs:      ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals'],
+  enabledTabs:      ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals','settings'],
   isAdmin:          false,
 }
 

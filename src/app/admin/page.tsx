@@ -89,7 +89,7 @@ export default async function AdminPage() {
     postCount:         postCountMap.get(c.id) ?? 0,
     lastActivity:      lastActivityMap.get(c.id) ?? null,
     enabled_platforms: c.enabled_platforms ?? ['ig'],
-    enabled_tabs:      c.enabled_tabs      ?? ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals'],
+    enabled_tabs:      c.enabled_tabs      ?? ['dashboard','analytics','angles','pipeline','studio','ads','calendar','goals','settings'],
   }))
 
   const ytSectionConnections = ytConnections.map(c => ({

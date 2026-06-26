@@ -10,10 +10,13 @@ type OAuthSessionContext = {
   clientId: string
 }
 
+type OAuthOrigin = 'admin' | 'client'
+
 type OAuthStatePayload = {
   v: 1
   platform: OAuthPlatform
   clientId: string
+  origin: OAuthOrigin
   nonce: string
   iat: number
 }
@@ -77,12 +80,13 @@ export async function resolveOAuthClientForInitiation(
   return { ok: true, context: { role: 'client', clientId: sessionClientId } }
 }
 
-export function createOAuthState(platform: OAuthPlatform, clientId: string) {
+export function createOAuthState(platform: OAuthPlatform, clientId: string, origin: OAuthOrigin) {
   const nonce = randomBytes(24).toString('hex')
   const payload: OAuthStatePayload = {
     v: 1,
     platform,
     clientId,
+    origin,
     nonce,
     iat: Date.now(),
   }
@@ -142,6 +146,9 @@ async function parseAndVerifyState(
   if (payload.v !== 1) return { ok: false, error: 'invalid_version' }
   if (payload.platform !== platform) return { ok: false, error: 'platform_mismatch' }
   if (!payload.clientId || !payload.nonce) return { ok: false, error: 'incomplete_state' }
+  if (payload.origin !== 'admin' && payload.origin !== 'client') {
+    return { ok: false, error: 'invalid_origin' }
+  }
   if (!Number.isFinite(payload.iat) || Date.now() - payload.iat > STATE_MAX_AGE_MS) {
     return { ok: false, error: 'state_expired' }
   }
@@ -158,7 +165,7 @@ async function parseAndVerifyState(
 export async function validateOAuthCallbackState(
   platform: OAuthPlatform,
   state: string | null,
-): Promise<{ ok: true; context: OAuthSessionContext } | { ok: false; error: string }> {
+): Promise<{ ok: true; context: OAuthSessionContext & { origin: OAuthOrigin } } | { ok: false; error: string }> {
   const verified = await parseAndVerifyState(platform, state)
   if (!verified.ok) return verified
 
@@ -174,6 +181,7 @@ export async function validateOAuthCallbackState(
     context: {
       role: session.context.role,
       clientId: verified.payload.clientId,
+      origin: verified.payload.origin,
     },
   }
 }
