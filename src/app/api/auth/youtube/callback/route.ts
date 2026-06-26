@@ -1,16 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchChannelInfo } from '@/lib/youtube-auth'
+import { clearOAuthNonceCookie, validateOAuthCallbackState } from '@/lib/oauth-state'
 
 export async function GET(req: NextRequest) {
   const code     = req.nextUrl.searchParams.get('code')
-  const clientId = req.nextUrl.searchParams.get('state') // client UUID passed in OAuth state
+  const state    = req.nextUrl.searchParams.get('state')
   const error    = req.nextUrl.searchParams.get('error')
 
   const adminBase = new URL('/admin', req.url).toString()
+  const redirect = (url: string) => {
+    const response = NextResponse.redirect(url)
+    clearOAuthNonceCookie(response, 'youtube')
+    return response
+  }
+
+  const stateCheck = await validateOAuthCallbackState('youtube', state)
+  if (!stateCheck.ok) {
+    console.warn('[youtube-oauth] rejected callback state:', stateCheck.error)
+    return redirect(`${adminBase}?yt_error=unauthorized`)
+  }
+  const clientId = stateCheck.context.clientId
 
   if (error || !code) {
-    return NextResponse.redirect(`${adminBase}?yt_error=access_denied`)
+    return redirect(`${adminBase}?yt_error=access_denied`)
   }
 
   // Exchange code for tokens
@@ -28,7 +41,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok) {
     console.error('YouTube token exchange failed:', await tokenRes.text())
-    return NextResponse.redirect(`${adminBase}?yt_error=token_failed`)
+    return redirect(`${adminBase}?yt_error=token_failed`)
   }
 
   const tokens = await tokenRes.json()
@@ -65,8 +78,8 @@ export async function GET(req: NextRequest) {
 
   if (dbErr) {
     console.error('Failed to save YouTube connection:', dbErr.message)
-    return NextResponse.redirect(`${adminBase}?yt_error=db_failed`)
+    return redirect(`${adminBase}?yt_error=db_failed`)
   }
 
-  return NextResponse.redirect(`${adminBase}?yt_connected=1`)
+  return redirect(`${adminBase}?yt_connected=1`)
 }

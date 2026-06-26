@@ -1,15 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { clearOAuthNonceCookie, validateOAuthCallbackState } from '@/lib/oauth-state'
 
 export async function GET(req: NextRequest) {
   const code     = req.nextUrl.searchParams.get('code')
-  const clientId = req.nextUrl.searchParams.get('state')
+  const state    = req.nextUrl.searchParams.get('state')
   const error    = req.nextUrl.searchParams.get('error')
 
   const adminBase = new URL('/admin', req.url).toString()
+  const redirect = (url: string) => {
+    const response = NextResponse.redirect(url)
+    clearOAuthNonceCookie(response, 'tiktok')
+    return response
+  }
+
+  const stateCheck = await validateOAuthCallbackState('tiktok', state)
+  if (!stateCheck.ok) {
+    console.warn('[TikTok callback] rejected callback state:', stateCheck.error)
+    return redirect(`${adminBase}?tt_error=unauthorized`)
+  }
+  const clientId = stateCheck.context.clientId
 
   if (error || !code) {
-    return NextResponse.redirect(`${adminBase}?tt_error=access_denied`)
+    return redirect(`${adminBase}?tt_error=access_denied`)
   }
 
   // Exchange code for access token
@@ -31,7 +44,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok) {
     console.error('[TikTok callback] token exchange HTTP error:', tokenRes.status)
-    return NextResponse.redirect(`${adminBase}?tt_error=token_failed`)
+    return redirect(`${adminBase}?tt_error=token_failed`)
   }
 
   let tokenData: Record<string, unknown>
@@ -39,7 +52,7 @@ export async function GET(req: NextRequest) {
     tokenData = JSON.parse(rawText)
   } catch {
     console.error('[TikTok callback] failed to parse token JSON')
-    return NextResponse.redirect(`${adminBase}?tt_error=token_failed`)
+    return redirect(`${adminBase}?tt_error=token_failed`)
   }
 
   // TikTok returns either { access_token, open_id, ... } or { data: { access_token, open_id, ... } }
@@ -57,7 +70,7 @@ export async function GET(req: NextRequest) {
 
   if (apiError?.code || !access_token || !open_id) {
     console.error('[TikTok callback] token error:', apiError ?? 'missing access_token or open_id')
-    return NextResponse.redirect(`${adminBase}?tt_error=token_failed`)
+    return redirect(`${adminBase}?tt_error=token_failed`)
   }
 
   const expiry = new Date(Date.now() + expires_in * 1000).toISOString()
@@ -100,8 +113,8 @@ export async function GET(req: NextRequest) {
 
   if (dbErr) {
     console.error('[TikTok callback] failed to save connection:', dbErr.message)
-    return NextResponse.redirect(`${adminBase}?tt_error=db_failed`)
+    return redirect(`${adminBase}?tt_error=db_failed`)
   }
 
-  return NextResponse.redirect(`${adminBase}?tt_connected=1`)
+  return redirect(`${adminBase}?tt_connected=1`)
 }

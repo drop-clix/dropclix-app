@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { clearOAuthNonceCookie, validateOAuthCallbackState } from '@/lib/oauth-state'
 
 type PageAccount = {
   id?: string
@@ -64,13 +65,25 @@ async function graphGet<T extends object>(
 
 export async function GET(req: NextRequest) {
   const code     = req.nextUrl.searchParams.get('code')
-  const clientId = req.nextUrl.searchParams.get('state')
+  const state    = req.nextUrl.searchParams.get('state')
   const error    = req.nextUrl.searchParams.get('error')
 
   const adminBase = new URL('/admin', req.url).toString()
+  const redirect = (url: string) => {
+    const response = NextResponse.redirect(url)
+    clearOAuthNonceCookie(response, 'instagram')
+    return response
+  }
+
+  const stateCheck = await validateOAuthCallbackState('instagram', state)
+  if (!stateCheck.ok) {
+    console.warn('[ig-oauth] rejected callback state:', stateCheck.error)
+    return redirect(`${adminBase}?ig_error=unauthorized`)
+  }
+  const clientId = stateCheck.context.clientId
 
   if (error || !code) {
-    return NextResponse.redirect(`${adminBase}?ig_error=access_denied`)
+    return redirect(`${adminBase}?ig_error=access_denied`)
   }
 
   // Exchange code for short-lived Facebook User Access Token
@@ -90,7 +103,7 @@ export async function GET(req: NextRequest) {
   if (!tokenRes.ok) {
     const body = await tokenRes.text()
     console.error('Instagram (FB) token exchange failed:', tokenRes.status, body)
-    return NextResponse.redirect(`${adminBase}?ig_error=token_failed`)
+    return redirect(`${adminBase}?ig_error=token_failed`)
   }
 
   // Facebook response: { access_token, token_type, expires_in }
@@ -216,7 +229,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (!igAccountId) {
-    return NextResponse.redirect(`${adminBase}?ig_error=no_instagram_account`)
+    return redirect(`${adminBase}?ig_error=no_instagram_account`)
   }
 
   const admin = createAdminClient()
@@ -241,8 +254,8 @@ export async function GET(req: NextRequest) {
 
   if (dbErr) {
     console.error('Failed to save Instagram connection:', dbErr.message)
-    return NextResponse.redirect(`${adminBase}?ig_error=db_failed`)
+    return redirect(`${adminBase}?ig_error=db_failed`)
   }
 
-  return NextResponse.redirect(`${adminBase}?ig_connected=1`)
+  return redirect(`${adminBase}?ig_connected=1`)
 }

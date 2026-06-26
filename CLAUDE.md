@@ -475,6 +475,15 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Fix: `getPortalContext()` now returns `clientName` from `clients.name`, and `src/app/(dashboard)/page.tsx` passes that value to `DashboardClient`, falling back to the email fragment only if the client name is unavailable.
 - Gotcha: No `public.users.full_name` / `display_name` column is needed. Portal-wide client display names should continue to use `clients.name` as the source of truth.
 
+## S66 OAuth Client ID Trust Fix
+
+- Issue: Instagram, TikTok, and YouTube OAuth initiation routes trusted `?client_id=` from the URL and copied it into OAuth `state`; callbacks then used that state with `createAdminClient()` to write `platform_connections`.
+- Root cause: These routes were built for admin-only UI links, but `/api/` routes bypass proxy auth by design. The routes did not independently verify the session was authorized to act on the requested client.
+- Fix: Added shared `src/lib/oauth-state.ts`. IG/TT/YT initiation routes now require a session, resolve the authorized client ID from the session, sign OAuth state with platform/client/nonce/timestamp, and set an httpOnly nonce cookie. Admins can still pass explicit `client_id`; clients always use their own `users.client_id`.
+- Fix: IG/TT/YT callback routes now require a session, verify signed state, verify nonce, re-resolve session authorization, and reject mismatched client IDs before any `platform_connections` upsert.
+- Gotcha: RLS is not a substitute here because callbacks write through `createAdminClient()`. Future `/api/auth/*` integrations must use signed state plus session authorization, never a trusted query-string client ID.
+- Fire doc: `fires/2026-06-26-oauth-client-id-trust.md`.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

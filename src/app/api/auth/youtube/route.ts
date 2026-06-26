@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  createOAuthState,
+  resolveOAuthClientForInitiation,
+  setOAuthNonceCookie,
+} from '@/lib/oauth-state'
 
 export async function GET(req: NextRequest) {
-  const clientId = req.nextUrl.searchParams.get('client_id') ?? ''
+  const auth = await resolveOAuthClientForInitiation(req.nextUrl.searchParams.get('client_id'))
+  if (!auth.ok) {
+    return NextResponse.redirect(new URL(`/login?error=${auth.error}`, req.url))
+  }
+
+  const { state, nonce } = createOAuthState('youtube', auth.context.clientId)
 
   const params = new URLSearchParams({
     client_id: process.env.YOUTUBE_CLIENT_ID!,
@@ -13,10 +23,12 @@ export async function GET(req: NextRequest) {
     ].join(' '),
     access_type: 'offline',
     prompt: 'consent',
-    state: clientId,
+    state,
   })
 
-  return NextResponse.redirect(
+  const response = NextResponse.redirect(
     `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
   )
+  setOAuthNonceCookie(response, 'youtube', nonce)
+  return response
 }
