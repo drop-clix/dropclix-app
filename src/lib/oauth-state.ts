@@ -8,6 +8,7 @@ export type OAuthPlatform = 'instagram' | 'tiktok' | 'youtube'
 type OAuthSessionContext = {
   role: 'admin' | 'client'
   clientId: string
+  origin: 'admin' | 'client'
 }
 
 type OAuthOrigin = 'admin' | 'client'
@@ -22,6 +23,7 @@ type OAuthStatePayload = {
 }
 
 const STATE_MAX_AGE_MS = 30 * 60 * 1000
+const IMPERSONATE_COOKIE = 'dropclix_impersonate_client_id'
 
 function getStateSecret() {
   const secret =
@@ -71,13 +73,25 @@ export async function resolveOAuthClientForInitiation(
   if (!profile) return { ok: false, error: 'missing_profile' }
 
   if (profile.role === 'admin') {
-    if (!explicitClientId) return { ok: false, error: 'client_id_required' }
-    return { ok: true, context: { role: 'admin', clientId: explicitClientId } }
+    if (explicitClientId) {
+      return { ok: true, context: { role: 'admin', clientId: explicitClientId, origin: 'admin' } }
+    }
+
+    const cookieStore = await cookies()
+    const impersonatedClientId = cookieStore.get(IMPERSONATE_COOKIE)?.value
+    if (impersonatedClientId) {
+      return {
+        ok: true,
+        context: { role: 'admin', clientId: impersonatedClientId, origin: 'client' },
+      }
+    }
+
+    return { ok: false, error: 'client_id_required' }
   }
 
   const sessionClientId = profile.client_id as string | null
   if (!sessionClientId) return { ok: false, error: 'missing_client_id' }
-  return { ok: true, context: { role: 'client', clientId: sessionClientId } }
+  return { ok: true, context: { role: 'client', clientId: sessionClientId, origin: 'client' } }
 }
 
 export function createOAuthState(platform: OAuthPlatform, clientId: string, origin: OAuthOrigin) {

@@ -58,3 +58,23 @@ This keeps the S66 protection intact:
 
 Business impact: this unblocks Nick's pending YouTube reconnection because he
 can replace the wrong connected channel from his own client portal session.
+
+## Follow-up Discovery — Settings Reconnect Landing
+After the Settings page shipped, Reconnect from `/settings` did not complete
+cleanly when tested from an admin-impersonated client portal session.
+
+Root cause: `/settings` correctly omitted `client_id` from the OAuth link, but
+`resolveOAuthClientForInitiation()` only supported two cases: admin with an
+explicit `client_id`, or client with `users.client_id`. An admin viewing the
+client portal through the `dropclix_impersonate_client_id` cookie is still an
+admin profile, so the shared helper returned `client_id_required` before the
+provider OAuth flow could begin.
+
+Fix: The shared OAuth initiation helper now falls back to the existing
+impersonation cookie for admin sessions when no explicit `client_id` is
+present, and signs that flow as `origin='client'` so callbacks return to
+`/settings`. Admin panel links with explicit `client_id` still return to
+`/admin`, and real client sessions remain locked to their own `users.client_id`.
+
+Related UI fix: Settings platform cards now use actual Instagram, TikTok, and
+YouTube SVG brand marks instead of text initials.

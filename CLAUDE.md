@@ -13,6 +13,7 @@ Next.js 16.2.6 + Supabase SSR + Tailwind 4. Source under `src/`. Path alias `@/*
 - **Never paste key values into CLAUDE.md or any tracked file** — describe the key by its Vercel env var name only (e.g., `YOUTUBE_API_KEY`).
 - If a key is ever accidentally committed: rotate it immediately in the provider console, remove the value from the file, rewrite git history (`git commit --amend` + `git push --force-with-lease`), and update Vercel env with the new key.
 - **DESTRUCTIVE SQL RULE**: Before writing any DELETE or UPDATE targeting client data, always: (1) Run SELECT with identical WHERE clause first. (2) Confirm row count matches expectation. (3) Verify no legitimate client data is included. (4) Never filter on `post_id` alone — always include `client_id`. A cross-client contamination incident (see `/fires/`) was caused by missing `client_id` scoping on inserts and deletes.
+- **Platform identity UI rule**: Any UI that visually identifies Instagram, TikTok, YouTube, or Meta must use the actual brand logo/SVG mark, never text initials like `IG`, `TT`, `YT`, `IN`, `TI`, or `YO` as a logo placeholder. Text labels are fine next to the logo.
 
 ## FIRES — ACTIVE INCIDENTS
 See `/fires/` folder for full incident reports.
@@ -493,6 +494,14 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Navigation: Settings was added to `SidebarShell` and default enabled-tab fallbacks. It is always visible in the sidebar for existing clients whose saved `enabled_tabs` arrays predate the Settings tab, because account/platform self-service should not be hidden by content-tab configuration.
 - Gotcha: True admins without impersonation still redirect to `/admin` through `getPortalContext()`. Admins can view `/settings` only while impersonating a client, which matches the existing dashboard support model.
 - Business unblock: Nick can now reconnect his own YouTube account from the client portal instead of needing an admin-initiated OAuth flow.
+
+## S68 Settings OAuth Redirect + Brand Logo Fix
+
+- Issue: Clicking Reconnect from `/settings` while admin-impersonating a client could land on the wrong page instead of completing the OAuth flow back to Settings. Root cause: `resolveOAuthClientForInitiation()` treated every admin session without an explicit `client_id` query param as `client_id_required`. The new Settings page intentionally omits `client_id`, so admin-impersonated Settings flows were rejected before reaching Instagram/TikTok/YouTube OAuth.
+- Fix: `resolveOAuthClientForInitiation()` now checks the existing `dropclix_impersonate_client_id` cookie for admin sessions when no explicit `client_id` is supplied. Admin panel links with explicit `client_id` still create `origin='admin'`; admin-impersonated Settings links create `origin='client'`; real client sessions still use only their own `users.client_id`.
+- Security: This preserves the S66 trust fix. Query-string `client_id` remains admin-only, client sessions cannot choose another client, and callback writes still require signed state + nonce + session authorization.
+- UI: `SettingsClient` no longer renders platform initials (`IN`, `TI`, `YO`). It now uses inline Instagram, TikTok, and YouTube SVG brand marks matching the existing pipeline link-button pattern. Admin connection sections did not have the same initial-placeholder logo pattern.
+- Standing rule: all future platform-identification UI must use actual brand logos/SVG marks rather than text initials as the visual icon.
 
 ## S45 Bug Fix Notes
 

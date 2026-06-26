@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL(`/login?error=${auth.error}`, req.url))
   }
 
-  const { state, nonce } = createOAuthState('youtube', auth.context.clientId, auth.context.role)
+  const { state, nonce } = createOAuthState('youtube', auth.context.clientId, auth.context.origin)
 
   const params = new URLSearchParams({
     client_id: process.env.YOUTUBE_CLIENT_ID!,
