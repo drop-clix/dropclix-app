@@ -503,6 +503,13 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - UI: `SettingsClient` no longer renders platform initials (`IN`, `TI`, `YO`). It now uses inline Instagram, TikTok, and YouTube SVG brand marks matching the existing pipeline link-button pattern. Admin connection sections did not have the same initial-placeholder logo pattern.
 - Standing rule: all future platform-identification UI must use actual brand logos/SVG marks rather than text initials as the visual icon.
 
+## S69 Meta Ads OAuth Signed-State Fix
+
+- Issue: Meta Ads OAuth was built after Instagram/TikTok/YouTube but still used raw `state=client_id`. The callback trusted that state and wrote `platform_connections` with `createAdminClient()`, leaving Meta Ads outside the S66 signed-state protection.
+- Fix: `src/lib/oauth-state.ts` now includes `meta_ads` as a supported OAuth platform. `/api/auth/meta-ads` resolves the authorized client from the current session, signs state with platform/client/origin/nonce/timestamp, and sets an httpOnly nonce cookie. `/api/auth/meta-ads/callback` verifies signed state + nonce + session authorization before token exchange or any database write.
+- Preserved behavior: Admin Meta Ads Connect/Reconnect still accepts explicit `client_id` from the admin panel and redirects back to `/admin`. No client-facing Meta Ads settings UI or ad-account selector was added in this session.
+- Known next build: Meta Ads still auto-selects the first active account returned by Graph `/me/adaccounts`. Day 1 returned both `act_649411569080714` ("Chase Evans") and `act_1196633849221825` ("Day 1 | D 1"), so a future account-selector step is needed before reconnecting to choose the intended account.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

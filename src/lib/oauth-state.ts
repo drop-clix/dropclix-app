@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
-export type OAuthPlatform = 'instagram' | 'tiktok' | 'youtube'
+export type OAuthPlatform = 'instagram' | 'tiktok' | 'youtube' | 'meta_ads'
 
 type OAuthSessionContext = {
   role: 'admin' | 'client'

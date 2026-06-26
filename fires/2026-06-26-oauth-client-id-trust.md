@@ -78,3 +78,20 @@ present, and signs that flow as `origin='client'` so callbacks return to
 
 Related UI fix: Settings platform cards now use actual Instagram, TikTok, and
 YouTube SVG brand marks instead of text initials.
+
+## Follow-up Fix — Meta Ads Signed State
+Audit found Meta Ads still used the old raw `state=client_id` pattern after
+Instagram, TikTok, and YouTube had been moved to signed state. The Meta Ads
+initiation route copied `?client_id=` directly into OAuth state, and the
+callback trusted that value before writing `platform_connections` with
+`createAdminClient()`.
+
+Fix: Meta Ads now uses the same shared `src/lib/oauth-state.ts` flow as the
+other OAuth providers. The shared platform type includes `meta_ads`; the
+initiation route requires a session, resolves the authorized client, signs
+state with an httpOnly nonce cookie, and the callback verifies signed state,
+nonce, and session authorization before any token exchange or database write.
+
+Preserved behavior: admin-origin Meta Ads Connect/Reconnect still works with
+an explicit `client_id` and redirects back to `/admin`. No client-facing Meta
+Ads settings UI or account selector was added in this fix.

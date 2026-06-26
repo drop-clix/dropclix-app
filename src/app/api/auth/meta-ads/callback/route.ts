@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { clearOAuthNonceCookie, validateOAuthCallbackState } from '@/lib/oauth-state'
 
 type AdAccount = {
   id?: string
@@ -29,12 +30,28 @@ function sanitizeForLog(value: unknown): unknown {
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code')
-  const clientId = req.nextUrl.searchParams.get('state')
+  const state = req.nextUrl.searchParams.get('state')
   const error = req.nextUrl.searchParams.get('error')
   const adminBase = new URL('/admin', req.url).toString()
+  const redirect = (url: string) => {
+    const response = NextResponse.redirect(url)
+    clearOAuthNonceCookie(response, 'meta_ads')
+    return response
+  }
+
+  const stateCheck = await validateOAuthCallbackState('meta_ads', state)
+  if (!stateCheck.ok) {
+    console.warn('[meta-ads-oauth] rejected callback state:', stateCheck.error)
+    return redirect(`${adminBase}?meta_ads_error=unauthorized`)
+  }
+  const clientId = stateCheck.context.clientId
+  const callbackBase = new URL(
+    stateCheck.context.origin === 'client' ? '/settings' : '/admin',
+    req.url,
+  ).toString()
 
   if (error || !code) {
-    return NextResponse.redirect(`${adminBase}?meta_ads_error=access_denied`)
+    return redirect(`${callbackBase}?meta_ads_error=access_denied`)
   }
 
   const tokenRes = await fetch('https://graph.facebook.com/v19.0/oauth/access_token', {
@@ -59,13 +76,13 @@ export async function GET(req: NextRequest) {
   })
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(`${adminBase}?meta_ads_error=token_failed`)
+    return redirect(`${callbackBase}?meta_ads_error=token_failed`)
   }
 
   const tokenData = tokenBody as { access_token?: string; expires_in?: number }
   const shortToken = tokenData.access_token
   if (!shortToken) {
-    return NextResponse.redirect(`${adminBase}?meta_ads_error=token_failed`)
+    return redirect(`${callbackBase}?meta_ads_error=token_failed`)
   }
 
   let accessToken = shortToken
@@ -112,13 +129,13 @@ export async function GET(req: NextRequest) {
   })
 
   if (!accountsRes.ok) {
-    return NextResponse.redirect(`${adminBase}?meta_ads_error=no_ad_account`)
+    return redirect(`${callbackBase}?meta_ads_error=no_ad_account`)
   }
 
   const accounts = (accountsBody as { data?: AdAccount[] })?.data ?? []
   const activeAccount = accounts.find(account => account.account_status === 1 && account.id)
   if (!activeAccount?.id) {
-    return NextResponse.redirect(`${adminBase}?meta_ads_error=no_ad_account`)
+    return redirect(`${callbackBase}?meta_ads_error=no_ad_account`)
   }
 
   const now = new Date().toISOString()
@@ -142,8 +159,8 @@ export async function GET(req: NextRequest) {
 
   if (dbErr) {
     console.error('[meta-ads-oauth] failed to save connection:', dbErr.message)
-    return NextResponse.redirect(`${adminBase}?meta_ads_error=db_failed`)
+    return redirect(`${callbackBase}?meta_ads_error=db_failed`)
   }
 
-  return NextResponse.redirect(`${adminBase}?meta_ads_connected=1`)
+  return redirect(`${callbackBase}?meta_ads_connected=1`)
 }
