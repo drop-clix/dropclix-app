@@ -4,6 +4,7 @@ import { useState, useTransition, useActionState, useEffect, useRef } from 'reac
 import { impersonateClient, createNewClient, resendClientInvite, updateClientInfo, adminImportPosts, adminCheckExistingPostIds, deleteClient } from './actions'
 import type { NewPostData } from '@/app/(dashboard)/studio/actions'
 import { erToDecision } from '@/lib/decision'
+import { AdminConnectionsPopup, type AdminConnectionsBundle } from './AdminConnectionsPopup'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -703,11 +704,15 @@ function DeleteConfirmModal({ client, onClose, onDeleted }: { client: ClientRow;
 
 function ClientCard({
   client,
+  connections,
+  tiktokConfigured,
   onEdit,
   onImport,
   onDelete,
 }: {
   client: ClientRow
+  connections: AdminConnectionsBundle
+  tiktokConfigured: boolean
   onEdit: () => void
   onImport: () => void
   onDelete: () => void
@@ -718,6 +723,7 @@ function ClientCard({
   const [notes, setNotes] = useState('')
   const [notesShared, setNotesShared] = useState(false)
   const [notesLoaded, setNotesLoaded] = useState(false)
+  const [connectionsOpen, setConnectionsOpen] = useState(false)
 
   useEffect(() => {
     if (notesOpen && !notesLoaded) {
@@ -807,6 +813,7 @@ function ClientCard({
           <button onClick={onImport} style={btnGhost}>Import</button>
           <ResendButton email={client.email} />
           <button onClick={onEdit} style={btnGhost}>Edit</button>
+          <button onClick={() => setConnectionsOpen(true)} style={btnGhost}>Connections</button>
           <button onClick={onDelete} style={btnRed}>Delete</button>
           <button onClick={() => setNotesOpen(o => !o)} style={{
             ...btnGhost,
@@ -860,25 +867,69 @@ function ClientCard({
           />
         </div>
       )}
+
+      {connectionsOpen && (
+        <AdminConnectionsPopup
+          client={client}
+          connections={connections}
+          tiktokConfigured={tiktokConfigured}
+          onClose={() => setConnectionsOpen(false)}
+        />
+      )}
     </div>
   )
 }
 
 // ── Main: AdminClientsSection ─────────────────────────────────────────────────
 
-export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
+export function AdminClientsSection({
+  clients,
+  connectionsByClient,
+  tiktokConfigured,
+}: {
+  clients: ClientRow[]
+  connectionsByClient: Record<string, AdminConnectionsBundle>
+  tiktokConfigured: boolean
+}) {
   const [showCreate,   setShowCreate  ] = useState(false)
   const [editClient,   setEditClient  ] = useState<ClientRow | null>(null)
   const [importClient, setImportClient] = useState<ClientRow | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ClientRow | null>(null)
   const [deletedIds,   setDeletedIds  ] = useState<Set<string>>(new Set())
   const [successMsg,   setSuccessMsg  ] = useState<string | null>(null)
+  const [noticeKind,   setNoticeKind  ] = useState<'success' | 'error'>('success')
   const [,             startTransition] = useTransition()
 
   const visibleClients = clients.filter(c => !deletedIds.has(c.id))
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const notices: [string, string, string][] = [
+      ['yt_connected', 'yt_error', 'YouTube'],
+      ['ig_connected', 'ig_error', 'Instagram'],
+      ['tt_connected', 'tt_error', 'TikTok'],
+      ['meta_ads_connected', 'meta_ads_error', 'Meta Ads'],
+    ]
+    for (const [connectedParam, errorParam, label] of notices) {
+      if (params.get(connectedParam) === '1') {
+        setNoticeKind('success')
+        setSuccessMsg(`${label} connected successfully.`)
+        setTimeout(() => setSuccessMsg(null), 5000)
+        return
+      }
+      const error = params.get(errorParam)
+      if (error) {
+        setNoticeKind('error')
+        setSuccessMsg(`${label} connection failed: ${error.replaceAll('_', ' ')}`)
+        setTimeout(() => setSuccessMsg(null), 5000)
+        return
+      }
+    }
+  }, [])
+
   function handleCreateSuccess(name: string) {
     setShowCreate(false)
+    setNoticeKind('success')
     setSuccessMsg(`Client "${name}" created.`)
     setTimeout(() => setSuccessMsg(null), 5000)
   }
@@ -886,6 +937,7 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
   function handleDeleted(clientId: string, clientName: string) {
     setDeletedIds(prev => new Set([...prev, clientId]))
     setDeleteTarget(null)
+    setNoticeKind('success')
     setSuccessMsg(`Client "${clientName}" deleted.`)
     setTimeout(() => setSuccessMsg(null), 5000)
   }
@@ -911,7 +963,15 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
 
       {/* Success banner */}
       {successMsg && (
-        <div style={{ padding: '12px 16px', marginBottom: 16, background: 'rgba(57,255,136,.06)', border: '1px solid rgba(57,255,136,.2)', color: '#39ff88', fontSize: 11, fontWeight: 300 }}>
+        <div style={{
+          padding: '12px 16px',
+          marginBottom: 16,
+          background: noticeKind === 'error' ? 'rgba(255,59,95,.07)' : 'rgba(57,255,136,.06)',
+          border: `1px solid ${noticeKind === 'error' ? 'rgba(255,59,95,.22)' : 'rgba(57,255,136,.2)'}`,
+          color: noticeKind === 'error' ? '#ff3b5f' : '#39ff88',
+          fontSize: 11,
+          fontWeight: 300,
+        }}>
           {successMsg}
         </div>
       )}
@@ -928,6 +988,8 @@ export function AdminClientsSection({ clients }: { clients: ClientRow[] }) {
             <ClientCard
               key={client.id}
               client={client}
+              connections={connectionsByClient[client.id] ?? { youtube: null, instagram: null, tiktok: null, metaAds: null }}
+              tiktokConfigured={tiktokConfigured}
               onEdit={() => setEditClient(client)}
               onImport={() => setImportClient(client)}
               onDelete={() => setDeleteTarget(client)}

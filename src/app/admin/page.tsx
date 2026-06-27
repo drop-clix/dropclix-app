@@ -1,11 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { SignOutButton } from '@/components/portal/SignOutButton'
-import { AdminYouTubeSection } from './AdminYouTubeSection'
-import { AdminInstagramSection } from './AdminInstagramSection'
-import { AdminTikTokSection } from './AdminTikTokSection'
-import { AdminMetaAdsSection } from './AdminMetaAdsSection'
 import { AdminClientsSection, type ClientRow } from './AdminClientsSection'
+import type { AdminConnectionsBundle } from './AdminConnectionsPopup'
 
 export default async function AdminPage() {
   // Auth check — regular client is fine here (only reading the session).
@@ -131,6 +128,34 @@ export default async function AdminPage() {
     tokenExpiresAt: c.token_expires_at,
   }))
 
+  const emptyConnections = (): AdminConnectionsBundle => ({
+    youtube: null,
+    instagram: null,
+    tiktok: null,
+    metaAds: null,
+  })
+
+  const connectionsByClient: Record<string, AdminConnectionsBundle> = Object.fromEntries(
+    clients.map(client => [client.id, emptyConnections()]),
+  )
+
+  for (const conn of ytSectionConnections) {
+    connectionsByClient[conn.clientId] ??= emptyConnections()
+    connectionsByClient[conn.clientId].youtube = conn
+  }
+  for (const conn of igSectionConnections) {
+    connectionsByClient[conn.clientId] ??= emptyConnections()
+    connectionsByClient[conn.clientId].instagram = conn
+  }
+  for (const conn of ttSectionConnections) {
+    connectionsByClient[conn.clientId] ??= emptyConnections()
+    connectionsByClient[conn.clientId].tiktok = conn
+  }
+  for (const conn of metaAdsSectionConnections) {
+    connectionsByClient[conn.clientId] ??= emptyConnections()
+    connectionsByClient[conn.clientId].metaAds = conn
+  }
+
   return (
     <div className="min-h-screen" style={{ background: '#060606', padding: '48px 40px' }}>
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
@@ -149,37 +174,11 @@ export default async function AdminPage() {
           <SignOutButton />
         </div>
 
-        <AdminClientsSection clients={clients} />
-
-        {clients.length > 0 && (
-          <>
-            <div style={{ marginTop: 56 }}>
-              <AdminYouTubeSection
-                clients={clients.map(c => ({ id: c.id, name: c.name }))}
-                connections={ytSectionConnections}
-              />
-            </div>
-            <div style={{ marginTop: 40 }}>
-              <AdminInstagramSection
-                clients={clients.map(c => ({ id: c.id, name: c.name }))}
-                connections={igSectionConnections}
-              />
-            </div>
-            <div style={{ marginTop: 40 }}>
-              <AdminTikTokSection
-                clients={clients.map(c => ({ id: c.id, name: c.name }))}
-                connections={ttSectionConnections}
-                tiktokConfigured={!!(process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET)}
-              />
-            </div>
-            <div style={{ marginTop: 40 }}>
-              <AdminMetaAdsSection
-                clients={clients.map(c => ({ id: c.id, name: c.name }))}
-                connections={metaAdsSectionConnections}
-              />
-            </div>
-          </>
-        )}
+        <AdminClientsSection
+          clients={clients}
+          connectionsByClient={connectionsByClient}
+          tiktokConfigured={!!(process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET)}
+        />
 
       </div>
     </div>

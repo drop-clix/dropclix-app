@@ -519,6 +519,16 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Client Settings: `/settings` now includes a Meta Ads card with the Meta logo, Connect/Reconnect only, and no client-facing Sync Now. Admin Sync Now remains the only manual Meta Ads sync surface.
 - Gotcha: No Supabase migration is required for the selector; the pending state is intentionally cookie-backed to avoid storing temporary OAuth tokens in a table and to keep the flow self-expiring. If account lists grow large enough to risk cookie size limits, move the same payload to a server-side pending table before adding more asset selectors.
 
+## S71 Admin Connections Popup Notes
+
+- UI consolidation: Admin no longer renders four standalone connection sections below the client list. Each client card now has a `Connections` button that opens `AdminConnectionsPopup`, showing Instagram, TikTok, YouTube, and Meta Ads rows in one per-client surface.
+- Data flow: `admin/page.tsx` still fetches all four platform connection sets in the existing single `Promise.all` pass. It now groups them into `connectionsByClient` and passes that map to `AdminClientsSection`; no per-client refetching was added.
+- Behavior preserved: Sync Now still posts `{ client_id: clientId }` to the existing platform routes. Reconnect/Connect still hit the existing OAuth initiation URLs with `?client_id=...`. Instagram/TikTok/Meta Ads keep Disconnect; YouTube still has no Disconnect action.
+- UI rule: Platform action slots are rendered in a consistent order across all four rows: Connect, Sync Now, Reconnect, Disconnect. Unsupported or inactive actions are hidden in-place rather than changing the row order, so the popup scans uniformly.
+- Shared logo cleanup: Instagram, TikTok, YouTube, and Meta logos now live in `src/components/portal/PlatformLogos.tsx`. `SettingsClient` and the admin popup use the shared logo components. Keep future platform identity UI on these actual SVG marks, never text initials.
+- OAuth redirect notices: Admin-level success/error notices for `yt_*`, `ig_*`, `tt_*`, and `meta_ads_*` URL params are handled in `AdminClientsSection`, since the old standalone sections are no longer visible.
+- Gotcha: This was layout/UI only. Do not infer any OAuth, sync, token refresh, or signed-state logic change from this session.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.
