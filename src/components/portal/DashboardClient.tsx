@@ -7,9 +7,17 @@ import { usePortalFilters, filterByPlatform, filterByScope } from '@/hooks/usePo
 import { EmptyState } from '@/components/portal/EmptyState'
 import { OnboardingBanner } from '@/components/portal/OnboardingBanner'
 import { AISuggestionsModal } from '@/components/portal/AISuggestionsModal'
-import { submitApproval, getClientNotes, saveClientNotes } from '@/app/(dashboard)/edit-actions'
+import {
+  submitApproval,
+  getClientNotes,
+  saveClientNotes,
+  linkUnlinkedDiscovery,
+  createPipelineItemFromDiscovery,
+  ignoreUnlinkedDiscovery,
+} from '@/app/(dashboard)/edit-actions'
 import { RichTextEditor } from '@/components/portal/RichTextEditor'
 import { useToast } from '@/components/portal/Toast'
+import { PlatformMark, type PlatformLogoKey } from '@/components/portal/PlatformLogos'
 import type { AISuggestion } from '@/components/portal/AISuggestionsModal'
 import type { PlatformFilter } from '@/hooks/usePortalFilters'
 
@@ -49,6 +57,25 @@ export type RawDashPipeline = {
   drive_file_id: string | null
   approval_comment: string | null
   pillar: string | null
+  thumbnail_url: string | null
+}
+
+export type RawUnlinkedDiscovery = {
+  id: string
+  client_id: string
+  platform: 'ig' | 'tt' | 'yt'
+  platform_video_id: string
+  permalink: string | null
+  title: string | null
+  thumbnail_url: string | null
+  published_at: string | null
+  views: number | null
+  likes: number | null
+  comments: number | null
+  shares: number | null
+  saves: number | null
+  status: string
+  last_seen_at: string | null
 }
 
 export type RawDashCalendar = {
@@ -97,6 +124,8 @@ type Suggestion = AISuggestion
 const EMPTY: MetricSet = { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, followers: 0, watch_pct: 0 }
 const TIER_COLORS = { a: '#39ff88', b: '#4cc9ff', c: '#fbbf24', d: '#ff3b5f', f: '#ff3b5f' }
 const PLATFORM_COLORS: Record<string, string> = { ig: '#c9a96e', yt: '#4cc9ff', tt: '#2dd4bf', lf: '#4cc9ff' }
+const PLATFORM_LABELS: Record<'ig' | 'tt' | 'yt', string> = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube' }
+const PLATFORM_LOGO_KEYS: Record<'ig' | 'tt' | 'yt', PlatformLogoKey> = { ig: 'instagram', tt: 'tiktok', yt: 'youtube' }
 const STATUS_COLORS: Record<string, string> = {
   SCRIPTED: '#c9a96e',
   PLANNED: '#4cc9ff',
@@ -191,6 +220,25 @@ function topStats(post: PostStat, averageER: number): string[] {
   if (post.er >= averageER) stats.push('Above avg ER')
   if (post.metric.followers > 0) stats.push('Follower gain')
   return stats.slice(0, 3)
+}
+
+function displayDate(value: string | null): string {
+  if (!value) return 'No publish date'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function pipelineMatches(item: RawDashPipeline, query: string): boolean {
+  const haystack = [
+    item.title,
+    item.post_id,
+    item.platform?.join(' '),
+    item.posted_at,
+    item.scheduled_date,
+    item.pillar,
+  ].filter(Boolean).join(' ').toLowerCase()
+  return haystack.includes(query)
 }
 
 function fallbackSuggestions(posts: PostStat[], mode: string): Suggestion[] {
@@ -320,6 +368,8 @@ export function DashboardClient({
   rawCalendar,
   rawGoals,
   rawCampaigns = [],
+  rawUnlinkedDiscoveries = [],
+  isAdmin = false,
   clientName,
 }: {
   rawPosts: RawDashPost[]
@@ -327,6 +377,8 @@ export function DashboardClient({
   rawCalendar: RawDashCalendar[]
   rawGoals: RawDashGoal[]
   rawCampaigns?: RawDashCampaign[]
+  rawUnlinkedDiscoveries?: RawUnlinkedDiscovery[]
+  isAdmin?: boolean
   clientName: string
 }) {
   const router = useRouter()
@@ -341,12 +393,88 @@ export function DashboardClient({
   const [loadingAi, setLoadingAi] = useState(false)
   const [approvalComment, setApprovalComment] = useState('')
   const [approvalItemId, setApprovalItemId] = useState<string | null>(null)
+  const [discoveries, setDiscoveries] = useState<RawUnlinkedDiscovery[]>(rawUnlinkedDiscoveries)
+  const [selectedDiscoveryId, setSelectedDiscoveryId] = useState<string | null>(null)
+  const [discoverySearch, setDiscoverySearch] = useState('')
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null)
+  const [discoBusy, setDiscoBusy] = useState<null | 'link' | 'create' | 'ignore'>(null)
   const { toast } = useToast()
+
+  useEffect(() => {
+    setDiscoveries(rawUnlinkedDiscoveries)
+  }, [rawUnlinkedDiscoveries])
 
   const pendingApprovals = useMemo(
     () => rawPipeline.filter(i => i.status === 'PENDING_APPROVAL'),
     [rawPipeline],
   )
+
+  const selectedDiscovery = useMemo(
+    () => discoveries.find(item => item.id === selectedDiscoveryId) ?? null,
+    [discoveries, selectedDiscoveryId],
+  )
+
+  const discoveryMatches = useMemo(() => {
+    if (!selectedDiscovery) return []
+    const query = discoverySearch.trim().toLowerCase()
+    const samePlatform = rawPipeline.filter(item => {
+      if (selectedDiscovery.platform === 'yt') return item.platform.includes('yt') || item.platform.includes('lf')
+      return item.platform.includes(selectedDiscovery.platform)
+    })
+    const source = query ? rawPipeline.filter(item => pipelineMatches(item, query)) : samePlatform
+    return source.slice(0, 8)
+  }, [rawPipeline, selectedDiscovery, discoverySearch])
+
+  function closeDiscoveryModal() {
+    setSelectedDiscoveryId(null)
+    setDiscoverySearch('')
+    setSelectedPipelineId(null)
+    setDiscoBusy(null)
+  }
+
+  async function handleLinkDiscovery() {
+    if (!selectedDiscovery || !selectedPipelineId) return
+    setDiscoBusy('link')
+    const result = await linkUnlinkedDiscovery(selectedDiscovery.id, selectedPipelineId)
+    setDiscoBusy(null)
+    if (result.error) {
+      toast(result.error, 'error')
+      return
+    }
+    setDiscoveries(prev => prev.filter(item => item.id !== selectedDiscovery.id))
+    toast('Video linked and syncing now', 'success')
+    closeDiscoveryModal()
+    router.refresh()
+  }
+
+  async function handleCreateFromDiscovery() {
+    if (!selectedDiscovery) return
+    setDiscoBusy('create')
+    const result = await createPipelineItemFromDiscovery(selectedDiscovery.id)
+    setDiscoBusy(null)
+    if (result.error) {
+      toast(result.error, 'error')
+      return
+    }
+    setDiscoveries(prev => prev.filter(item => item.id !== selectedDiscovery.id))
+    toast('Pipeline item created and syncing now', 'success')
+    closeDiscoveryModal()
+    router.refresh()
+  }
+
+  async function handleIgnoreDiscovery() {
+    if (!selectedDiscovery) return
+    setDiscoBusy('ignore')
+    const result = await ignoreUnlinkedDiscovery(selectedDiscovery.id)
+    setDiscoBusy(null)
+    if (result.error) {
+      toast(result.error, 'error')
+      return
+    }
+    setDiscoveries(prev => prev.filter(item => item.id !== selectedDiscovery.id))
+    toast('Discovery ignored', 'success')
+    closeDiscoveryModal()
+  }
 
   async function handleApproval(itemId: string, action: 'approve' | 'request_changes') {
     const { error } = await submitApproval(itemId, action, action === 'request_changes' ? approvalComment : undefined)
@@ -516,7 +644,7 @@ export function DashboardClient({
 
   const selectedPost = selectedPostId ? postById.get(selectedPostId) ?? null : null
 
-  if (rawPosts.length === 0) {
+  if (rawPosts.length === 0 && !(isAdmin && discoveries.length > 0)) {
     return (
       <div className="p-10">
         <EmptyState
@@ -685,6 +813,66 @@ export function DashboardClient({
                 )}
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {isAdmin && discoveries.length > 0 && (
+        <section className="mb-8">
+          <p className="text-[9px] font-medium tracking-[.24em] uppercase mb-4 flex items-center gap-3" style={{ color: '#c9a96e' }}>
+            <span style={{ width: 16, height: 1, background: '#c9a96e' }} />
+            Unlinked Videos ({discoveries.length})
+          </p>
+          <div className="flex flex-col gap-3">
+            {discoveries.slice(0, 6).map(item => {
+              const color = PLATFORM_COLORS[item.platform] ?? '#c9a96e'
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDiscoveryId(item.id)
+                    setDiscoverySearch('')
+                    setSelectedPipelineId(null)
+                  }}
+                  style={{
+                    background: '#0a0a0a',
+                    border: `1px solid ${color}33`,
+                    borderLeft: `3px solid ${color}`,
+                    borderRadius: 5,
+                    padding: '14px 18px',
+                    display: 'grid',
+                    gridTemplateColumns: '44px minmax(0,1fr) auto',
+                    gap: 14,
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  {item.thumbnail_url ? (
+                    <img src={item.thumbnail_url} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 5, border: '1px solid #1e1e1e' }} />
+                  ) : (
+                    <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={44} />
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={24} />
+                      <span className="text-[8px] font-medium tracking-[.14em] uppercase" style={{ color }}>{PLATFORM_LABELS[item.platform]}</span>
+                      <span className="text-[9px]" style={{ color: '#555', fontFamily: 'monospace' }}>{item.platform_video_id}</span>
+                    </div>
+                    <p className="text-[13px] font-light overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                      {item.title ?? `${PLATFORM_LABELS[item.platform]} video`}
+                    </p>
+                    <p className="text-[10px] mt-1" style={{ color: '#666' }}>{displayDate(item.published_at)}</p>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-4 text-[10px]" style={{ color: '#555' }}>
+                    <span>{fmt(item.views ?? 0)} views</span>
+                    <span>{fmt(item.likes ?? 0)} likes</span>
+                    <span>{fmt(item.comments ?? 0)} comments</span>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </section>
       )}
@@ -926,6 +1114,146 @@ export function DashboardClient({
                 {topStats(selectedPost, avgER).map(stat => (
                   <span key={stat} className="text-[9px] px-2 py-1" style={{ color: '#c9a96e', background: 'rgba(201,169,110,.08)', border: '1px solid rgba(201,169,110,.25)', borderRadius: 4 }}>{stat}</span>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedDiscovery && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.82)', backdropFilter: 'blur(8px)', zIndex: 950, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={e => { if (e.currentTarget === e.target) closeDiscoveryModal() }}
+        >
+          <div style={{ width: 720, maxWidth: '100%', maxHeight: '92vh', overflowY: 'auto', background: '#070707', border: '1px solid #242424', borderTop: `2px solid ${PLATFORM_COLORS[selectedDiscovery.platform] ?? '#c9a96e'}`, borderRadius: 8, boxShadow: '0 24px 90px rgba(0,0,0,.75)' }}>
+            <div style={{ padding: 24, borderBottom: '1px solid #171717' }}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4" style={{ minWidth: 0 }}>
+                  {selectedDiscovery.thumbnail_url ? (
+                    <img src={selectedDiscovery.thumbnail_url} alt="" style={{ width: 92, height: 92, objectFit: 'cover', borderRadius: 6, border: '1px solid #1e1e1e', flexShrink: 0 }} />
+                  ) : (
+                    <PlatformMark platform={PLATFORM_LOGO_KEYS[selectedDiscovery.platform]} color={PLATFORM_COLORS[selectedDiscovery.platform] ?? '#c9a96e'} size={92} />
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <PlatformMark platform={PLATFORM_LOGO_KEYS[selectedDiscovery.platform]} color={PLATFORM_COLORS[selectedDiscovery.platform] ?? '#c9a96e'} size={28} />
+                      <span className="text-[9px] font-medium tracking-[.18em] uppercase" style={{ color: PLATFORM_COLORS[selectedDiscovery.platform] ?? '#c9a96e' }}>
+                        {PLATFORM_LABELS[selectedDiscovery.platform]}
+                      </span>
+                      <span className="text-[10px]" style={{ color: '#555', fontFamily: 'monospace' }}>{selectedDiscovery.platform_video_id}</span>
+                    </div>
+                    <h2 className="font-jakarta font-light text-[22px]" style={{ color: '#f2ede4', lineHeight: 1.2 }}>
+                      {selectedDiscovery.title ?? `${PLATFORM_LABELS[selectedDiscovery.platform]} video`}
+                    </h2>
+                    <p className="text-[11px] mt-2" style={{ color: '#666' }}>{displayDate(selectedDiscovery.published_at)}</p>
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {[
+                        ['Views', fmt(selectedDiscovery.views ?? 0)],
+                        ['Likes', fmt(selectedDiscovery.likes ?? 0)],
+                        ['Comments', fmt(selectedDiscovery.comments ?? 0)],
+                        ['Shares', fmt(selectedDiscovery.shares ?? 0)],
+                      ].map(([label, value]) => (
+                        <span key={label} className="text-[9px]" style={{ color: '#f2ede4', border: '1px solid #1e1e1e', borderRadius: 4, padding: '5px 8px', background: '#0a0a0a' }}>
+                          <span style={{ color: '#666' }}>{label}: </span>{value}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <button type="button" onClick={closeDiscoveryModal} style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+              </div>
+            </div>
+
+            <div style={{ padding: 24 }}>
+              <label className="text-[9px] font-medium tracking-[.18em] uppercase mb-2 block" style={{ color: '#555' }}>Find Pipeline Item</label>
+              <input
+                value={discoverySearch}
+                onChange={e => {
+                  setDiscoverySearch(e.target.value)
+                  setSelectedPipelineId(null)
+                }}
+                placeholder="Search by title, ID, date, or pillar..."
+                style={{
+                  width: '100%',
+                  background: '#0a0a0a',
+                  border: '1px solid #1f1f1f',
+                  borderRadius: 5,
+                  padding: '11px 12px',
+                  color: '#f2ede4',
+                  fontSize: 12,
+                  outline: 'none',
+                }}
+              />
+
+              <div className="mt-4" style={{ display: 'grid', gap: 8 }}>
+                {discoveryMatches.length === 0 ? (
+                  <div style={{ border: '1px solid #171717', borderRadius: 5, padding: 14 }}>
+                    <p className="text-[11px]" style={{ color: '#666' }}>No matching pipeline items.</p>
+                  </div>
+                ) : discoveryMatches.map(item => {
+                  const selected = item.id === selectedPipelineId
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSelectedPipelineId(item.id)}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '42px minmax(0,1fr) auto',
+                        gap: 12,
+                        alignItems: 'center',
+                        textAlign: 'left',
+                        background: selected ? 'rgba(201,169,110,.10)' : '#0a0a0a',
+                        border: `1px solid ${selected ? 'rgba(201,169,110,.55)' : '#1a1a1a'}`,
+                        borderRadius: 5,
+                        padding: 10,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {item.thumbnail_url ? (
+                        <img src={item.thumbnail_url} alt="" style={{ width: 42, height: 42, objectFit: 'cover', borderRadius: 4, border: '1px solid #1e1e1e' }} />
+                      ) : (
+                        <div style={{ width: 42, height: 42, borderRadius: 4, border: '1px solid #1e1e1e', background: '#111' }} />
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <p className="text-[12px] overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{item.title}</p>
+                        <p className="text-[10px] mt-1" style={{ color: '#555', fontFamily: 'monospace' }}>{item.post_id}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {item.platform.slice(0, 3).map(pl => (
+                          <span key={pl} className="text-[8px] tracking-[.08em] uppercase" style={{ color: PLATFORM_COLORS[pl] ?? '#555' }}>{pl}</span>
+                        ))}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="mt-6 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleIgnoreDiscovery}
+                  disabled={discoBusy !== null}
+                  style={{ padding: '9px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#ff3b5f', background: 'rgba(255,59,95,.08)', border: '1px solid rgba(255,59,95,.32)', borderRadius: 4, cursor: discoBusy ? 'wait' : 'pointer', opacity: discoBusy ? 0.65 : 1 }}
+                >
+                  {discoBusy === 'ignore' ? 'Ignoring...' : 'Ignore'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateFromDiscovery}
+                  disabled={discoBusy !== null}
+                  style={{ padding: '9px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#4cc9ff', background: 'rgba(76,201,255,.08)', border: '1px solid rgba(76,201,255,.32)', borderRadius: 4, cursor: discoBusy ? 'wait' : 'pointer', opacity: discoBusy ? 0.65 : 1 }}
+                >
+                  {discoBusy === 'create' ? 'Creating...' : 'Create New Pipeline Item'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLinkDiscovery}
+                  disabled={!selectedPipelineId || discoBusy !== null}
+                  style={{ padding: '9px 18px', fontSize: 9, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#060606', background: '#c9a96e', border: '1px solid #c9a96e', borderRadius: 4, cursor: !selectedPipelineId || discoBusy ? 'default' : 'pointer', opacity: !selectedPipelineId || discoBusy ? 0.45 : 1 }}
+                >
+                  {discoBusy === 'link' ? 'Linking...' : 'Link Selected Item'}
+                </button>
               </div>
             </div>
           </div>

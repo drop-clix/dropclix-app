@@ -34,6 +34,7 @@ alter table ad_creatives    enable row level security;
 alter table ad_audiences    enable row level security;
 alter table goals           enable row level security;
 alter table notifications   enable row level security;
+alter table unlinked_video_discoveries enable row level security;
 alter table ad_results      enable row level security;
 alter table calendar_events enable row level security;
 
@@ -176,6 +177,14 @@ create policy "client: read own notifications"
     user_id = auth.uid()
     or client_id = get_my_client_id()
   );
+
+-- ============================================================
+-- UNLINKED VIDEO DISCOVERIES
+-- ============================================================
+create policy "admin: full access to unlinked_video_discoveries"
+  on unlinked_video_discoveries for all
+  using (get_my_role() = 'admin')
+  with check (get_my_role() = 'admin');
 
 -- ============================================================
 -- AD RESULTS

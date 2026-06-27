@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchYouTubePublicVideo, type YouTubePublicVideo } from '@/lib/youtube-public'
 import { fillPublishDatesIfMissing } from '@/lib/publish-date'
+import { recordUnlinkedVideoDiscovery } from '@/lib/unlinked-discoveries'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 type MetricWindow = 'live' | 'w24' | 'w3' | 'w7' | 'eom'
@@ -614,6 +615,121 @@ export async function syncSingleYTVideo(
   }
 
   return { synced: 1 }
+}
+
+export async function discoverYouTubeUnlinkedUploads(
+  admin: SupabaseAdmin,
+  clientId: string,
+  accessToken: string,
+): Promise<{ discovered: number; error?: string }> {
+  const channelRes = await fetch(
+    'https://www.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true',
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  )
+
+  if (!channelRes.ok) {
+    const raw = await channelRes.text()
+    console.error('[yt-discovery] channel lookup failed:', channelRes.status, raw)
+    return { discovered: 0, error: `YouTube channel lookup failed (${channelRes.status})` }
+  }
+
+  const channelJson = await channelRes.json()
+  const uploadsPlaylist = channelJson.items?.[0]?.contentDetails?.relatedPlaylists?.uploads as string | undefined
+  if (!uploadsPlaylist) return { discovered: 0, error: 'No YouTube uploads playlist found' }
+
+  const { data: linkedRows } = await admin
+    .from('pipeline_items')
+    .select('yt_video_id')
+    .eq('client_id', clientId)
+    .not('yt_video_id', 'is', null)
+
+  const linkedIds = new Set(((linkedRows ?? []) as any[])
+    .map(row => row.yt_video_id)
+    .filter(Boolean))
+
+  let pageToken: string | null = null
+  let discovered = 0
+
+  for (let page = 0; page < 3; page++) {
+    const params = new URLSearchParams({
+      part: 'snippet,contentDetails',
+      playlistId: uploadsPlaylist,
+      maxResults: '50',
+    })
+    if (pageToken) params.set('pageToken', pageToken)
+
+    const listRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/playlistItems?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+
+    if (!listRes.ok) {
+      const raw = await listRes.text()
+      console.error('[yt-discovery] uploads playlist failed:', listRes.status, raw)
+      return { discovered, error: `YouTube uploads lookup failed (${listRes.status})` }
+    }
+
+    const listJson = await listRes.json()
+    const items = (listJson.items ?? []) as any[]
+    const candidates = items
+      .map(item => ({
+        videoId: item.contentDetails?.videoId as string | undefined,
+        title: item.snippet?.title as string | undefined,
+        thumbnailUrl: (
+          item.snippet?.thumbnails?.maxres?.url ??
+          item.snippet?.thumbnails?.standard?.url ??
+          item.snippet?.thumbnails?.high?.url ??
+          item.snippet?.thumbnails?.medium?.url ??
+          item.snippet?.thumbnails?.default?.url ??
+          null
+        ) as string | null,
+        publishedAt: item.contentDetails?.videoPublishedAt ?? item.snippet?.publishedAt ?? null,
+      }))
+      .filter(candidate => candidate.videoId && !linkedIds.has(candidate.videoId))
+
+    if (candidates.length > 0) {
+      const videoParams = new URLSearchParams({
+        part: 'statistics,snippet',
+        id: candidates.map(candidate => candidate.videoId).join(','),
+      })
+      const statsRes = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?${videoParams.toString()}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      )
+      const statsJson = statsRes.ok ? await statsRes.json() : { items: [] }
+      if (!statsRes.ok) {
+        console.error('[yt-discovery] video stats lookup failed:', statsRes.status, await statsRes.text())
+      }
+      const statsById = new Map((statsJson.items ?? []).map((item: any) => [item.id, item]))
+
+      for (const candidate of candidates) {
+        if (!candidate.videoId) continue
+        const statItem = statsById.get(candidate.videoId) as any | undefined
+        const stats = statItem?.statistics ?? {}
+        const snippet = statItem?.snippet ?? {}
+        const wasNew = await recordUnlinkedVideoDiscovery(admin, {
+          clientId,
+          platform: 'yt',
+          platformVideoId: candidate.videoId,
+          permalink: `https://www.youtube.com/watch?v=${candidate.videoId}`,
+          title: snippet.title ?? candidate.title ?? `YouTube ${candidate.videoId}`,
+          thumbnailUrl: candidate.thumbnailUrl,
+          publishedAt: snippet.publishedAt ?? candidate.publishedAt,
+          views: parseInt(String(stats.viewCount ?? '0'), 10),
+          likes: parseInt(String(stats.likeCount ?? '0'), 10),
+          comments: parseInt(String(stats.commentCount ?? '0'), 10),
+          shares: 0,
+          saves: 0,
+        })
+        if (wasNew) discovered++
+      }
+    }
+
+    pageToken = listJson.nextPageToken ?? null
+    if (!pageToken) break
+  }
+
+  return { discovered }
 }
 
 // ── Query helpers for cron routes ─────────────────────────────────────────

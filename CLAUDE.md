@@ -529,6 +529,18 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - OAuth redirect notices: Admin-level success/error notices for `yt_*`, `ig_*`, `tt_*`, and `meta_ads_*` URL params are handled in `AdminClientsSection`, since the old standalone sections are no longer visible.
 - Gotcha: This was layout/UI only. Do not infer any OAuth, sync, token refresh, or signed-state logic change from this session.
 
+## S72 Unlinked Video Discovery Notes
+
+- Build: Added passive unlinked video discovery across Instagram, TikTok, and YouTube. Discovery creates rows in `unlinked_video_discoveries` only. It never writes to `pipeline_items` until an admin explicitly clicks Link, Create, or Ignore.
+- Schema: New migration `supabase/migrations/session_72_unlinked_video_discoveries.sql` creates `unlinked_video_discoveries` with `UNIQUE (client_id, platform, platform_video_id)`, status values `unlinked | linked | ignored`, and admin-only RLS. The terminal SQL RPC helpers are not available in this project, so apply this migration in Supabase SQL Editor before expecting live discovery rows.
+- Instagram: `instagram-sync.ts` already sees all `/media` items. When shortcode resolution fails, it now records an unlinked discovery with shortcode, permalink, caption, thumbnail, timestamp, likes, and comments instead of only logging and discarding it.
+- TikTok: `tiktok-sync.ts` now runs a `video/list` discovery pass alongside the existing linked-ID `video/query` sync. It records unmatched TikTok videos with title, cover image, create time, views, likes, comments, and shares.
+- YouTube: `video-polling.ts` now has `discoverYouTubeUnlinkedUploads()` using the connected channel's uploads playlist. `/api/admin/sync-youtube` calls it during Sync Now. This is separate from `pollPipelineItem()` and does not change the S39 no-fuzzy-matching polling rule.
+- Dashboard: `DashboardClient` shows an admin-only `Unlinked Videos` section when the viewer is an admin impersonating a client. Regular client sessions do not fetch or render discoveries.
+- Linking UI: Clicking a discovery opens a centered modal with platform logo, thumbnail, API title/caption, publish date, and metrics. Admin can search existing pipeline items, link the selected item, create a new POSTED pipeline item from the discovery, or ignore it permanently.
+- Linking behavior: Link/Create writes the explicit platform video ID to the correct `pipeline_items` column, ensures the matching `posts` row through existing `ensureIGPostsRow` / `ensureTTPostsRow` / `ensureYTPostsRow`, triggers `syncLinkedVideoNow()`, and marks the discovery `linked`.
+- Guardrails: No automatic pipeline writes during discovery. No fuzzy title/date auto-linking. `pipeline_items.title` remains the display title source; API captions/titles are candidate metadata only unless an admin creates a new pipeline item from the discovery.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

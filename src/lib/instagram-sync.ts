@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { FACEBOOK_RECONNECT_REQUIRED, refreshFacebookToken } from '@/lib/facebook-auth'
 import { fillPublishDatesIfMissing } from '@/lib/publish-date'
 import { scheduleSnapshotsIfNew } from '@/lib/video-polling'
+import { recordUnlinkedVideoDiscovery } from '@/lib/unlinked-discoveries'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -12,6 +13,8 @@ type IGMedia = {
   permalink: string
   media_type: string
   timestamp: string
+  caption?: string | null
+  thumbnail_url?: string | null
   like_count: number
   comments_count: number
 }
@@ -34,12 +37,13 @@ export type IGSyncResult = {
   errors: string[]
   followersCount: number | null
   reconnectNeeded?: boolean
+  discovered?: number
 }
 
 // ── Fetch all media for the connected account ─────────────────────────────────
 
 async function fetchIGMedia(accessToken: string, igAccountId: string): Promise<IGMedia[]> {
-  const fields = 'id,permalink,media_type,timestamp,like_count,comments_count'
+  const fields = 'id,permalink,media_type,timestamp,caption,thumbnail_url,like_count,comments_count'
   const url = `https://graph.facebook.com/v19.0/${igAccountId}/media?fields=${fields}&limit=100&access_token=${accessToken}`
 
   const res = await fetch(url)
@@ -205,6 +209,18 @@ export async function syncInstagramForClient(
     const resolved = await resolveIGPostsUUID(admin, shortcode, clientId)
     if (!resolved) {
       console.log(`[ig-sync] no pipeline match for shortcode=${shortcode} (not linked)`)
+      const discovered = await recordUnlinkedVideoDiscovery(admin, {
+        clientId,
+        platform: 'ig',
+        platformVideoId: shortcode,
+        permalink: item.permalink,
+        title: item.caption ?? `Instagram ${shortcode}`,
+        thumbnailUrl: item.thumbnail_url ?? null,
+        publishedAt: item.timestamp,
+        likes: item.like_count ?? 0,
+        comments: item.comments_count ?? 0,
+      })
+      if (discovered) result.discovered = (result.discovered ?? 0) + 1
       result.skipped++
       continue
     }

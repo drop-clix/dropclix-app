@@ -186,6 +186,30 @@ create table notifications (
   sent_at timestamptz default now()
 );
 
+-- UNLINKED VIDEO DISCOVERIES
+create table unlinked_video_discoveries (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references clients(id),
+  platform text not null check (platform in ('ig','tt','yt')),
+  platform_video_id text not null,
+  permalink text,
+  title text,
+  thumbnail_url text,
+  published_at timestamptz,
+  views integer,
+  likes integer,
+  comments integer,
+  shares integer,
+  saves integer,
+  status text not null default 'unlinked' check (status in ('unlinked','linked','ignored')),
+  pipeline_item_id uuid references pipeline_items(id),
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  linked_at timestamptz,
+  ignored_at timestamptz,
+  unique(client_id, platform, platform_video_id)
+);
+
 -- AD RESULTS
 create table ad_results (
   id uuid primary key default gen_random_uuid(),
@@ -218,6 +242,8 @@ create index on post_analytics(post_id);
 create index on post_analytics(client_id);
 create index on pipeline_items(client_id);
 create index on pipeline_items(status);
+create index unlinked_video_discoveries_client_status
+  on unlinked_video_discoveries(client_id, status, last_seen_at desc);
 create index on ad_campaigns(client_id);
 create unique index ad_campaigns_client_meta_campaign
   on ad_campaigns(client_id, meta_campaign_id)

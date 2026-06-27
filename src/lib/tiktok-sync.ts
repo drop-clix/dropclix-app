@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { scheduleSnapshotsIfNew } from '@/lib/video-polling'
 import { fillPublishDatesIfMissing } from '@/lib/publish-date'
+import { recordUnlinkedVideoDiscovery } from '@/lib/unlinked-discoveries'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -43,6 +44,7 @@ export type TikTokSyncResult = {
   errors: string[]
   channelName: string | null
   subscriberCount: number | null
+  discovered?: number
 }
 
 const TIKTOK_VIDEO_FIELDS = 'id,title,view_count,like_count,comment_count,share_count,cover_image_url,create_time'
@@ -237,6 +239,88 @@ export async function fetchTikTokVideoStats(
   return (json?.data?.videos ?? []) as TikTokVideoStat[]
 }
 
+async function fetchTikTokVideoList(accessToken: string): Promise<TikTokVideoStat[]> {
+  const allVideos: TikTokVideoStat[] = []
+  let cursor: number | undefined = 0
+
+  for (let page = 0; page < 5; page++) {
+    const url = new URL('https://open.tiktokapis.com/v2/video/list/')
+    url.searchParams.set('fields', TIKTOK_VIDEO_FIELDS)
+
+    const body: Record<string, number> = { max_count: 20 }
+    if (cursor !== undefined) body.cursor = cursor
+
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    const rawText = await res.text()
+    console.log('[tt-sync] video/list raw:', rawText)
+
+    let json: any = null
+    try {
+      json = rawText ? JSON.parse(rawText) : null
+    } catch {
+      throw new Error(`TikTok video/list returned non-JSON response: ${rawText}`)
+    }
+
+    if (!res.ok) {
+      const msg = json?.error?.message ?? json?.error?.code ?? rawText
+      throw new Error(`TikTok video/list failed (${res.status}): ${msg}`)
+    }
+
+    if (json?.error && json.error.code && json.error.code !== 'ok') {
+      throw new Error(`TikTok video/list error: ${json.error.message ?? json.error.code}`)
+    }
+
+    allVideos.push(...((json?.data?.videos ?? []) as TikTokVideoStat[]))
+    if (!json?.data?.has_more) break
+    cursor = Number(json.data.cursor ?? 0)
+    if (Number.isNaN(cursor)) break
+  }
+
+  return allVideos
+}
+
+async function discoverTikTokUnlinkedVideos(
+  admin: AdminClient,
+  clientId: string,
+  accessToken: string,
+  linkedVideoIds: Set<string>,
+): Promise<{ discovered: number; error?: string }> {
+  let discovered = 0
+  try {
+    const listedVideos = await fetchTikTokVideoList(accessToken)
+    for (const video of listedVideos) {
+      if (!video.id || linkedVideoIds.has(video.id)) continue
+      const wasNew = await recordUnlinkedVideoDiscovery(admin, {
+        clientId,
+        platform: 'tt',
+        platformVideoId: video.id,
+        title: video.title ?? `TikTok ${video.id}`,
+        thumbnailUrl: video.cover_image_url ?? null,
+        publishedAt: video.create_time ?? null,
+        views: video.view_count ?? 0,
+        likes: video.like_count ?? 0,
+        comments: video.comment_count ?? 0,
+        shares: video.share_count ?? 0,
+        saves: 0,
+      })
+      if (wasNew) discovered++
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'TikTok video/list discovery failed'
+    console.error('[tt-sync] discovery failed:', message)
+    return { discovered, error: message }
+  }
+  return { discovered }
+}
+
 // ── Posts row resolution ─────────────────────────────────────────────────────
 
 async function ensureTTPostsRowForPipeline(
@@ -307,6 +391,11 @@ export async function syncTikTokForClient(clientId: string): Promise<TikTokSyncR
   }
 
   const linkedItems = ((linkedRows ?? []) as PipelineItem[]).filter(item => !!item.tt_video_id)
+  const linkedVideoIds = new Set(linkedItems.map(item => item.tt_video_id).filter(Boolean) as string[])
+  const discovery = await discoverTikTokUnlinkedVideos(admin, clientId, connection.accessToken, linkedVideoIds)
+  if (discovery.discovered) result.discovered = (result.discovered ?? 0) + discovery.discovered
+  if (discovery.error) result.errors.push(`discovery: ${discovery.error}`)
+
   if (linkedItems.length === 0) {
     return result
   }

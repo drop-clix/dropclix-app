@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getYouTubeConnection, fetchChannelInfo } from '@/lib/youtube-auth'
+import { discoverYouTubeUnlinkedUploads } from '@/lib/video-polling'
 
 type SyncResult = {
   synced: number
   skipped: number
   errors: string[]
   lastSyncedAt: string
+  discovered?: number
 }
 
 async function fetchYTAnalytics(
@@ -109,6 +111,9 @@ export async function POST(req: NextRequest) {
 
   const admin  = createAdminClient()
   const result: SyncResult = { synced: 0, skipped: 0, errors: [], lastSyncedAt: '' }
+  const discovery = await discoverYouTubeUnlinkedUploads(admin, clientId, conn.access_token)
+  if (discovery.error) result.errors.push(`discovery: ${discovery.error}`)
+  result.discovered = discovery.discovered
 
   type PostRow = { id: string; post_id: string; date: string; decision: string | null; yt_id: string }
 

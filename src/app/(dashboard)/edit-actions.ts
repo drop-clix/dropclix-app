@@ -1016,6 +1016,231 @@ export async function syncLinkedVideoNow(
   }
 }
 
+type DiscoveryPlatform = 'ig' | 'tt' | 'yt'
+
+const DISCOVERY_VIDEO_COLUMN: Record<DiscoveryPlatform, 'ig_video_id' | 'tt_video_id' | 'yt_video_id'> = {
+  ig: 'ig_video_id',
+  tt: 'tt_video_id',
+  yt: 'yt_video_id',
+}
+
+const DISCOVERY_ENSURE: Record<DiscoveryPlatform, (pipelineItemId: string) => Promise<{ error?: string }>> = {
+  ig: ensureIGPostsRow,
+  tt: ensureTTPostsRow,
+  yt: ensureYTPostsRow,
+}
+
+function segmentForPlatform(rawPostId: string, platform: DiscoveryPlatform): string | null {
+  const prefix = `#${platform}`
+  return rawPostId
+    .split('|')
+    .map(part => part.trim())
+    .find(part => part.toLowerCase().startsWith(prefix)) ?? null
+}
+
+async function nextPipelinePostId(
+  admin: AdminClient,
+  clientId: string,
+  platform: DiscoveryPlatform,
+): Promise<string> {
+  const prefix = platform
+  const { data: pipelineRows } = await admin
+    .from('pipeline_items')
+    .select('post_id')
+    .eq('client_id', clientId)
+
+  const { data: postRows } = await admin
+    .from('posts')
+    .select('post_id')
+    .eq('client_id', clientId)
+
+  const allIds = [
+    ...((pipelineRows ?? []) as any[]).map(row => row.post_id ?? ''),
+    ...((postRows ?? []) as any[]).map(row => row.post_id ?? ''),
+  ]
+  const re = new RegExp(`#${prefix}(\\d+)`, 'i')
+  const nums = allIds
+    .flatMap(id => String(id).split('|').map(part => part.trim()))
+    .map(id => re.exec(id)?.[1])
+    .filter((value): value is string => Boolean(value))
+    .map(Number)
+  const next = nums.length ? Math.max(...nums) + 1 : 1
+  return `#${prefix}${String(next).padStart(4, '0')}`
+}
+
+async function postIdWithPlatformSegment(
+  admin: AdminClient,
+  clientId: string,
+  rawPostId: string,
+  platform: DiscoveryPlatform,
+): Promise<string> {
+  if (segmentForPlatform(rawPostId, platform)) return rawPostId
+  const nextId = await nextPipelinePostId(admin, clientId, platform)
+  return rawPostId.trim() ? `${rawPostId} | ${nextId}` : nextId
+}
+
+async function finishDiscoveryLink(
+  admin: AdminClient,
+  discoveryId: string,
+  pipelineItemId: string,
+  platform: DiscoveryPlatform,
+  clientId: string,
+): Promise<{ error?: string }> {
+  const ensure = await DISCOVERY_ENSURE[platform](pipelineItemId)
+  if (ensure.error) return ensure
+
+  const sync = await syncLinkedVideoNow(pipelineItemId, platform, clientId)
+  if (sync.error) console.error(`[unlinked-discovery] ${platform} sync after link failed:`, sync.error)
+
+  const { error } = await admin
+    .from('unlinked_video_discoveries')
+    .update({
+      status: 'linked',
+      pipeline_item_id: pipelineItemId,
+      linked_at: new Date().toISOString(),
+    })
+    .eq('id', discoveryId)
+    .eq('client_id', clientId)
+
+  if (error) return { error: error.message }
+  revalidatePath('/')
+  revalidatePath('/pipeline')
+  revalidatePath('/analytics')
+  return {}
+}
+
+export async function linkUnlinkedDiscovery(
+  discoveryId: string,
+  pipelineItemId: string,
+): Promise<{ error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (c.role !== 'admin') return { error: 'Admin only' }
+
+  const { data: rawDiscovery, error: discoveryError } = await c.admin
+    .from('unlinked_video_discoveries')
+    .select('id, client_id, platform, platform_video_id, thumbnail_url, status')
+    .eq('id', discoveryId)
+    .eq('client_id', c.cid)
+    .eq('status', 'unlinked')
+    .maybeSingle()
+
+  if (discoveryError || !rawDiscovery) {
+    return { error: discoveryError?.message ?? 'Discovery not found' }
+  }
+
+  const discovery = rawDiscovery as any
+  const platform = discovery.platform as DiscoveryPlatform
+  const videoColumn = DISCOVERY_VIDEO_COLUMN[platform]
+  if (!videoColumn) return { error: 'Unsupported platform' }
+
+  const { data: rawItem, error: itemError } = await c.admin
+    .from('pipeline_items')
+    .select('id, client_id, post_id, platform, ig_video_id, tt_video_id, yt_video_id')
+    .eq('id', pipelineItemId)
+    .eq('client_id', c.cid)
+    .maybeSingle()
+
+  if (itemError || !rawItem) return { error: itemError?.message ?? 'Pipeline item not found' }
+
+  const item = rawItem as any
+  const existingVideoId = item[videoColumn] as string | null
+  if (existingVideoId && existingVideoId !== discovery.platform_video_id) {
+    return { error: `${platform.toUpperCase()} is already linked on this pipeline item` }
+  }
+
+  const platforms = Array.isArray(item.platform) ? item.platform as string[] : []
+  const mergedPlatforms = Array.from(new Set([...platforms, platform]))
+  const nextPostId = await postIdWithPlatformSegment(c.admin, c.cid, item.post_id as string, platform)
+
+  const update: Record<string, unknown> = {
+    [videoColumn]: discovery.platform_video_id,
+    platform: mergedPlatforms,
+    post_id: nextPostId,
+  }
+  if (discovery.thumbnail_url) update.thumbnail_url = discovery.thumbnail_url
+
+  const { error: updateError } = await c.admin
+    .from('pipeline_items')
+    .update(update)
+    .eq('id', pipelineItemId)
+    .eq('client_id', c.cid)
+
+  if (updateError) return { error: updateError.message }
+
+  return finishDiscoveryLink(c.admin, discoveryId, pipelineItemId, platform, c.cid)
+}
+
+export async function createPipelineItemFromDiscovery(
+  discoveryId: string,
+): Promise<{ id?: string; error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (c.role !== 'admin') return { error: 'Admin only' }
+
+  const { data: rawDiscovery, error: discoveryError } = await c.admin
+    .from('unlinked_video_discoveries')
+    .select('id, client_id, platform, platform_video_id, title, thumbnail_url, published_at, status')
+    .eq('id', discoveryId)
+    .eq('client_id', c.cid)
+    .eq('status', 'unlinked')
+    .maybeSingle()
+
+  if (discoveryError || !rawDiscovery) {
+    return { error: discoveryError?.message ?? 'Discovery not found' }
+  }
+
+  const discovery = rawDiscovery as any
+  const platform = discovery.platform as DiscoveryPlatform
+  const videoColumn = DISCOVERY_VIDEO_COLUMN[platform]
+  if (!videoColumn) return { error: 'Unsupported platform' }
+
+  const postId = await nextPipelinePostId(c.admin, c.cid, platform)
+  const title = String(discovery.title ?? `${platform.toUpperCase()} ${discovery.platform_video_id}`).trim()
+  const publishedAt = discovery.published_at as string | null
+
+  const { data: row, error: insertError } = await c.admin
+    .from('pipeline_items')
+    .insert({
+      client_id: c.cid,
+      post_id: postId,
+      title,
+      platform: [platform],
+      status: 'POSTED',
+      priority: 6,
+      posted_at: publishedAt,
+      thumbnail_url: discovery.thumbnail_url ?? null,
+      [videoColumn]: discovery.platform_video_id,
+    })
+    .select('id')
+    .single()
+
+  if (insertError || !row) return { error: insertError?.message ?? 'Pipeline insert failed' }
+
+  const pipelineItemId = (row as any).id as string
+  const linked = await finishDiscoveryLink(c.admin, discoveryId, pipelineItemId, platform, c.cid)
+  if (linked.error) return linked
+  return { id: pipelineItemId }
+}
+
+export async function ignoreUnlinkedDiscovery(discoveryId: string): Promise<{ error?: string }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (c.role !== 'admin') return { error: 'Admin only' }
+
+  const now = new Date().toISOString()
+  const { error } = await c.admin
+    .from('unlinked_video_discoveries')
+    .update({ status: 'ignored', ignored_at: now, last_seen_at: now })
+    .eq('id', discoveryId)
+    .eq('client_id', c.cid)
+    .eq('status', 'unlinked')
+
+  if (error) return { error: error.message }
+  revalidatePath('/')
+  return {}
+}
+
 // ── Content Approval Workflow ────────────────────────────────────────────────
 
 export async function submitApproval(
