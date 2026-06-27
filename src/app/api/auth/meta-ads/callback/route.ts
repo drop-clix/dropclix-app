@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { clearOAuthNonceCookie, validateOAuthCallbackState } from '@/lib/oauth-state'
+import { createPendingOAuthSelection } from '@/lib/oauth-pending-selection'
 
 type AdAccount = {
   id?: string
   name?: string
   account_status?: number
+  business?: {
+    id?: string
+    name?: string
+  }
 }
 
 function sanitizeForLog(value: unknown): unknown {
@@ -115,7 +120,7 @@ export async function GET(req: NextRequest) {
   }
 
   const accountsUrl = new URL('https://graph.facebook.com/v19.0/me/adaccounts')
-  accountsUrl.searchParams.set('fields', 'id,name,account_status')
+  accountsUrl.searchParams.set('fields', 'id,name,account_status,business')
   accountsUrl.searchParams.set('access_token', accessToken)
 
   const accountsRes = await fetch(accountsUrl.toString())
@@ -133,13 +138,47 @@ export async function GET(req: NextRequest) {
   }
 
   const accounts = (accountsBody as { data?: AdAccount[] })?.data ?? []
-  const activeAccount = accounts.find(account => account.account_status === 1 && account.id)
-  if (!activeAccount?.id) {
+  const activeAccounts = accounts
+    .filter(account => account.account_status === 1 && account.id)
+    .map(account => ({
+      id: account.id!,
+      name: account.name ?? account.id!,
+      business: account.business
+        ? { id: account.business.id, name: account.business.name }
+        : null,
+    }))
+
+  if (activeAccounts.length === 0) {
     return redirect(`${callbackBase}?meta_ads_error=no_ad_account`)
+  }
+
+  if (activeAccounts.length > 1) {
+    const pending = await createPendingOAuthSelection({
+      platform: 'meta_ads',
+      clientId,
+      origin: stateCheck.context.origin,
+      accessToken,
+      tokenExpiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
+      accounts: activeAccounts,
+    })
+
+    if ('error' in pending) {
+      return redirect(`${callbackBase}?meta_ads_error=${pending.error}`)
+    }
+
+    const selectionUrl = new URL(
+      stateCheck.context.origin === 'client'
+        ? '/settings/meta-ads/select'
+        : '/admin/meta-ads/select',
+      req.url,
+    )
+    selectionUrl.searchParams.set('selection', pending.selection)
+    return redirect(selectionUrl.toString())
   }
 
   const now = new Date().toISOString()
   const expiry = new Date(Date.now() + expiresIn * 1000).toISOString()
+  const activeAccount = activeAccounts[0]
   const admin = createAdminClient()
   const { error: dbErr } = await admin
     .from('platform_connections')

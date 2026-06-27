@@ -510,6 +510,15 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Preserved behavior: Admin Meta Ads Connect/Reconnect still accepts explicit `client_id` from the admin panel and redirects back to `/admin`. No client-facing Meta Ads settings UI or ad-account selector was added in this session.
 - Known next build: Meta Ads still auto-selects the first active account returned by Graph `/me/adaccounts`. Day 1 returned both `act_649411569080714` ("Chase Evans") and `act_1196633849221825` ("Day 1 | D 1"), so a future account-selector step is needed before reconnecting to choose the intended account.
 
+## S70 Meta Ads Account Selector Notes
+
+- Issue: Meta Ads OAuth selected the first active ad account returned by Graph `/me/adaccounts`, which picked `act_649411569080714` ("Chase Evans") ahead of the intended Day 1 account `act_1196633849221825` when both were active.
+- Fix: Meta Ads callback now requests `id,name,account_status,business`. If zero active accounts are returned, it keeps the existing error redirect. If exactly one active account is returned, it auto-connects immediately as before. If multiple active accounts are returned, it creates a short-lived pending selection and redirects to an account selector instead of writing `platform_connections` immediately.
+- Security: Pending account selection uses `src/lib/oauth-pending-selection.ts`. It stores the long-lived Facebook token and account list in an encrypted, signed, httpOnly cookie with a 15-minute max age. The URL carries only a signed selector token. The final server action re-validates the current session, client ownership, origin (`admin` or `client`), token expiry, and chosen account before writing `platform_connections`.
+- UX: Admin-origin selection route is `/admin/meta-ads/select`; client-origin selection route is `/settings/meta-ads/select`. Both list ad account name, account ID, and Business name when Graph returns it. A single-account OAuth flow skips this UI entirely.
+- Client Settings: `/settings` now includes a Meta Ads card with the Meta logo, Connect/Reconnect only, and no client-facing Sync Now. Admin Sync Now remains the only manual Meta Ads sync surface.
+- Gotcha: No Supabase migration is required for the selector; the pending state is intentionally cookie-backed to avoid storing temporary OAuth tokens in a table and to keep the flow self-expiring. If account lists grow large enough to risk cookie size limits, move the same payload to a server-side pending table before adding more asset selectors.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

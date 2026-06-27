@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { MetaLogo } from '@/components/portal/MetaLogo'
 
 export type SafePlatformConnection = {
-  platform: 'instagram' | 'tiktok' | 'youtube'
+  platform: 'instagram' | 'tiktok' | 'youtube' | 'meta_ads'
   channel_name: string | null
   channel_id: string | null
   subscriber_count: number | null
@@ -19,7 +20,7 @@ const PLATFORM_CONFIG: Record<PlatformKey, {
   accent: string
   connectPath: string
   profileLabel: string
-  countLabel: string
+  countLabel: string | null
   connectedParam: string
   errorParam: string
 }> = {
@@ -50,9 +51,18 @@ const PLATFORM_CONFIG: Record<PlatformKey, {
     connectedParam: 'yt_connected',
     errorParam: 'yt_error',
   },
+  meta_ads: {
+    label: 'Meta Ads',
+    accent: '#1778f2',
+    connectPath: '/api/auth/meta-ads',
+    profileLabel: 'Ad Account',
+    countLabel: null,
+    connectedParam: 'meta_ads_connected',
+    errorParam: 'meta_ads_error',
+  },
 }
 
-const PLATFORM_ORDER: PlatformKey[] = ['instagram', 'tiktok', 'youtube']
+const PLATFORM_ORDER: PlatformKey[] = ['instagram', 'tiktok', 'youtube', 'meta_ads']
 
 function fmt(n: number) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
@@ -128,6 +138,7 @@ function YouTubeLogo({ color = '#4cc9ff' }: { color?: string }) {
 function PlatformLogo({ platform, color }: { platform: PlatformKey; color: string }) {
   if (platform === 'instagram') return <InstagramLogo />
   if (platform === 'tiktok') return <TikTokLogo color={color} />
+  if (platform === 'meta_ads') return <MetaLogo color={color} />
   return <YouTubeLogo color={color} />
 }
 
@@ -283,10 +294,10 @@ export function SettingsClient({
                     {displayName}
                   </p>
                 </div>
-                {conn.subscriber_count != null && (
-                  <div>
-                    <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>
-                      {config.countLabel}
+                    {config.countLabel && conn.subscriber_count != null && (
+                      <div>
+                        <p className="text-[7px] tracking-[.14em] uppercase" style={{ color: '#555' }}>
+                          {config.countLabel}
                     </p>
                     <p className="text-[11px] font-light mt-1" style={{ color: '#f2ede4' }}>
                       {fmt(conn.subscriber_count)}

@@ -95,3 +95,23 @@ nonce, and session authorization before any token exchange or database write.
 Preserved behavior: admin-origin Meta Ads Connect/Reconnect still works with
 an explicit `client_id` and redirects back to `/admin`. No client-facing Meta
 Ads settings UI or account selector was added in this fix.
+
+## Follow-up Build — Meta Ads Account Selector
+After Meta Ads was moved to signed OAuth state, the next confirmed issue was
+account selection. Graph `/me/adaccounts` can return multiple active ad
+accounts, and the old callback selected the first active account. For Day 1,
+that meant `act_649411569080714` ("Chase Evans") won over the intended
+`act_1196633849221825` ("Day 1 | D 1").
+
+Fix: the callback now requests `id,name,account_status,business`. Zero active
+accounts still redirect with `meta_ads_error=no_ad_account`; exactly one active
+account still auto-connects without extra UI; multiple active accounts create a
+15-minute pending selection and redirect to an account selector.
+
+Security: pending selections are stored in an encrypted, signed, httpOnly
+cookie. The URL only contains a signed selector token. Final selection
+re-validates the current session, client ownership, origin, expiry, and chosen
+account before writing `platform_connections`.
+
+Client-facing addition: `/settings` now includes a Meta Ads Connect/Reconnect
+card using the Meta logo. Client-facing Sync Now was intentionally not added.

@@ -12,14 +12,19 @@ export default async function SettingsPage() {
     .from('platform_connections')
     .select('platform,channel_name,channel_id,subscriber_count,created_at,last_synced_at,token_expires_at')
     .eq('client_id', clientId)
-    .in('platform', ['instagram', 'tiktok', 'youtube'])
+    .in('platform', ['instagram', 'tiktok', 'youtube', 'meta_ads'])
 
   if (error) {
     console.error('[settings] failed to load platform connections:', error.message)
   }
 
   const connections = ((data ?? []) as SafePlatformConnection[])
-    .filter(conn => conn.platform === 'instagram' || conn.platform === 'tiktok' || conn.platform === 'youtube')
+    .filter(conn =>
+      conn.platform === 'instagram' ||
+      conn.platform === 'tiktok' ||
+      conn.platform === 'youtube' ||
+      conn.platform === 'meta_ads'
+    )
 
   return (
     <div className="p-10">
