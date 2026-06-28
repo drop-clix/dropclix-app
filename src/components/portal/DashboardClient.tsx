@@ -13,6 +13,7 @@ import {
   saveClientNotes,
   linkUnlinkedDiscovery,
   createPipelineItemFromDiscovery,
+  createPipelineItemFromDiscoveryBundle,
   ignoreUnlinkedDiscovery,
 } from '@/app/(dashboard)/edit-actions'
 import { RichTextEditor } from '@/components/portal/RichTextEditor'
@@ -134,6 +135,7 @@ const VIDEO_ID_KEYS: Record<'ig' | 'tt' | 'yt', keyof Pick<RawDashPipeline, 'ig_
   tt: 'tt_video_id',
   yt: 'yt_video_id',
 }
+type DiscoveryPlatform = RawUnlinkedDiscovery['platform']
 const STATUS_COLORS: Record<string, string> = {
   SCRIPTED: '#c9a96e',
   PLANNED: '#4cc9ff',
@@ -270,6 +272,15 @@ function titleOverlapScore(a: string | null, b: string | null): number {
     if (word.length > 2 && wordsB.has(word)) overlap++
   }
   return overlap / Math.max(wordsA.size, wordsB.size)
+}
+
+function duplicatePlatformIn(discoveries: RawUnlinkedDiscovery[]): DiscoveryPlatform | null {
+  const seen = new Set<DiscoveryPlatform>()
+  for (const discovery of discoveries) {
+    if (seen.has(discovery.platform)) return discovery.platform
+    seen.add(discovery.platform)
+  }
+  return null
 }
 
 function fallbackSuggestions(posts: PostStat[], mode: string): Suggestion[] {
@@ -428,7 +439,11 @@ export function DashboardClient({
   const [selectedDiscoveryId, setSelectedDiscoveryId] = useState<string | null>(null)
   const [discoverySearch, setDiscoverySearch] = useState('')
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null)
-  const [discoBusy, setDiscoBusy] = useState<null | 'link' | 'create' | 'ignore'>(null)
+  const [selectedRelatedDiscoveryIds, setSelectedRelatedDiscoveryIds] = useState<Set<string>>(new Set())
+  const [bundleTitle, setBundleTitle] = useState('')
+  const [bundleStep, setBundleStep] = useState<'review' | 'title'>('review')
+  const [bundleError, setBundleError] = useState<string | null>(null)
+  const [discoBusy, setDiscoBusy] = useState<null | 'link' | 'create' | 'bundle' | 'ignore'>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -460,6 +475,27 @@ export function DashboardClient({
       discoveryVideoId: selectedDiscovery.platform_video_id,
     }
   }, [selectedDiscovery, selectedPipelineItem])
+
+  const selectedRelatedDiscoveries = useMemo(
+    () => discoveries.filter(item => selectedRelatedDiscoveryIds.has(item.id)),
+    [discoveries, selectedRelatedDiscoveryIds],
+  )
+
+  const selectedBundleDiscoveries = useMemo(
+    () => selectedDiscovery ? [selectedDiscovery, ...selectedRelatedDiscoveries] : [],
+    [selectedDiscovery, selectedRelatedDiscoveries],
+  )
+
+  const bundleDuplicatePlatform = useMemo(
+    () => duplicatePlatformIn(selectedBundleDiscoveries),
+    [selectedBundleDiscoveries],
+  )
+
+  const bundleValidationError = useMemo(() => {
+    if (selectedBundleDiscoveries.length < 2) return 'Select at least one related discovery to create a bundle.'
+    if (bundleDuplicatePlatform) return `Only one ${PLATFORM_LABELS[bundleDuplicatePlatform]} discovery can be bundled at a time.`
+    return null
+  }, [bundleDuplicatePlatform, selectedBundleDiscoveries.length])
 
   const relatedDiscoveries = useMemo(() => {
     if (!selectedDiscovery) return []
@@ -503,7 +539,33 @@ export function DashboardClient({
     setSelectedDiscoveryId(null)
     setDiscoverySearch('')
     setSelectedPipelineId(null)
+    setSelectedRelatedDiscoveryIds(new Set())
+    setBundleTitle('')
+    setBundleStep('review')
+    setBundleError(null)
     setDiscoBusy(null)
+  }
+
+  function toggleRelatedDiscovery(id: string) {
+    setBundleError(null)
+    setBundleStep('review')
+    setSelectedRelatedDiscoveryIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function startBundleTitleStep() {
+    if (!selectedDiscovery) return
+    if (bundleValidationError) {
+      setBundleError(bundleValidationError)
+      return
+    }
+    setBundleTitle((selectedDiscovery.title ?? `${PLATFORM_LABELS[selectedDiscovery.platform]} ${selectedDiscovery.platform_video_id}`).trim())
+    setBundleError(null)
+    setBundleStep('title')
   }
 
   async function handleLinkDiscovery() {
@@ -534,6 +596,36 @@ export function DashboardClient({
     setDiscoveries(prev => prev.filter(item => item.id !== selectedDiscovery.id))
     toast('Pipeline item created and syncing now', 'success')
     closeDiscoveryModal()
+    router.refresh()
+  }
+
+  async function handleCreateBundle() {
+    if (!selectedDiscovery) return
+    const title = bundleTitle.trim()
+    if (!title) {
+      setBundleError('Hero title is required.')
+      return
+    }
+    if (bundleValidationError) {
+      setBundleError(bundleValidationError)
+      return
+    }
+    const ids = selectedBundleDiscoveries.map(item => item.id)
+    setDiscoBusy('bundle')
+    const result = await createPipelineItemFromDiscoveryBundle(ids, title)
+    setDiscoBusy(null)
+    if (result.error && !result.id) {
+      setBundleError(result.error)
+      toast(result.error, 'error')
+      return
+    }
+    setDiscoveries(prev => prev.filter(item => !ids.includes(item.id)))
+    closeDiscoveryModal()
+    if (result.syncErrors && result.syncErrors.length > 0) {
+      toast(result.error ?? 'Bundle created, but one or more sync steps failed', 'error')
+    } else {
+      toast('Bundle created and syncing now', 'success')
+    }
     router.refresh()
   }
 
@@ -909,6 +1001,10 @@ export function DashboardClient({
                     setSelectedDiscoveryId(item.id)
                     setDiscoverySearch('')
                     setSelectedPipelineId(null)
+                    setSelectedRelatedDiscoveryIds(new Set())
+                    setBundleTitle('')
+                    setBundleStep('review')
+                    setBundleError(null)
                   }}
                   style={{
                     background: '#0a0a0a',
@@ -1240,205 +1336,288 @@ export function DashboardClient({
             </div>
 
             <div style={{ padding: 24 }}>
-              {relatedDiscoveries.length > 0 && (
-                <div className="mb-6" style={{ border: '1px solid #171717', borderRadius: 6, padding: 14, background: '#090909' }}>
+              {bundleStep === 'title' ? (
+                <>
                   <p className="text-[9px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#c9a96e' }}>
-                    Possible Same Content, Other Platforms
+                    Confirm Bundle Title
                   </p>
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {relatedDiscoveries.map(item => {
-                      const color = PLATFORM_COLORS[item.platform] ?? '#c9a96e'
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedDiscoveryId(item.id)
-                            setDiscoverySearch('')
-                            setSelectedPipelineId(null)
-                          }}
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '34px minmax(0,1fr) auto',
-                            gap: 10,
-                            alignItems: 'center',
-                            textAlign: 'left',
-                            background: '#0d0d0d',
-                            border: `1px solid ${color}33`,
-                            borderRadius: 5,
-                            padding: 9,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {item.thumbnail_url ? (
-                            <img src={item.thumbnail_url} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, border: '1px solid #1e1e1e' }} />
-                          ) : (
-                            <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={34} />
-                          )}
-                          <div style={{ minWidth: 0 }}>
-                            <div className="flex items-center gap-2">
-                              <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={22} />
-                              <span className="text-[8px] font-medium tracking-[.14em] uppercase" style={{ color }}>{PLATFORM_LABELS[item.platform]}</span>
-                              <span className="text-[9px]" style={{ color: '#555', fontFamily: 'monospace' }}>{item.platform_video_id}</span>
-                            </div>
-                            <p className="text-[11px] mt-1 overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                              {item.title ?? `${PLATFORM_LABELS[item.platform]} video`}
-                            </p>
-                          </div>
-                          <span className="text-[9px]" style={{ color: '#666' }}>{displayDate(item.published_at)}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <label className="text-[9px] font-medium tracking-[.18em] uppercase mb-2 block" style={{ color: '#555' }}>Find Pipeline Item</label>
-              <input
-                value={discoverySearch}
-                onChange={e => {
-                  setDiscoverySearch(e.target.value)
-                  setSelectedPipelineId(null)
-                }}
-                placeholder="Search by title, ID, date, or pillar..."
-                style={{
-                  width: '100%',
-                  background: '#0a0a0a',
-                  border: '1px solid #1f1f1f',
-                  borderRadius: 5,
-                  padding: '11px 12px',
-                  color: '#f2ede4',
-                  fontSize: 12,
-                  outline: 'none',
-                }}
-              />
-
-              <div className="mt-4" style={{ display: 'grid', gap: 8 }}>
-                {discoveryMatches.length === 0 ? (
-                  <div style={{ border: '1px solid #171717', borderRadius: 5, padding: 14 }}>
-                    <p className="text-[11px]" style={{ color: '#666' }}>No matching pipeline items.</p>
-                  </div>
-                ) : discoveryMatches.map(item => {
-                  const selected = item.id === selectedPipelineId
-                    const linkedEntries = linkedVideoEntries(item)
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setSelectedPipelineId(item.id)}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '42px minmax(0,1fr) auto',
-                        gap: 12,
-                        alignItems: 'center',
-                        textAlign: 'left',
-                        background: selected ? 'rgba(201,169,110,.10)' : '#0a0a0a',
-                        border: `1px solid ${selected ? 'rgba(201,169,110,.55)' : '#1a1a1a'}`,
-                        borderRadius: 5,
-                        padding: 10,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {item.thumbnail_url ? (
-                        <img src={item.thumbnail_url} alt="" style={{ width: 42, height: 42, objectFit: 'cover', borderRadius: 4, border: '1px solid #1e1e1e' }} />
-                      ) : (
-                        <div style={{ width: 42, height: 42, borderRadius: 4, border: '1px solid #1e1e1e', background: '#111' }} />
-                      )}
-                      <div style={{ minWidth: 0 }}>
-                        <p className="text-[12px] overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{item.title}</p>
-                        <p className="text-[10px] mt-1" style={{ color: '#555', fontFamily: 'monospace' }}>{item.post_id}</p>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-end gap-1.5">
-                        {linkedEntries.length === 0 ? (
-                            <span className="text-[8px] tracking-[.08em] uppercase" style={{ color: '#555' }}>No linked IDs</span>
-                          ) : linkedEntries.map(entry => (
-                            <span
-                              key={`${item.id}-${entry.platform}`}
-                              className="inline-flex items-center gap-1 text-[8px]"
-                              style={{
-                                color: '#f2ede4',
-                                border: `1px solid ${(PLATFORM_COLORS[entry.platform] ?? '#555')}44`,
-                                borderRadius: 4,
-                                padding: '3px 5px',
-                                background: '#050505',
-                                maxWidth: 132,
-                              }}
-                            >
-                              <PlatformMark platform={PLATFORM_LOGO_KEYS[entry.platform]} color={PLATFORM_COLORS[entry.platform] ?? '#c9a96e'} size={18} />
-                              <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.videoId}</span>
-                            </span>
-                          ))}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-
-              {selectedPipelineItem && (
-                <div className="mt-4" style={{
-                  border: `1px solid ${selectedPipelineConflict ? 'rgba(255,59,95,.42)' : 'rgba(201,169,110,.24)'}`,
-                  borderRadius: 5,
-                  padding: 12,
-                  background: selectedPipelineConflict ? 'rgba(255,59,95,.06)' : 'rgba(201,169,110,.06)',
-                }}>
-                  <p className="text-[9px] font-medium tracking-[.16em] uppercase" style={{ color: selectedPipelineConflict ? '#ff3b5f' : '#c9a96e' }}>
-                    {selectedPipelineConflict ? 'Platform Link Conflict' : 'Selected Pipeline Links'}
-                  </p>
-                  <p className="text-[11px] mt-2" style={{ color: selectedPipelineConflict ? '#ff9aaa' : '#777' }}>
-                    {selectedPipelineConflict
-                      ? `${PLATFORM_LABELS[selectedPipelineConflict.platform]} already has ${selectedPipelineConflict.existingVideoId}. This discovery is ${selectedPipelineConflict.discoveryVideoId}. Pick a different pipeline item or clear the existing link first.`
-                      : 'Confirm the linked platform IDs below belong to the same content before linking this discovery.'}
-                  </p>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {linkedVideoEntries(selectedPipelineItem).length === 0 ? (
-                      <span className="text-[10px]" style={{ color: '#666' }}>No platform video IDs are linked on this item yet.</span>
-                    ) : linkedVideoEntries(selectedPipelineItem).map(entry => (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {selectedBundleDiscoveries.map(item => (
                       <span
-                        key={`selected-${entry.platform}`}
+                        key={item.id}
                         className="inline-flex items-center gap-1.5 text-[9px]"
                         style={{
                           color: '#f2ede4',
-                          border: `1px solid ${(PLATFORM_COLORS[entry.platform] ?? '#555')}44`,
+                          border: `1px solid ${(PLATFORM_COLORS[item.platform] ?? '#555')}44`,
                           borderRadius: 4,
                           padding: '5px 7px',
                           background: '#050505',
                         }}
                       >
-                        <PlatformMark platform={PLATFORM_LOGO_KEYS[entry.platform]} color={PLATFORM_COLORS[entry.platform] ?? '#c9a96e'} size={20} />
-                        <span style={{ color: PLATFORM_COLORS[entry.platform] ?? '#c9a96e' }}>{PLATFORM_LABELS[entry.platform]}</span>
-                        <span style={{ color: '#777', fontFamily: 'monospace' }}>{entry.videoId}</span>
+                        <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={PLATFORM_COLORS[item.platform] ?? '#c9a96e'} size={20} />
+                        <span style={{ color: PLATFORM_COLORS[item.platform] ?? '#c9a96e' }}>{PLATFORM_LABELS[item.platform]}</span>
+                        <span style={{ color: '#777', fontFamily: 'monospace' }}>{item.platform_video_id}</span>
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
+                  <label className="text-[9px] font-medium tracking-[.18em] uppercase mb-2 block" style={{ color: '#555' }}>Hero Title</label>
+                  <input
+                    value={bundleTitle}
+                    onChange={e => {
+                      setBundleTitle(e.target.value)
+                      setBundleError(null)
+                    }}
+                    placeholder="Name this content..."
+                    style={{
+                      width: '100%',
+                      background: '#0a0a0a',
+                      border: '1px solid #1f1f1f',
+                      borderRadius: 5,
+                      padding: '11px 12px',
+                      color: '#f2ede4',
+                      fontSize: 12,
+                      outline: 'none',
+                    }}
+                  />
+                  <p className="text-[11px] mt-3" style={{ color: '#777', lineHeight: 1.5 }}>
+                    This becomes the locked pipeline title for the bundled content. Platform captions stay discovery metadata only.
+                  </p>
+                  {bundleError && (
+                    <p className="text-[11px] mt-4" style={{ color: '#ff3b5f' }}>{bundleError}</p>
+                  )}
+                  <div className="mt-6 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBundleStep('review')
+                        setBundleError(null)
+                      }}
+                      disabled={discoBusy !== null}
+                      style={{ padding: '9px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#777', background: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: 4, cursor: discoBusy ? 'wait' : 'pointer', opacity: discoBusy ? 0.65 : 1 }}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateBundle}
+                      disabled={discoBusy !== null || !bundleTitle.trim()}
+                      style={{ padding: '9px 18px', fontSize: 9, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#060606', background: '#c9a96e', border: '1px solid #c9a96e', borderRadius: 4, cursor: discoBusy || !bundleTitle.trim() ? 'default' : 'pointer', opacity: discoBusy || !bundleTitle.trim() ? 0.45 : 1 }}
+                    >
+                      {discoBusy === 'bundle' ? 'Creating...' : 'Create & Link Selected'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {relatedDiscoveries.length > 0 && (
+                    <div className="mb-6" style={{ border: '1px solid #171717', borderRadius: 6, padding: 14, background: '#090909' }}>
+                      <p className="text-[9px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#c9a96e' }}>
+                        Possible Same Content, Other Platforms
+                      </p>
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {relatedDiscoveries.map(item => {
+                          const color = PLATFORM_COLORS[item.platform] ?? '#c9a96e'
+                          const selected = selectedRelatedDiscoveryIds.has(item.id)
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => toggleRelatedDiscovery(item.id)}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '34px minmax(0,1fr) auto',
+                                gap: 10,
+                                alignItems: 'center',
+                                textAlign: 'left',
+                                background: selected ? 'rgba(201,169,110,.10)' : '#0d0d0d',
+                                border: `1px solid ${selected ? 'rgba(201,169,110,.55)' : `${color}33`}`,
+                                borderRadius: 5,
+                                padding: 9,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {item.thumbnail_url ? (
+                                <img src={item.thumbnail_url} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, border: '1px solid #1e1e1e' }} />
+                              ) : (
+                                <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={34} />
+                              )}
+                              <div style={{ minWidth: 0 }}>
+                                <div className="flex items-center gap-2">
+                                  <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={22} />
+                                  <span className="text-[8px] font-medium tracking-[.14em] uppercase" style={{ color }}>{PLATFORM_LABELS[item.platform]}</span>
+                                  <span className="text-[9px]" style={{ color: '#555', fontFamily: 'monospace' }}>{item.platform_video_id}</span>
+                                </div>
+                                <p className="text-[11px] mt-1 overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                                  {item.title ?? `${PLATFORM_LABELS[item.platform]} video`}
+                                </p>
+                              </div>
+                              <span className="text-[9px]" style={{ color: selected ? '#c9a96e' : '#666' }}>{selected ? 'Selected' : displayDate(item.published_at)}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {(bundleError || (selectedRelatedDiscoveryIds.size > 0 && bundleValidationError)) && (
+                        <p className="text-[11px] mt-3" style={{ color: '#ff3b5f' }}>{bundleError ?? bundleValidationError}</p>
+                      )}
+                    </div>
+                  )}
 
-              <div className="mt-6 flex flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleIgnoreDiscovery}
-                  disabled={discoBusy !== null}
-                  style={{ padding: '9px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#ff3b5f', background: 'rgba(255,59,95,.08)', border: '1px solid rgba(255,59,95,.32)', borderRadius: 4, cursor: discoBusy ? 'wait' : 'pointer', opacity: discoBusy ? 0.65 : 1 }}
-                >
-                  {discoBusy === 'ignore' ? 'Ignoring...' : 'Ignore'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCreateFromDiscovery}
-                  disabled={discoBusy !== null}
-                  style={{ padding: '9px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#4cc9ff', background: 'rgba(76,201,255,.08)', border: '1px solid rgba(76,201,255,.32)', borderRadius: 4, cursor: discoBusy ? 'wait' : 'pointer', opacity: discoBusy ? 0.65 : 1 }}
-                >
-                  {discoBusy === 'create' ? 'Creating...' : 'Create New Pipeline Item'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLinkDiscovery}
-                  disabled={!selectedPipelineId || selectedPipelineConflict !== null || discoBusy !== null}
-                  style={{ padding: '9px 18px', fontSize: 9, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#060606', background: '#c9a96e', border: '1px solid #c9a96e', borderRadius: 4, cursor: !selectedPipelineId || selectedPipelineConflict || discoBusy ? 'default' : 'pointer', opacity: !selectedPipelineId || selectedPipelineConflict || discoBusy ? 0.45 : 1 }}
-                >
-                  {discoBusy === 'link' ? 'Linking...' : 'Link Selected Item'}
-                </button>
-              </div>
+                  <label className="text-[9px] font-medium tracking-[.18em] uppercase mb-2 block" style={{ color: '#555' }}>Find Pipeline Item</label>
+                  <input
+                    value={discoverySearch}
+                    onChange={e => {
+                      setDiscoverySearch(e.target.value)
+                      setSelectedPipelineId(null)
+                    }}
+                    placeholder="Search by title, ID, date, or pillar..."
+                    style={{
+                      width: '100%',
+                      background: '#0a0a0a',
+                      border: '1px solid #1f1f1f',
+                      borderRadius: 5,
+                      padding: '11px 12px',
+                      color: '#f2ede4',
+                      fontSize: 12,
+                      outline: 'none',
+                    }}
+                  />
+
+                  <div className="mt-4" style={{ display: 'grid', gap: 8 }}>
+                    {discoveryMatches.length === 0 ? (
+                      <div style={{ border: '1px solid #171717', borderRadius: 5, padding: 14 }}>
+                        <p className="text-[11px]" style={{ color: '#666' }}>No matching pipeline items.</p>
+                      </div>
+                    ) : discoveryMatches.map(item => {
+                      const selected = item.id === selectedPipelineId
+                      const linkedEntries = linkedVideoEntries(item)
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setSelectedPipelineId(item.id)}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '42px minmax(0,1fr) auto',
+                            gap: 12,
+                            alignItems: 'center',
+                            textAlign: 'left',
+                            background: selected ? 'rgba(201,169,110,.10)' : '#0a0a0a',
+                            border: `1px solid ${selected ? 'rgba(201,169,110,.55)' : '#1a1a1a'}`,
+                            borderRadius: 5,
+                            padding: 10,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {item.thumbnail_url ? (
+                            <img src={item.thumbnail_url} alt="" style={{ width: 42, height: 42, objectFit: 'cover', borderRadius: 4, border: '1px solid #1e1e1e' }} />
+                          ) : (
+                            <div style={{ width: 42, height: 42, borderRadius: 4, border: '1px solid #1e1e1e', background: '#111' }} />
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <p className="text-[12px] overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{item.title}</p>
+                            <p className="text-[10px] mt-1" style={{ color: '#555', fontFamily: 'monospace' }}>{item.post_id}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            {linkedEntries.length === 0 ? (
+                              <span className="text-[8px] tracking-[.08em] uppercase" style={{ color: '#555' }}>No linked IDs</span>
+                            ) : linkedEntries.map(entry => (
+                              <span
+                                key={`${item.id}-${entry.platform}`}
+                                className="inline-flex items-center gap-1 text-[8px]"
+                                style={{
+                                  color: '#f2ede4',
+                                  border: `1px solid ${(PLATFORM_COLORS[entry.platform] ?? '#555')}44`,
+                                  borderRadius: 4,
+                                  padding: '3px 5px',
+                                  background: '#050505',
+                                  maxWidth: 132,
+                                }}
+                              >
+                                <PlatformMark platform={PLATFORM_LOGO_KEYS[entry.platform]} color={PLATFORM_COLORS[entry.platform] ?? '#c9a96e'} size={18} />
+                                <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.videoId}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {selectedPipelineItem && (
+                    <div className="mt-4" style={{
+                      border: `1px solid ${selectedPipelineConflict ? 'rgba(255,59,95,.42)' : 'rgba(201,169,110,.24)'}`,
+                      borderRadius: 5,
+                      padding: 12,
+                      background: selectedPipelineConflict ? 'rgba(255,59,95,.06)' : 'rgba(201,169,110,.06)',
+                    }}>
+                      <p className="text-[9px] font-medium tracking-[.16em] uppercase" style={{ color: selectedPipelineConflict ? '#ff3b5f' : '#c9a96e' }}>
+                        {selectedPipelineConflict ? 'Platform Link Conflict' : 'Selected Pipeline Links'}
+                      </p>
+                      <p className="text-[11px] mt-2" style={{ color: selectedPipelineConflict ? '#ff9aaa' : '#777' }}>
+                        {selectedPipelineConflict
+                          ? `${PLATFORM_LABELS[selectedPipelineConflict.platform]} already has ${selectedPipelineConflict.existingVideoId}. This discovery is ${selectedPipelineConflict.discoveryVideoId}. Pick a different pipeline item or clear the existing link first.`
+                          : 'Confirm the linked platform IDs below belong to the same content before linking this discovery.'}
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {linkedVideoEntries(selectedPipelineItem).length === 0 ? (
+                          <span className="text-[10px]" style={{ color: '#666' }}>No platform video IDs are linked on this item yet.</span>
+                        ) : linkedVideoEntries(selectedPipelineItem).map(entry => (
+                          <span
+                            key={`selected-${entry.platform}`}
+                            className="inline-flex items-center gap-1.5 text-[9px]"
+                            style={{
+                              color: '#f2ede4',
+                              border: `1px solid ${(PLATFORM_COLORS[entry.platform] ?? '#555')}44`,
+                              borderRadius: 4,
+                              padding: '5px 7px',
+                              background: '#050505',
+                            }}
+                          >
+                            <PlatformMark platform={PLATFORM_LOGO_KEYS[entry.platform]} color={PLATFORM_COLORS[entry.platform] ?? '#c9a96e'} size={20} />
+                            <span style={{ color: PLATFORM_COLORS[entry.platform] ?? '#c9a96e' }}>{PLATFORM_LABELS[entry.platform]}</span>
+                            <span style={{ color: '#777', fontFamily: 'monospace' }}>{entry.videoId}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={handleIgnoreDiscovery}
+                      disabled={discoBusy !== null}
+                      style={{ padding: '9px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#ff3b5f', background: 'rgba(255,59,95,.08)', border: '1px solid rgba(255,59,95,.32)', borderRadius: 4, cursor: discoBusy ? 'wait' : 'pointer', opacity: discoBusy ? 0.65 : 1 }}
+                    >
+                      {discoBusy === 'ignore' ? 'Ignoring...' : 'Ignore'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateFromDiscovery}
+                      disabled={discoBusy !== null}
+                      style={{ padding: '9px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#4cc9ff', background: 'rgba(76,201,255,.08)', border: '1px solid rgba(76,201,255,.32)', borderRadius: 4, cursor: discoBusy ? 'wait' : 'pointer', opacity: discoBusy ? 0.65 : 1 }}
+                    >
+                      {discoBusy === 'create' ? 'Creating...' : 'Create New Pipeline Item'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={startBundleTitleStep}
+                      disabled={discoBusy !== null || bundleValidationError !== null}
+                      style={{ padding: '9px 16px', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: bundleValidationError ? '#777' : '#c9a96e', background: bundleValidationError ? '#0a0a0a' : 'rgba(201,169,110,.08)', border: `1px solid ${bundleValidationError ? '#1e1e1e' : 'rgba(201,169,110,.35)'}`, borderRadius: 4, cursor: discoBusy || bundleValidationError ? 'default' : 'pointer', opacity: discoBusy || bundleValidationError ? 0.55 : 1 }}
+                    >
+                      Link & Create New
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLinkDiscovery}
+                      disabled={!selectedPipelineId || selectedPipelineConflict !== null || discoBusy !== null}
+                      style={{ padding: '9px 18px', fontSize: 9, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#060606', background: '#c9a96e', border: '1px solid #c9a96e', borderRadius: 4, cursor: !selectedPipelineId || selectedPipelineConflict || discoBusy ? 'default' : 'pointer', opacity: !selectedPipelineId || selectedPipelineConflict || discoBusy ? 0.45 : 1 }}
+                    >
+                      {discoBusy === 'link' ? 'Linking...' : 'Link Selected Item'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -1109,6 +1109,23 @@ async function finishDiscoveryLink(
   return {}
 }
 
+async function ensureAndSyncDiscoveryPlatform(
+  pipelineItemId: string,
+  platform: DiscoveryPlatform,
+  clientId: string,
+): Promise<string | null> {
+  const ensure = await DISCOVERY_ENSURE[platform](pipelineItemId)
+  if (ensure.error) return `${platform.toUpperCase()} posts row: ${ensure.error}`
+
+  const sync = await syncLinkedVideoNow(pipelineItemId, platform, clientId)
+  if (sync.error) {
+    console.error(`[unlinked-discovery] ${platform} sync after bundle link failed:`, sync.error)
+    return `${platform.toUpperCase()} sync: ${sync.error}`
+  }
+
+  return null
+}
+
 export async function linkUnlinkedDiscovery(
   discoveryId: string,
   pipelineItemId: string,
@@ -1221,6 +1238,108 @@ export async function createPipelineItemFromDiscovery(
   const linked = await finishDiscoveryLink(c.admin, discoveryId, pipelineItemId, platform, c.cid)
   if (linked.error) return linked
   return { id: pipelineItemId }
+}
+
+export async function createPipelineItemFromDiscoveryBundle(
+  discoveryIds: string[],
+  heroTitle: string,
+): Promise<{ id?: string; error?: string; syncErrors?: string[] }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (c.role !== 'admin') return { error: 'Admin only' }
+
+  const ids = Array.from(new Set(discoveryIds.map(id => id.trim()).filter(Boolean)))
+  if (ids.length < 2) return { error: 'Select at least two discoveries to bundle' }
+
+  const title = heroTitle.trim()
+  if (!title) return { error: 'Hero title is required' }
+
+  const { data: rawDiscoveries, error: discoveryError } = await c.admin
+    .from('unlinked_video_discoveries')
+    .select('id, client_id, platform, platform_video_id, title, thumbnail_url, published_at, status')
+    .in('id', ids)
+    .eq('client_id', c.cid)
+    .eq('status', 'unlinked')
+
+  if (discoveryError) return { error: discoveryError.message }
+  const rows = (rawDiscoveries ?? []) as any[]
+  if (rows.length !== ids.length) return { error: 'One or more discoveries are no longer available' }
+
+  const byId = new Map(rows.map(row => [row.id as string, row]))
+  const discoveries = ids.map(id => byId.get(id)).filter(Boolean) as any[]
+  const platforms = discoveries.map(row => row.platform as DiscoveryPlatform)
+  const duplicatePlatform = platforms.find((platform, index) => platforms.indexOf(platform) !== index)
+  if (duplicatePlatform) {
+    return { error: `Only one ${duplicatePlatform.toUpperCase()} discovery can be bundled at a time` }
+  }
+
+  for (const platform of platforms) {
+    if (!DISCOVERY_VIDEO_COLUMN[platform]) return { error: 'Unsupported platform in bundle' }
+  }
+
+  const postIds: string[] = []
+  const insert: Record<string, unknown> = {
+    client_id: c.cid,
+    title,
+    platform: platforms,
+    status: 'POSTED',
+    priority: 6,
+    thumbnail_url: discoveries.find(row => row.thumbnail_url)?.thumbnail_url ?? null,
+  }
+
+  const publishedDates = discoveries
+    .map(row => row.published_at as string | null)
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+  if (publishedDates[0]) insert.posted_at = publishedDates[0]
+
+  for (const discovery of discoveries) {
+    const platform = discovery.platform as DiscoveryPlatform
+    const videoColumn = DISCOVERY_VIDEO_COLUMN[platform]
+    postIds.push(await nextPipelinePostId(c.admin, c.cid, platform))
+    insert[videoColumn] = discovery.platform_video_id
+  }
+  insert.post_id = postIds.join(' | ')
+
+  const { data: row, error: insertError } = await c.admin
+    .from('pipeline_items')
+    .insert(insert)
+    .select('id')
+    .single()
+
+  if (insertError || !row) return { error: insertError?.message ?? 'Pipeline insert failed' }
+
+  const pipelineItemId = (row as any).id as string
+  const now = new Date().toISOString()
+  const { error: updateError } = await c.admin
+    .from('unlinked_video_discoveries')
+    .update({
+      status: 'linked',
+      pipeline_item_id: pipelineItemId,
+      linked_at: now,
+      last_seen_at: now,
+    })
+    .in('id', ids)
+    .eq('client_id', c.cid)
+    .eq('status', 'unlinked')
+
+  if (updateError) return { id: pipelineItemId, error: updateError.message }
+
+  const syncErrors: string[] = []
+  for (const platform of platforms) {
+    const syncError = await ensureAndSyncDiscoveryPlatform(pipelineItemId, platform, c.cid)
+    if (syncError) syncErrors.push(syncError)
+  }
+
+  revalidatePath('/')
+  revalidatePath('/pipeline')
+  revalidatePath('/analytics')
+
+  if (syncErrors.length > 0) {
+    return { id: pipelineItemId, syncErrors, error: `Created and linked, but ${syncErrors.length} sync step${syncErrors.length === 1 ? '' : 's'} failed` }
+  }
+
+  return { id: pipelineItemId, syncErrors }
 }
 
 export async function ignoreUnlinkedDiscovery(discoveryId: string): Promise<{ error?: string }> {
