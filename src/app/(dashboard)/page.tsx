@@ -18,7 +18,7 @@ export default async function DashboardPage() {
       .order('date', { ascending: true }),
     supabase
       .from('pipeline_items')
-      .select('id, post_id, title, platform, status, week, scheduled_date, posted_at, priority, drive_file_id, approval_comment, pillar, thumbnail_url')
+      .select('id, post_id, title, platform, status, week, scheduled_date, posted_at, priority, drive_file_id, approval_comment, pillar, thumbnail_url, ig_video_id, tt_video_id, yt_video_id')
       .eq('client_id', cid)
       .order('priority', { ascending: true }),
     supabase
@@ -44,7 +44,7 @@ export default async function DashboardPage() {
         .eq('status', 'unlinked')
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('last_seen_at', { ascending: false })
-        .limit(20)
+        .limit(100)
       : Promise.resolve({ data: [] }),
   ])
 

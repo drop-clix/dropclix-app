@@ -58,6 +58,9 @@ export type RawDashPipeline = {
   approval_comment: string | null
   pillar: string | null
   thumbnail_url: string | null
+  ig_video_id: string | null
+  tt_video_id: string | null
+  yt_video_id: string | null
 }
 
 export type RawUnlinkedDiscovery = {
@@ -126,6 +129,11 @@ const TIER_COLORS = { a: '#39ff88', b: '#4cc9ff', c: '#fbbf24', d: '#ff3b5f', f:
 const PLATFORM_COLORS: Record<string, string> = { ig: '#c9a96e', yt: '#4cc9ff', tt: '#2dd4bf', lf: '#4cc9ff' }
 const PLATFORM_LABELS: Record<'ig' | 'tt' | 'yt', string> = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube' }
 const PLATFORM_LOGO_KEYS: Record<'ig' | 'tt' | 'yt', PlatformLogoKey> = { ig: 'instagram', tt: 'tiktok', yt: 'youtube' }
+const VIDEO_ID_KEYS: Record<'ig' | 'tt' | 'yt', keyof Pick<RawDashPipeline, 'ig_video_id' | 'tt_video_id' | 'yt_video_id'>> = {
+  ig: 'ig_video_id',
+  tt: 'tt_video_id',
+  yt: 'yt_video_id',
+}
 const STATUS_COLORS: Record<string, string> = {
   SCRIPTED: '#c9a96e',
   PLANNED: '#4cc9ff',
@@ -239,6 +247,29 @@ function pipelineMatches(item: RawDashPipeline, query: string): boolean {
     item.pillar,
   ].filter(Boolean).join(' ').toLowerCase()
   return haystack.includes(query)
+}
+
+function linkedVideoEntries(item: RawDashPipeline): { platform: 'ig' | 'tt' | 'yt'; videoId: string }[] {
+  return (['ig', 'tt', 'yt'] as const)
+    .map(platform => ({ platform, videoId: item[VIDEO_ID_KEYS[platform]] }))
+    .filter((entry): entry is { platform: 'ig' | 'tt' | 'yt'; videoId: string } => Boolean(entry.videoId))
+}
+
+function dateMs(value: string | null): number | null {
+  if (!value) return null
+  const parsed = new Date(value).getTime()
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function titleOverlapScore(a: string | null, b: string | null): number {
+  const wordsA = new Set((a ?? '').toLowerCase().match(/[a-z0-9]+/g) ?? [])
+  const wordsB = new Set((b ?? '').toLowerCase().match(/[a-z0-9]+/g) ?? [])
+  if (wordsA.size === 0 || wordsB.size === 0) return 0
+  let overlap = 0
+  for (const word of wordsA) {
+    if (word.length > 2 && wordsB.has(word)) overlap++
+  }
+  return overlap / Math.max(wordsA.size, wordsB.size)
 }
 
 function fallbackSuggestions(posts: PostStat[], mode: string): Suggestion[] {
@@ -414,6 +445,49 @@ export function DashboardClient({
     [discoveries, selectedDiscoveryId],
   )
 
+  const selectedPipelineItem = useMemo(
+    () => rawPipeline.find(item => item.id === selectedPipelineId) ?? null,
+    [rawPipeline, selectedPipelineId],
+  )
+
+  const selectedPipelineConflict = useMemo(() => {
+    if (!selectedDiscovery || !selectedPipelineItem) return null
+    const existingVideoId = selectedPipelineItem[VIDEO_ID_KEYS[selectedDiscovery.platform]]
+    if (!existingVideoId || existingVideoId === selectedDiscovery.platform_video_id) return null
+    return {
+      platform: selectedDiscovery.platform,
+      existingVideoId,
+      discoveryVideoId: selectedDiscovery.platform_video_id,
+    }
+  }, [selectedDiscovery, selectedPipelineItem])
+
+  const relatedDiscoveries = useMemo(() => {
+    if (!selectedDiscovery) return []
+    const selectedTime = dateMs(selectedDiscovery.published_at)
+    if (selectedTime == null) return []
+    const oneDayMs = 24 * 60 * 60 * 1000
+    return discoveries
+      .filter(item => {
+        if (item.id === selectedDiscovery.id) return false
+        if (item.client_id !== selectedDiscovery.client_id) return false
+        if (item.status !== 'unlinked') return false
+        if (item.platform === selectedDiscovery.platform) return false
+        const itemTime = dateMs(item.published_at)
+        return itemTime != null && Math.abs(itemTime - selectedTime) <= oneDayMs
+      })
+      .map(item => {
+        const itemTime = dateMs(item.published_at) ?? selectedTime
+        return {
+          item,
+          distance: Math.abs(itemTime - selectedTime),
+          overlap: titleOverlapScore(selectedDiscovery.title, item.title),
+        }
+      })
+      .sort((a, b) => a.distance - b.distance || b.overlap - a.overlap)
+      .slice(0, 6)
+      .map(entry => entry.item)
+  }, [discoveries, selectedDiscovery])
+
   const discoveryMatches = useMemo(() => {
     if (!selectedDiscovery) return []
     const query = discoverySearch.trim().toLowerCase()
@@ -434,6 +508,7 @@ export function DashboardClient({
 
   async function handleLinkDiscovery() {
     if (!selectedDiscovery || !selectedPipelineId) return
+    if (selectedPipelineConflict) return
     setDiscoBusy('link')
     const result = await linkUnlinkedDiscovery(selectedDiscovery.id, selectedPipelineId)
     setDiscoBusy(null)
@@ -1165,6 +1240,59 @@ export function DashboardClient({
             </div>
 
             <div style={{ padding: 24 }}>
+              {relatedDiscoveries.length > 0 && (
+                <div className="mb-6" style={{ border: '1px solid #171717', borderRadius: 6, padding: 14, background: '#090909' }}>
+                  <p className="text-[9px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#c9a96e' }}>
+                    Possible Same Content, Other Platforms
+                  </p>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {relatedDiscoveries.map(item => {
+                      const color = PLATFORM_COLORS[item.platform] ?? '#c9a96e'
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDiscoveryId(item.id)
+                            setDiscoverySearch('')
+                            setSelectedPipelineId(null)
+                          }}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '34px minmax(0,1fr) auto',
+                            gap: 10,
+                            alignItems: 'center',
+                            textAlign: 'left',
+                            background: '#0d0d0d',
+                            border: `1px solid ${color}33`,
+                            borderRadius: 5,
+                            padding: 9,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {item.thumbnail_url ? (
+                            <img src={item.thumbnail_url} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, border: '1px solid #1e1e1e' }} />
+                          ) : (
+                            <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={34} />
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <div className="flex items-center gap-2">
+                              <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={22} />
+                              <span className="text-[8px] font-medium tracking-[.14em] uppercase" style={{ color }}>{PLATFORM_LABELS[item.platform]}</span>
+                              <span className="text-[9px]" style={{ color: '#555', fontFamily: 'monospace' }}>{item.platform_video_id}</span>
+                            </div>
+                            <p className="text-[11px] mt-1 overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                              {item.title ?? `${PLATFORM_LABELS[item.platform]} video`}
+                            </p>
+                          </div>
+                          <span className="text-[9px]" style={{ color: '#666' }}>{displayDate(item.published_at)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               <label className="text-[9px] font-medium tracking-[.18em] uppercase mb-2 block" style={{ color: '#555' }}>Find Pipeline Item</label>
               <input
                 value={discoverySearch}
@@ -1192,6 +1320,7 @@ export function DashboardClient({
                   </div>
                 ) : discoveryMatches.map(item => {
                   const selected = item.id === selectedPipelineId
+                    const linkedEntries = linkedVideoEntries(item)
                   return (
                     <button
                       key={item.id}
@@ -1219,15 +1348,70 @@ export function DashboardClient({
                         <p className="text-[12px] overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{item.title}</p>
                         <p className="text-[10px] mt-1" style={{ color: '#555', fontFamily: 'monospace' }}>{item.post_id}</p>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        {item.platform.slice(0, 3).map(pl => (
-                          <span key={pl} className="text-[8px] tracking-[.08em] uppercase" style={{ color: PLATFORM_COLORS[pl] ?? '#555' }}>{pl}</span>
-                        ))}
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        {linkedEntries.length === 0 ? (
+                            <span className="text-[8px] tracking-[.08em] uppercase" style={{ color: '#555' }}>No linked IDs</span>
+                          ) : linkedEntries.map(entry => (
+                            <span
+                              key={`${item.id}-${entry.platform}`}
+                              className="inline-flex items-center gap-1 text-[8px]"
+                              style={{
+                                color: '#f2ede4',
+                                border: `1px solid ${(PLATFORM_COLORS[entry.platform] ?? '#555')}44`,
+                                borderRadius: 4,
+                                padding: '3px 5px',
+                                background: '#050505',
+                                maxWidth: 132,
+                              }}
+                            >
+                              <PlatformMark platform={PLATFORM_LOGO_KEYS[entry.platform]} color={PLATFORM_COLORS[entry.platform] ?? '#c9a96e'} size={18} />
+                              <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.videoId}</span>
+                            </span>
+                          ))}
                       </div>
                     </button>
                   )
                 })}
               </div>
+
+              {selectedPipelineItem && (
+                <div className="mt-4" style={{
+                  border: `1px solid ${selectedPipelineConflict ? 'rgba(255,59,95,.42)' : 'rgba(201,169,110,.24)'}`,
+                  borderRadius: 5,
+                  padding: 12,
+                  background: selectedPipelineConflict ? 'rgba(255,59,95,.06)' : 'rgba(201,169,110,.06)',
+                }}>
+                  <p className="text-[9px] font-medium tracking-[.16em] uppercase" style={{ color: selectedPipelineConflict ? '#ff3b5f' : '#c9a96e' }}>
+                    {selectedPipelineConflict ? 'Platform Link Conflict' : 'Selected Pipeline Links'}
+                  </p>
+                  <p className="text-[11px] mt-2" style={{ color: selectedPipelineConflict ? '#ff9aaa' : '#777' }}>
+                    {selectedPipelineConflict
+                      ? `${PLATFORM_LABELS[selectedPipelineConflict.platform]} already has ${selectedPipelineConflict.existingVideoId}. This discovery is ${selectedPipelineConflict.discoveryVideoId}. Pick a different pipeline item or clear the existing link first.`
+                      : 'Confirm the linked platform IDs below belong to the same content before linking this discovery.'}
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {linkedVideoEntries(selectedPipelineItem).length === 0 ? (
+                      <span className="text-[10px]" style={{ color: '#666' }}>No platform video IDs are linked on this item yet.</span>
+                    ) : linkedVideoEntries(selectedPipelineItem).map(entry => (
+                      <span
+                        key={`selected-${entry.platform}`}
+                        className="inline-flex items-center gap-1.5 text-[9px]"
+                        style={{
+                          color: '#f2ede4',
+                          border: `1px solid ${(PLATFORM_COLORS[entry.platform] ?? '#555')}44`,
+                          borderRadius: 4,
+                          padding: '5px 7px',
+                          background: '#050505',
+                        }}
+                      >
+                        <PlatformMark platform={PLATFORM_LOGO_KEYS[entry.platform]} color={PLATFORM_COLORS[entry.platform] ?? '#c9a96e'} size={20} />
+                        <span style={{ color: PLATFORM_COLORS[entry.platform] ?? '#c9a96e' }}>{PLATFORM_LABELS[entry.platform]}</span>
+                        <span style={{ color: '#777', fontFamily: 'monospace' }}>{entry.videoId}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 flex flex-wrap justify-end gap-2">
                 <button
@@ -1249,8 +1433,8 @@ export function DashboardClient({
                 <button
                   type="button"
                   onClick={handleLinkDiscovery}
-                  disabled={!selectedPipelineId || discoBusy !== null}
-                  style={{ padding: '9px 18px', fontSize: 9, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#060606', background: '#c9a96e', border: '1px solid #c9a96e', borderRadius: 4, cursor: !selectedPipelineId || discoBusy ? 'default' : 'pointer', opacity: !selectedPipelineId || discoBusy ? 0.45 : 1 }}
+                  disabled={!selectedPipelineId || selectedPipelineConflict !== null || discoBusy !== null}
+                  style={{ padding: '9px 18px', fontSize: 9, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#060606', background: '#c9a96e', border: '1px solid #c9a96e', borderRadius: 4, cursor: !selectedPipelineId || selectedPipelineConflict || discoBusy ? 'default' : 'pointer', opacity: !selectedPipelineId || selectedPipelineConflict || discoBusy ? 0.45 : 1 }}
                 >
                   {discoBusy === 'link' ? 'Linking...' : 'Link Selected Item'}
                 </button>
