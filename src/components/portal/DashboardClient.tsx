@@ -14,6 +14,7 @@ import {
   linkUnlinkedDiscovery,
   createPipelineItemFromDiscovery,
   createPipelineItemFromDiscoveryBundle,
+  linkMissingPlatformToPipelineItem,
   ignoreUnlinkedDiscovery,
 } from '@/app/(dashboard)/edit-actions'
 import { RichTextEditor } from '@/components/portal/RichTextEditor'
@@ -130,6 +131,7 @@ const TIER_COLORS = { a: '#39ff88', b: '#4cc9ff', c: '#fbbf24', d: '#ff3b5f', f:
 const PLATFORM_COLORS: Record<string, string> = { ig: '#c9a96e', yt: '#4cc9ff', tt: '#2dd4bf', lf: '#4cc9ff' }
 const PLATFORM_LABELS: Record<'ig' | 'tt' | 'yt', string> = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube' }
 const PLATFORM_LOGO_KEYS: Record<'ig' | 'tt' | 'yt', PlatformLogoKey> = { ig: 'instagram', tt: 'tiktok', yt: 'youtube' }
+const DISCOVERY_PLATFORMS: Array<'ig' | 'tt' | 'yt'> = ['ig', 'tt', 'yt']
 const VIDEO_ID_KEYS: Record<'ig' | 'tt' | 'yt', keyof Pick<RawDashPipeline, 'ig_video_id' | 'tt_video_id' | 'yt_video_id'>> = {
   ig: 'ig_video_id',
   tt: 'tt_video_id',
@@ -247,6 +249,17 @@ function pipelineMatches(item: RawDashPipeline, query: string): boolean {
     item.posted_at,
     item.scheduled_date,
     item.pillar,
+  ].filter(Boolean).join(' ').toLowerCase()
+  return haystack.includes(query)
+}
+
+function discoveryMatchesQuery(item: RawUnlinkedDiscovery, query: string): boolean {
+  const haystack = [
+    item.title,
+    item.platform,
+    PLATFORM_LABELS[item.platform],
+    item.platform_video_id,
+    item.published_at,
   ].filter(Boolean).join(' ').toLowerCase()
   return haystack.includes(query)
 }
@@ -440,9 +453,17 @@ export function DashboardClient({
   const [discoverySearch, setDiscoverySearch] = useState('')
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null)
   const [selectedRelatedDiscoveryIds, setSelectedRelatedDiscoveryIds] = useState<Set<string>>(new Set())
+  const [relatedDiscoverySearch, setRelatedDiscoverySearch] = useState('')
+  const [discoveryWindowDays, setDiscoveryWindowDays] = useState<1 | 7>(1)
   const [bundleTitle, setBundleTitle] = useState('')
-  const [bundleStep, setBundleStep] = useState<'review' | 'title'>('review')
+  const [bundleStep, setBundleStep] = useState<'review' | 'title' | 'postCreate'>('review')
   const [bundleError, setBundleError] = useState<string | null>(null)
+  const [createdBundlePipelineItemId, setCreatedBundlePipelineItemId] = useState<string | null>(null)
+  const [createdBundlePlatforms, setCreatedBundlePlatforms] = useState<DiscoveryPlatform[]>([])
+  const [missingPlatformInputs, setMissingPlatformInputs] = useState<Record<DiscoveryPlatform, string>>({ ig: '', tt: '', yt: '' })
+  const [missingPlatformSearches, setMissingPlatformSearches] = useState<Record<DiscoveryPlatform, string>>({ ig: '', tt: '', yt: '' })
+  const [missingLinkErrors, setMissingLinkErrors] = useState<Record<DiscoveryPlatform, string | null>>({ ig: null, tt: null, yt: null })
+  const [missingLinkBusy, setMissingLinkBusy] = useState<DiscoveryPlatform | null>(null)
   const [discoBusy, setDiscoBusy] = useState<null | 'link' | 'create' | 'bundle' | 'ignore'>(null)
   const { toast } = useToast()
 
@@ -501,7 +522,7 @@ export function DashboardClient({
     if (!selectedDiscovery) return []
     const selectedTime = dateMs(selectedDiscovery.published_at)
     if (selectedTime == null) return []
-    const oneDayMs = 24 * 60 * 60 * 1000
+    const windowMs = discoveryWindowDays * 24 * 60 * 60 * 1000
     return discoveries
       .filter(item => {
         if (item.id === selectedDiscovery.id) return false
@@ -509,7 +530,7 @@ export function DashboardClient({
         if (item.status !== 'unlinked') return false
         if (item.platform === selectedDiscovery.platform) return false
         const itemTime = dateMs(item.published_at)
-        return itemTime != null && Math.abs(itemTime - selectedTime) <= oneDayMs
+        return itemTime != null && Math.abs(itemTime - selectedTime) <= windowMs
       })
       .map(item => {
         const itemTime = dateMs(item.published_at) ?? selectedTime
@@ -522,7 +543,64 @@ export function DashboardClient({
       .sort((a, b) => a.distance - b.distance || b.overlap - a.overlap)
       .slice(0, 6)
       .map(entry => entry.item)
-  }, [discoveries, selectedDiscovery])
+  }, [discoveries, discoveryWindowDays, selectedDiscovery])
+
+  const manualDiscoveryMatches = useMemo(() => {
+    if (!selectedDiscovery) return []
+    const query = relatedDiscoverySearch.trim().toLowerCase()
+    if (!query) return []
+    const selectedTime = dateMs(selectedDiscovery.published_at)
+    if (selectedTime == null) return []
+    const windowMs = discoveryWindowDays * 24 * 60 * 60 * 1000
+    const autoSuggestionIds = new Set(relatedDiscoveries.map(item => item.id))
+    return discoveries
+      .filter(item => {
+        if (item.id === selectedDiscovery.id) return false
+        if (autoSuggestionIds.has(item.id)) return false
+        if (item.client_id !== selectedDiscovery.client_id) return false
+        if (item.status !== 'unlinked') return false
+        const itemTime = dateMs(item.published_at)
+        if (itemTime == null || Math.abs(itemTime - selectedTime) > windowMs) return false
+        return discoveryMatchesQuery(item, query)
+      })
+      .map(item => {
+        const itemTime = dateMs(item.published_at) ?? selectedTime
+        return {
+          item,
+          distance: Math.abs(itemTime - selectedTime),
+          overlap: titleOverlapScore(selectedDiscovery.title, item.title),
+        }
+      })
+      .sort((a, b) => a.distance - b.distance || b.overlap - a.overlap)
+      .slice(0, 10)
+      .map(entry => entry.item)
+  }, [discoveries, discoveryWindowDays, relatedDiscoveries, relatedDiscoverySearch, selectedDiscovery])
+
+  const createdBundleMissingPlatforms = useMemo(
+    () => DISCOVERY_PLATFORMS.filter(item => !createdBundlePlatforms.includes(item)),
+    [createdBundlePlatforms],
+  )
+
+  const missingDiscoveryMatches = useMemo(() => {
+    const entries = DISCOVERY_PLATFORMS.map(platform => {
+      const query = missingPlatformSearches[platform].trim().toLowerCase()
+      if (!query) return [platform, []] as const
+      const matches = discoveries
+        .filter(item => (
+          item.platform === platform &&
+          item.status === 'unlinked' &&
+          discoveryMatchesQuery(item, query)
+        ))
+        .sort((a, b) => {
+          const aTime = dateMs(a.published_at) ?? 0
+          const bTime = dateMs(b.published_at) ?? 0
+          return bTime - aTime
+        })
+        .slice(0, 6)
+      return [platform, matches] as const
+    })
+    return Object.fromEntries(entries) as Record<DiscoveryPlatform, RawUnlinkedDiscovery[]>
+  }, [discoveries, missingPlatformSearches])
 
   const discoveryMatches = useMemo(() => {
     if (!selectedDiscovery) return []
@@ -540,9 +618,17 @@ export function DashboardClient({
     setDiscoverySearch('')
     setSelectedPipelineId(null)
     setSelectedRelatedDiscoveryIds(new Set())
+    setRelatedDiscoverySearch('')
+    setDiscoveryWindowDays(1)
     setBundleTitle('')
     setBundleStep('review')
     setBundleError(null)
+    setCreatedBundlePipelineItemId(null)
+    setCreatedBundlePlatforms([])
+    setMissingPlatformInputs({ ig: '', tt: '', yt: '' })
+    setMissingPlatformSearches({ ig: '', tt: '', yt: '' })
+    setMissingLinkErrors({ ig: null, tt: null, yt: null })
+    setMissingLinkBusy(null)
     setDiscoBusy(null)
   }
 
@@ -611,6 +697,7 @@ export function DashboardClient({
       return
     }
     const ids = selectedBundleDiscoveries.map(item => item.id)
+    const platforms = Array.from(new Set(selectedBundleDiscoveries.map(item => item.platform)))
     setDiscoBusy('bundle')
     const result = await createPipelineItemFromDiscoveryBundle(ids, title)
     setDiscoBusy(null)
@@ -619,12 +706,52 @@ export function DashboardClient({
       toast(result.error, 'error')
       return
     }
-    setDiscoveries(prev => prev.filter(item => !ids.includes(item.id)))
-    closeDiscoveryModal()
+    setDiscoveries(prev => prev.filter(item => item.id === selectedDiscovery.id || !ids.includes(item.id)))
+    setCreatedBundlePipelineItemId(result.id ?? null)
+    setCreatedBundlePlatforms(platforms)
+    setSelectedRelatedDiscoveryIds(new Set())
+    setRelatedDiscoverySearch('')
+    setMissingPlatformInputs({ ig: '', tt: '', yt: '' })
+    setMissingPlatformSearches({ ig: '', tt: '', yt: '' })
+    setMissingLinkErrors({ ig: null, tt: null, yt: null })
+    setBundleStep('postCreate')
     if (result.syncErrors && result.syncErrors.length > 0) {
       toast(result.error ?? 'Bundle created, but one or more sync steps failed', 'error')
     } else {
       toast('Bundle created and syncing now', 'success')
+    }
+    router.refresh()
+  }
+
+  async function handleLinkMissingPlatform(platformKey: DiscoveryPlatform, source: string) {
+    if (!createdBundlePipelineItemId) return
+    const value = source.trim()
+    if (!value) {
+      setMissingLinkErrors(prev => ({ ...prev, [platformKey]: 'Paste a URL/ID or pick a discovery first.' }))
+      return
+    }
+
+    setMissingLinkBusy(platformKey)
+    setMissingLinkErrors(prev => ({ ...prev, [platformKey]: null }))
+    const result = await linkMissingPlatformToPipelineItem(createdBundlePipelineItemId, platformKey, value)
+    setMissingLinkBusy(null)
+
+    if (result.error && !result.id) {
+      setMissingLinkErrors(prev => ({ ...prev, [platformKey]: result.error ?? 'Link failed' }))
+      toast(result.error ?? 'Link failed', 'error')
+      return
+    }
+
+    setCreatedBundlePlatforms(prev => Array.from(new Set([...prev, platformKey])))
+    setDiscoveries(prev => prev.filter(item => item.id !== value))
+    setMissingPlatformInputs(prev => ({ ...prev, [platformKey]: '' }))
+    setMissingPlatformSearches(prev => ({ ...prev, [platformKey]: '' }))
+
+    if (result.syncErrors && result.syncErrors.length > 0) {
+      setMissingLinkErrors(prev => ({ ...prev, [platformKey]: result.error ?? 'Linked, but sync failed.' }))
+      toast(result.error ?? 'Linked, but sync failed', 'error')
+    } else {
+      toast(`${PLATFORM_LABELS[platformKey]} linked and syncing now`, 'success')
     }
     router.refresh()
   }
@@ -810,6 +937,47 @@ export function DashboardClient({
   }
 
   const selectedPost = selectedPostId ? postById.get(selectedPostId) ?? null : null
+
+  function renderDiscoveryToggleCard(item: RawUnlinkedDiscovery) {
+    const color = PLATFORM_COLORS[item.platform] ?? '#c9a96e'
+    const selected = selectedRelatedDiscoveryIds.has(item.id)
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => toggleRelatedDiscovery(item.id)}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '34px minmax(0,1fr) auto',
+          gap: 10,
+          alignItems: 'center',
+          textAlign: 'left',
+          background: selected ? 'rgba(201,169,110,.10)' : '#0d0d0d',
+          border: `1px solid ${selected ? 'rgba(201,169,110,.55)' : `${color}33`}`,
+          borderRadius: 5,
+          padding: 9,
+          cursor: 'pointer',
+        }}
+      >
+        {item.thumbnail_url ? (
+          <img src={item.thumbnail_url} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, border: '1px solid #1e1e1e' }} />
+        ) : (
+          <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={34} />
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div className="flex items-center gap-2">
+            <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={22} />
+            <span className="text-[8px] font-medium tracking-[.14em] uppercase" style={{ color }}>{PLATFORM_LABELS[item.platform]}</span>
+            <span className="text-[9px]" style={{ color: '#555', fontFamily: 'monospace' }}>{item.platform_video_id}</span>
+          </div>
+          <p className="text-[11px] mt-1 overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+            {item.title ?? `${PLATFORM_LABELS[item.platform]} video`}
+          </p>
+        </div>
+        <span className="text-[9px]" style={{ color: selected ? '#c9a96e' : '#666' }}>{selected ? 'Selected' : displayDate(item.published_at)}</span>
+      </button>
+    )
+  }
 
   if (rawPosts.length === 0 && !(isAdmin && discoveries.length > 0)) {
     return (
@@ -1002,9 +1170,17 @@ export function DashboardClient({
                     setDiscoverySearch('')
                     setSelectedPipelineId(null)
                     setSelectedRelatedDiscoveryIds(new Set())
+                    setRelatedDiscoverySearch('')
+                    setDiscoveryWindowDays(1)
                     setBundleTitle('')
                     setBundleStep('review')
                     setBundleError(null)
+                    setCreatedBundlePipelineItemId(null)
+                    setCreatedBundlePlatforms([])
+                    setMissingPlatformInputs({ ig: '', tt: '', yt: '' })
+                    setMissingPlatformSearches({ ig: '', tt: '', yt: '' })
+                    setMissingLinkErrors({ ig: null, tt: null, yt: null })
+                    setMissingLinkBusy(null)
                   }}
                   style={{
                     background: '#0a0a0a',
@@ -1336,7 +1512,155 @@ export function DashboardClient({
             </div>
 
             <div style={{ padding: 24 }}>
-              {bundleStep === 'title' ? (
+              {bundleStep === 'postCreate' ? (
+                <>
+                  <p className="text-[9px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#c9a96e' }}>
+                    Bundle Created
+                  </p>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {createdBundlePlatforms.map(item => (
+                      <span
+                        key={`created-${item}`}
+                        className="inline-flex items-center gap-1.5 text-[9px]"
+                        style={{
+                          color: '#f2ede4',
+                          border: `1px solid ${(PLATFORM_COLORS[item] ?? '#555')}44`,
+                          borderRadius: 4,
+                          padding: '5px 7px',
+                          background: '#050505',
+                        }}
+                      >
+                        <PlatformMark platform={PLATFORM_LOGO_KEYS[item]} color={PLATFORM_COLORS[item] ?? '#c9a96e'} size={20} />
+                        <span style={{ color: PLATFORM_COLORS[item] ?? '#c9a96e' }}>{PLATFORM_LABELS[item]}</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {createdBundleMissingPlatforms.length === 0 ? (
+                    <div style={{ border: '1px solid rgba(57,255,136,.28)', borderRadius: 6, padding: 14, background: 'rgba(57,255,136,.06)' }}>
+                      <p className="text-[12px]" style={{ color: '#f2ede4' }}>All IG, TikTok, and YouTube links are attached to this pipeline item.</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      <p className="text-[11px]" style={{ color: '#777', lineHeight: 1.5 }}>
+                        Add any missing platform now, or close this modal and handle it later from Pipeline.
+                      </p>
+                      {createdBundleMissingPlatforms.map(platformKey => {
+                        const color = PLATFORM_COLORS[platformKey] ?? '#c9a96e'
+                        const inputValue = missingPlatformInputs[platformKey]
+                        const searchValue = missingPlatformSearches[platformKey]
+                        const matches = missingDiscoveryMatches[platformKey]
+                        const busy = missingLinkBusy === platformKey
+                        return (
+                          <div key={`missing-${platformKey}`} style={{ border: `1px solid ${color}33`, borderRadius: 6, padding: 14, background: '#090909' }}>
+                            <div className="flex items-center gap-2 mb-3">
+                              <PlatformMark platform={PLATFORM_LOGO_KEYS[platformKey]} color={color} size={24} />
+                              <p className="text-[9px] font-medium tracking-[.18em] uppercase" style={{ color }}>{PLATFORM_LABELS[platformKey]}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <input
+                                value={inputValue}
+                                onChange={e => {
+                                  setMissingPlatformInputs(prev => ({ ...prev, [platformKey]: e.target.value }))
+                                  setMissingLinkErrors(prev => ({ ...prev, [platformKey]: null }))
+                                }}
+                                placeholder={`Paste ${PLATFORM_LABELS[platformKey]} URL or ID...`}
+                                style={{
+                                  flex: 1,
+                                  minWidth: 0,
+                                  background: '#0a0a0a',
+                                  border: '1px solid #1f1f1f',
+                                  borderRadius: 5,
+                                  padding: '10px 11px',
+                                  color: '#f2ede4',
+                                  fontSize: 11,
+                                  outline: 'none',
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleLinkMissingPlatform(platformKey, inputValue)}
+                                disabled={busy || !inputValue.trim()}
+                                style={{ padding: '8px 12px', fontSize: 8, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#060606', background: '#c9a96e', border: '1px solid #c9a96e', borderRadius: 4, cursor: busy || !inputValue.trim() ? 'default' : 'pointer', opacity: busy || !inputValue.trim() ? 0.45 : 1 }}
+                              >
+                                {busy ? 'Adding...' : 'Add'}
+                              </button>
+                            </div>
+                            <label className="text-[8px] font-medium tracking-[.16em] uppercase mt-4 mb-2 block" style={{ color: '#555' }}>Search Remaining Discoveries</label>
+                            <input
+                              value={searchValue}
+                              onChange={e => setMissingPlatformSearches(prev => ({ ...prev, [platformKey]: e.target.value }))}
+                              placeholder={`Search ${PLATFORM_LABELS[platformKey]} discoveries...`}
+                              style={{
+                                width: '100%',
+                                background: '#0a0a0a',
+                                border: '1px solid #1f1f1f',
+                                borderRadius: 5,
+                                padding: '10px 11px',
+                                color: '#f2ede4',
+                                fontSize: 11,
+                                outline: 'none',
+                              }}
+                            />
+                            {searchValue.trim() && (
+                              <div className="mt-3" style={{ display: 'grid', gap: 8 }}>
+                                {matches.length === 0 ? (
+                                  <p className="text-[10px]" style={{ color: '#666' }}>No matching unlinked discoveries.</p>
+                                ) : matches.map(item => (
+                                  <button
+                                    key={`missing-match-${item.id}`}
+                                    type="button"
+                                    onClick={() => handleLinkMissingPlatform(platformKey, item.id)}
+                                    disabled={busy}
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns: '34px minmax(0,1fr) auto',
+                                      gap: 10,
+                                      alignItems: 'center',
+                                      textAlign: 'left',
+                                      background: '#0d0d0d',
+                                      border: `1px solid ${color}33`,
+                                      borderRadius: 5,
+                                      padding: 9,
+                                      cursor: busy ? 'wait' : 'pointer',
+                                      opacity: busy ? 0.65 : 1,
+                                    }}
+                                  >
+                                    {item.thumbnail_url ? (
+                                      <img src={item.thumbnail_url} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, border: '1px solid #1e1e1e' }} />
+                                    ) : (
+                                      <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={34} />
+                                    )}
+                                    <div style={{ minWidth: 0 }}>
+                                      <p className="text-[11px] overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{item.title ?? `${PLATFORM_LABELS[item.platform]} video`}</p>
+                                      <p className="text-[9px] mt-1" style={{ color: '#555', fontFamily: 'monospace' }}>{item.platform_video_id}</p>
+                                    </div>
+                                    <span className="text-[9px]" style={{ color: '#666' }}>{displayDate(item.published_at)}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {missingLinkErrors[platformKey] && (
+                              <p className="text-[11px] mt-3" style={{ color: '#ff3b5f' }}>{missingLinkErrors[platformKey]}</p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={closeDiscoveryModal}
+                      disabled={missingLinkBusy !== null}
+                      style={{ padding: '9px 18px', fontSize: 9, fontWeight: 600, letterSpacing: '.12em', textTransform: 'uppercase', color: '#060606', background: '#c9a96e', border: '1px solid #c9a96e', borderRadius: 4, cursor: missingLinkBusy ? 'wait' : 'pointer', opacity: missingLinkBusy ? 0.65 : 1 }}
+                    >
+                      Done
+                    </button>
+                  </div>
+                </>
+              ) : bundleStep === 'title' ? (
                 <>
                   <p className="text-[9px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#c9a96e' }}>
                     Confirm Bundle Title
@@ -1409,58 +1733,67 @@ export function DashboardClient({
                 </>
               ) : (
                 <>
-                  {relatedDiscoveries.length > 0 && (
-                    <div className="mb-6" style={{ border: '1px solid #171717', borderRadius: 6, padding: 14, background: '#090909' }}>
-                      <p className="text-[9px] font-medium tracking-[.18em] uppercase mb-3" style={{ color: '#c9a96e' }}>
+                  <div className="mb-6" style={{ border: '1px solid #171717', borderRadius: 6, padding: 14, background: '#090909' }}>
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                      <p className="text-[9px] font-medium tracking-[.18em] uppercase" style={{ color: '#c9a96e' }}>
                         Possible Same Content, Other Platforms
                       </p>
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        {relatedDiscoveries.map(item => {
-                          const color = PLATFORM_COLORS[item.platform] ?? '#c9a96e'
-                          const selected = selectedRelatedDiscoveryIds.has(item.id)
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => toggleRelatedDiscovery(item.id)}
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns: '34px minmax(0,1fr) auto',
-                                gap: 10,
-                                alignItems: 'center',
-                                textAlign: 'left',
-                                background: selected ? 'rgba(201,169,110,.10)' : '#0d0d0d',
-                                border: `1px solid ${selected ? 'rgba(201,169,110,.55)' : `${color}33`}`,
-                                borderRadius: 5,
-                                padding: 9,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {item.thumbnail_url ? (
-                                <img src={item.thumbnail_url} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 4, border: '1px solid #1e1e1e' }} />
-                              ) : (
-                                <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={34} />
-                              )}
-                              <div style={{ minWidth: 0 }}>
-                                <div className="flex items-center gap-2">
-                                  <PlatformMark platform={PLATFORM_LOGO_KEYS[item.platform]} color={color} size={22} />
-                                  <span className="text-[8px] font-medium tracking-[.14em] uppercase" style={{ color }}>{PLATFORM_LABELS[item.platform]}</span>
-                                  <span className="text-[9px]" style={{ color: '#555', fontFamily: 'monospace' }}>{item.platform_video_id}</span>
-                                </div>
-                                <p className="text-[11px] mt-1 overflow-hidden" style={{ color: '#f2ede4', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                                  {item.title ?? `${PLATFORM_LABELS[item.platform]} video`}
-                                </p>
-                              </div>
-                              <span className="text-[9px]" style={{ color: selected ? '#c9a96e' : '#666' }}>{selected ? 'Selected' : displayDate(item.published_at)}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                      {(bundleError || (selectedRelatedDiscoveryIds.size > 0 && bundleValidationError)) && (
-                        <p className="text-[11px] mt-3" style={{ color: '#ff3b5f' }}>{bundleError ?? bundleValidationError}</p>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => setDiscoveryWindowDays(prev => prev === 1 ? 7 : 1)}
+                        style={{
+                          color: discoveryWindowDays === 7 ? '#060606' : '#c9a96e',
+                          background: discoveryWindowDays === 7 ? '#c9a96e' : 'rgba(201,169,110,.08)',
+                          border: '1px solid rgba(201,169,110,.35)',
+                          borderRadius: 4,
+                          padding: '6px 9px',
+                          fontSize: 8,
+                          fontWeight: 600,
+                          letterSpacing: '.12em',
+                          textTransform: 'uppercase',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Last 7 days
+                      </button>
                     </div>
-                  )}
+
+                    {relatedDiscoveries.length > 0 ? (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {relatedDiscoveries.map(item => renderDiscoveryToggleCard(item))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px]" style={{ color: '#666' }}>No nearby cross-platform candidates in the selected window.</p>
+                    )}
+
+                    <label className="text-[9px] font-medium tracking-[.18em] uppercase mt-5 mb-2 block" style={{ color: '#555' }}>Search Unlinked Discoveries</label>
+                    <input
+                      value={relatedDiscoverySearch}
+                      onChange={e => setRelatedDiscoverySearch(e.target.value)}
+                      placeholder={`Search title, platform, or video ID within ${discoveryWindowDays === 7 ? '7 days' : '1 day'}...`}
+                      style={{
+                        width: '100%',
+                        background: '#0a0a0a',
+                        border: '1px solid #1f1f1f',
+                        borderRadius: 5,
+                        padding: '11px 12px',
+                        color: '#f2ede4',
+                        fontSize: 12,
+                        outline: 'none',
+                      }}
+                    />
+                    {relatedDiscoverySearch.trim() && (
+                      <div className="mt-3" style={{ display: 'grid', gap: 8 }}>
+                        {manualDiscoveryMatches.length === 0 ? (
+                          <p className="text-[10px]" style={{ color: '#666' }}>No matching discoveries in this window.</p>
+                        ) : manualDiscoveryMatches.map(item => renderDiscoveryToggleCard(item))}
+                      </div>
+                    )}
+
+                    {(bundleError || (selectedRelatedDiscoveryIds.size > 0 && bundleValidationError)) && (
+                      <p className="text-[11px] mt-3" style={{ color: '#ff3b5f' }}>{bundleError ?? bundleValidationError}</p>
+                    )}
+                  </div>
 
                   <label className="text-[9px] font-medium tracking-[.18em] uppercase mb-2 block" style={{ color: '#555' }}>Find Pipeline Item</label>
                   <input

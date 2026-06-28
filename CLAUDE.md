@@ -546,6 +546,15 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Linking behavior: Link/Create writes the explicit platform video ID to the correct `pipeline_items` column, ensures the matching `posts` row through existing `ensureIGPostsRow` / `ensureTTPostsRow` / `ensureYTPostsRow`, triggers `syncLinkedVideoNow()`, and marks the discovery `linked`.
 - Guardrails: No automatic pipeline writes during discovery. No fuzzy title/date auto-linking. `pipeline_items.title` remains the display title source; API captions/titles are candidate metadata only unless an admin creates a new pipeline item from the discovery.
 
+## S73 Discovery Search + Post-Bundle Missing Platform Notes
+
+- Dashboard discovery fetch limit increased from 100 to 300 rows because production already had 176 unlinked discoveries; keeping the lower cap could hide valid same-window candidates before the modal search/filter logic ever runs.
+- Discovery modal now has a 1-day/7-day window toggle. The default remains +/- 1 day; turning on "Last 7 days" expands both automatic cross-platform suggestions and the manual "Search Unlinked Discoveries" box. Manual discovery search is display-only and uses the existing toggle-card selection state; duplicate-platform bundle conflicts are still blocked client-side and server-side.
+- Shared parser: `parsePlatformVideoId()` now lives in `src/lib/platform-video-id.ts` and is used by Pipeline plus the dashboard missing-platform flow. Keep future IG/TT/YT paste parsing on this helper instead of adding new local parser copies.
+- Bundle post-create flow: `Link & Create New` no longer closes the modal immediately. After creating one pipeline item, the modal switches to a `postCreate` step showing which of IG/TT/YT are still missing.
+- Missing platform linking: Admin can add a missing platform by pasting a URL/ID or by selecting a remaining unlinked discovery. Server action `linkMissingPlatformToPipelineItem()` appends the missing platform segment to `pipeline_items.post_id` without renumbering existing segments, writes the correct `*_video_id`, marks a discovery linked when one was selected, then calls the existing ensure-posts-row + `syncLinkedVideoNow()` path.
+- Partial success rule: If the missing-platform sync fails, the explicit pipeline link remains intact and the UI surfaces the sync error. Do not roll back the link solely because an API sync failed.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.

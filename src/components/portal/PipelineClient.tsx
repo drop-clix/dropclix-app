@@ -12,6 +12,7 @@ import { useToast } from '@/components/portal/Toast'
 import { usePillarColors } from '@/hooks/usePillarColors'
 import { PipelineBulkImportModal } from '@/components/portal/PipelineBulkImportModal'
 import { RichTextEditor } from '@/components/portal/RichTextEditor'
+import { parsePlatformVideoId } from '@/lib/platform-video-id'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1073,29 +1074,6 @@ function ItemEditPanel({
       )}
     </div>
   )
-}
-
-// ── Mark as Posted Modal ───────────────────────────────────────────────────
-
-function parsePlatformVideoId(url: string, plat: string): string {
-  const s = url.trim()
-  if (!s) return ''
-  if (plat === 'yt' || plat === 'lf') {
-    const m = s.match(/youtu\.be\/([A-Za-z0-9_-]{10,12})/) ??
-              s.match(/[?&]v=([A-Za-z0-9_-]{10,12})/) ??
-              s.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{10,12})/)
-    if (m) return m[1]
-  }
-  if (plat === 'tt') {
-    const m = s.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/)
-    if (m) return m[1]
-  }
-  if (plat === 'ig') {
-    const m = s.match(/instagram\.com\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/)
-    if (m) return m[1]
-  }
-  if (!s.startsWith('http')) return s
-  return ''
 }
 
 // ── Platform logo SVGs (inline, accurate brand marks) ──────────────────────

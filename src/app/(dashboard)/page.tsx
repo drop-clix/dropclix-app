@@ -44,7 +44,7 @@ export default async function DashboardPage() {
         .eq('status', 'unlinked')
         .order('published_at', { ascending: false, nullsFirst: false })
         .order('last_seen_at', { ascending: false })
-        .limit(100)
+        .limit(300)
       : Promise.resolve({ data: [] }),
   ])
 

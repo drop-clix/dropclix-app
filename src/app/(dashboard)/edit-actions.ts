@@ -10,6 +10,7 @@ import { syncSingleIGVideo } from '@/lib/instagram-sync'
 import { syncSingleTTVideo } from '@/lib/tiktok-sync'
 import { syncSingleYTVideo } from '@/lib/video-polling'
 import { fillPublishDatesIfMissing, normalizePublishDate } from '@/lib/publish-date'
+import { parsePlatformVideoId } from '@/lib/platform-video-id'
 
 const IMPERSONATE = 'dropclix_impersonate_client_id'
 
@@ -1337,6 +1338,110 @@ export async function createPipelineItemFromDiscoveryBundle(
 
   if (syncErrors.length > 0) {
     return { id: pipelineItemId, syncErrors, error: `Created and linked, but ${syncErrors.length} sync step${syncErrors.length === 1 ? '' : 's'} failed` }
+  }
+
+  return { id: pipelineItemId, syncErrors }
+}
+
+export async function linkMissingPlatformToPipelineItem(
+  pipelineItemId: string,
+  platform: DiscoveryPlatform,
+  inputOrDiscoveryId: string,
+): Promise<{ id?: string; error?: string; syncErrors?: string[] }> {
+  const c = await getCtx()
+  if (!c || !c.cid) return { error: 'Not authenticated' }
+  if (c.role !== 'admin') return { error: 'Admin only' }
+
+  const videoColumn = DISCOVERY_VIDEO_COLUMN[platform]
+  if (!videoColumn) return { error: 'Unsupported platform' }
+
+  const rawInput = inputOrDiscoveryId.trim()
+  if (!rawInput) return { error: 'Paste a URL/ID or pick a discovery first' }
+
+  const { data: rawDiscovery, error: discoveryLookupError } = await c.admin
+    .from('unlinked_video_discoveries')
+    .select('id, client_id, platform, platform_video_id, thumbnail_url, status')
+    .eq('id', rawInput)
+    .eq('client_id', c.cid)
+    .eq('status', 'unlinked')
+    .maybeSingle()
+
+  if (discoveryLookupError) return { error: discoveryLookupError.message }
+
+  const discovery = rawDiscovery as any | null
+  if (discovery && discovery.platform !== platform) {
+    return { error: `Selected discovery is ${String(discovery.platform).toUpperCase()}, not ${platform.toUpperCase()}` }
+  }
+
+  const videoId = discovery
+    ? String(discovery.platform_video_id ?? '').trim()
+    : parsePlatformVideoId(rawInput, platform)
+
+  if (!videoId) return { error: `Could not parse a ${platform.toUpperCase()} video ID` }
+
+  const { data: rawItem, error: itemError } = await c.admin
+    .from('pipeline_items')
+    .select('id, client_id, post_id, platform, thumbnail_url, ig_video_id, tt_video_id, yt_video_id')
+    .eq('id', pipelineItemId)
+    .eq('client_id', c.cid)
+    .maybeSingle()
+
+  if (itemError || !rawItem) return { error: itemError?.message ?? 'Pipeline item not found' }
+
+  const item = rawItem as any
+  const existingVideoId = item[videoColumn] as string | null
+  if (existingVideoId && existingVideoId !== videoId) {
+    return { error: `${platform.toUpperCase()} is already linked on this pipeline item` }
+  }
+
+  const platforms = Array.isArray(item.platform) ? item.platform as string[] : []
+  const mergedPlatforms = Array.from(new Set([...platforms, platform]))
+  const nextPostId = await postIdWithPlatformSegment(c.admin, c.cid, item.post_id as string, platform)
+  const update: Record<string, unknown> = {
+    [videoColumn]: videoId,
+    platform: mergedPlatforms,
+    post_id: nextPostId,
+  }
+
+  if (!discovery && rawInput.startsWith('http')) update.video_url = rawInput
+  if (discovery?.thumbnail_url && !item.thumbnail_url) update.thumbnail_url = discovery.thumbnail_url
+
+  const { error: updateError } = await c.admin
+    .from('pipeline_items')
+    .update(update)
+    .eq('id', pipelineItemId)
+    .eq('client_id', c.cid)
+
+  if (updateError) return { error: updateError.message }
+
+  if (discovery) {
+    const now = new Date().toISOString()
+    const { error: discoveryUpdateError } = await c.admin
+      .from('unlinked_video_discoveries')
+      .update({
+        status: 'linked',
+        pipeline_item_id: pipelineItemId,
+        linked_at: now,
+        last_seen_at: now,
+      })
+      .eq('id', discovery.id)
+      .eq('client_id', c.cid)
+      .eq('status', 'unlinked')
+
+    if (discoveryUpdateError) {
+      return { id: pipelineItemId, error: discoveryUpdateError.message }
+    }
+  }
+
+  const syncError = await ensureAndSyncDiscoveryPlatform(pipelineItemId, platform, c.cid)
+  const syncErrors = syncError ? [syncError] : []
+
+  revalidatePath('/')
+  revalidatePath('/pipeline')
+  revalidatePath('/analytics')
+
+  if (syncErrors.length > 0) {
+    return { id: pipelineItemId, syncErrors, error: 'Linked, but sync failed' }
   }
 
   return { id: pipelineItemId, syncErrors }
