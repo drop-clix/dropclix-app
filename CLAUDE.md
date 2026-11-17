@@ -584,6 +584,15 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Measured on Day 1 (2026-11-17, run locally against production): IG full sync ~180s → ~39s (112 rows, Graph usage 1%, 0 rate-limit events); split run with an 8s budget synced 19, returned a cursor, and the resume synced the other 93 with no overlap. TikTok ~63s → ~27s (100 rows). YouTube 91 synced, 1 skipped on a YouTube HTTP 500.
 - See `fires/2026-11-17-sync-concurrency-rate-limits.md`.
 
+## S77 YouTube Lifetime Analytics Range Notes
+
+- Issue: `sync-youtube` started each video's Analytics query at `posts.date`. YouTube Analytics reports days in **Pacific time**; `posts.date` is the **UTC** date of `publishedAt` (`normalizePublishDate()` in `publish-date.ts`). Videos published 00:00–06:59 UTC belong to the previous Pacific day, so the whole publish day was dropped. Day 1: 48 of 92 videos undercounted (42,257 views, 604 likes, 45 subscribers gained); every changed video was in that UTC window and no other pattern existed.
+- Fix: `src/lib/youtube-analytics.ts` holds `fetchYTAnalytics()` (moved unchanged) and `fetchYTLifetimeBatch()`: one `dimensions=video` call per 200 IDs from `ytLifetimeStart()` (2015-01-01, or earlier if a post predates it) to today, plus a batched impressions/CTR call. The route falls back per video (same lifetime range) for IDs missing from the batch or in a 5xx batch; a 4xx batch failure skips those IDs. The written row is unchanged: `live` only, same fields, transient failures skip without overwrite. Locked windows and `posts.decision` are never written by this sync.
+- Rule: **never bound a YouTube Analytics query by `posts.date`.** Use the lifetime range, or convert to Pacific and subtract a day.
+- `POST /api/admin/sync-youtube` with `{ client_id, dry_run: true }` returns stored-vs-lifetime views, likes, subscribers gained, ER% and Decision per video and writes nothing (token refresh aside).
+- Verified 2026-11-17: dry run matched Data API `viewCount` within 0.26% on all 48 changed videos (45 exact). Real Day 1 sync: 92 synced, 0 skipped, ~15s; all 48 changed live rows match the dry run exactly; 687 locked rows and 304 `posts.decision` values byte-identical before/after. IG (112) and TT (100) re-verified.
+- Known stale data (not fixed, by decision): `posts.decision` still says Iterate on 10 of the 11 videos whose lifetime ER is now Kill (#yt0115 is NULL); locked windows for the affected videos hold truncated-query values; `updateAnalyticsMetric()` recomputes YouTube Decision with the saves formula. See `fires/2026-11-17-youtube-analytics-pacific-day.md`.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.
