@@ -3,6 +3,8 @@ import { FACEBOOK_RECONNECT_REQUIRED, refreshFacebookToken } from '@/lib/faceboo
 import { fillPublishDatesIfMissing } from '@/lib/publish-date'
 import { scheduleSnapshotsIfNew } from '@/lib/video-polling'
 import { recordUnlinkedVideoDiscovery } from '@/lib/unlinked-discoveries'
+import { runPool } from '@/lib/concurrency'
+import { graphBlocked, graphFetch, graphUsagePct } from '@/lib/graph-rate-limit'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -38,7 +40,29 @@ export type IGSyncResult = {
   followersCount: number | null
   reconnectNeeded?: boolean
   discovered?: number
+  /** Posts whose processing threw or whose insights were temporarily unavailable. */
+  failed?: number
+  /** Media items processed in this call (linked + unlinked). */
+  processed?: number
+  /** Total media listed for the account in this call. */
+  mediaTotal?: number
+  /** Set when the sync stopped early; pass back as resumeCursor to continue. */
+  resumeCursor?: string | null
+  stoppedReason?: 'time_budget' | 'rate_limit' | null
 }
+
+export type IGSyncOptions = {
+  /** Epoch ms after which no new posts are started. */
+  deadlineMs?: number
+  /** Cursor returned by a previous partial sync. */
+  resumeCursor?: string | null
+  /** Parallel posts in flight (default IG_SYNC_CONCURRENCY). */
+  concurrency?: number
+}
+
+// Parallel per-post workers. Each post makes one Graph insights call; usage
+// headers throttle further if Meta reports high usage.
+export const IG_SYNC_CONCURRENCY = 4
 
 // ── Fetch all media for the connected account ─────────────────────────────────
 
@@ -76,23 +100,17 @@ export async function fetchIGMedia(
       return { media, pages, warning }
     }
 
-    const res = await fetch(url)
+    const res = await graphFetch(url, `/media page ${pages + 1}`)
     pages++
     if (!res.ok) {
-      console.error(`[ig-sync] /media page ${pages} failed:`, res.status, await res.text())
+      const detail = res.errorMessage ?? res.text
+      console.error(`[ig-sync] /media page ${pages} failed:`, res.status, detail)
       const warning = pages === 1
-        ? `IG /media failed (HTTP ${res.status}); no media listed`
+        ? `IG /media failed (HTTP ${res.status}): ${detail}; no media listed`
         : `IG /media page ${pages} failed (HTTP ${res.status}) after ${media.length} media; older media were not listed`
       return { media, pages, warning }
     }
-    const json = await res.json() as { data?: IGMedia[]; paging?: { next?: string }; error?: { message: string } }
-    if (json.error) {
-      console.error(`[ig-sync] media error on page ${pages}:`, json.error.message)
-      const warning = pages === 1
-        ? `IG /media error: ${json.error.message}`
-        : `IG /media page ${pages} error after ${media.length} media: ${json.error.message}`
-      return { media, pages, warning }
-    }
+    const json = res.json as { data?: IGMedia[]; paging?: { next?: string } }
 
     const pageItems = json.data ?? []
     media.push(...pageItems)
@@ -109,14 +127,14 @@ async function fetchIGMediaInsights(
   mediaId: string,
   accessToken: string,
   mediaType: string,
-): Promise<IGInsights> {
+): Promise<IGInsights | null> {
   const isVideo = mediaType === 'VIDEO' || mediaType === 'REEL'
   const metrics = isVideo
     ? 'views,saved,reach,total_interactions,shares,ig_reels_avg_watch_time,ig_reels_video_view_total_time,reels_skip_rate'
     : 'reach,saved,impressions,shares,total_interactions'
 
   const url = `https://graph.facebook.com/v19.0/${mediaId}/insights?metric=${metrics}&access_token=${accessToken}`
-  const res = await fetch(url)
+  const res = await graphFetch(url, `insights ${mediaId}`)
 
   const empty: IGInsights = {
     views: 0,
@@ -130,9 +148,14 @@ async function fetchIGMediaInsights(
     impressions: 0,
   }
 
-  const rawText = await res.text()
-  let rawBody: unknown = rawText
-  try { rawBody = rawText ? JSON.parse(rawText) : null } catch { /* keep string */ }
+  const rawBody: unknown = res.json ?? res.text
+
+  // Transient failure (rate limit after one retry, or Graph/server error):
+  // return null so callers skip the upsert instead of overwriting good data with zeros.
+  if (!res.ok && (res.rateLimited || res.status >= 500 || res.errorCode === 1 || res.errorCode === 2)) {
+    console.warn(`[ig-sync] insights temporarily unavailable for ${mediaId} (${mediaType}) HTTP ${res.status} code ${res.errorCode}: ${res.errorMessage ?? ''}`)
+    return null
+  }
 
   if (!res.ok) {
     const graphMessage = typeof rawBody === 'object' && rawBody && 'error' in rawBody
@@ -229,8 +252,9 @@ export async function syncInstagramForClient(
   clientId: string,
   accessToken: string,
   igAccountId: string,
+  options: IGSyncOptions = {},
 ): Promise<IGSyncResult> {
-  const result: IGSyncResult = { synced: 0, skipped: 0, errors: [], followersCount: null }
+  const result: IGSyncResult = { synced: 0, skipped: 0, errors: [], followersCount: null, failed: 0, processed: 0, resumeCursor: null, stoppedReason: null }
   const activeToken = await refreshFacebookToken(clientId, 'instagram')
   if (!activeToken) {
     return {
@@ -244,13 +268,21 @@ export async function syncInstagramForClient(
   result.followersCount = followersCount
 
   const listing = await fetchIGMedia(activeToken, igAccountId)
-  const media = listing.media
-  console.log(`[ig-sync] fetched ${media.length} media items in ${listing.pages} page(s) for client ${clientId}`)
+  const allMedia = listing.media
+  result.mediaTotal = allMedia.length
+  console.log(`[ig-sync] fetched ${allMedia.length} media items in ${listing.pages} page(s) for client ${clientId}`)
   if (listing.warning) result.errors.push(listing.warning)
 
-  for (const item of media) {
+  const startIndex = resolveResumeIndex(allMedia, options.resumeCursor ?? null)
+  if (options.resumeCursor) {
+    console.log(`[ig-sync] resuming at media index ${startIndex}/${allMedia.length}`)
+  }
+  const media = allMedia.slice(startIndex)
+
+  const pool = await runPool(media, async item => {
+    result.processed = (result.processed ?? 0) + 1
     const shortcode = shortcodeFromPermalink(item.permalink)
-    if (!shortcode) { result.skipped++; continue }
+    if (!shortcode) { result.skipped++; return }
 
     const resolved = await resolveIGPostsUUID(admin, shortcode, clientId)
     if (!resolved) {
@@ -268,10 +300,17 @@ export async function syncInstagramForClient(
       })
       if (discovered) result.discovered = (result.discovered ?? 0) + 1
       result.skipped++
-      continue
+      return
     }
 
     const insights = await fetchIGMediaInsights(item.id, activeToken, item.media_type)
+    if (!insights) {
+      // Transient Graph failure: keep the existing live row untouched.
+      result.failed = (result.failed ?? 0) + 1
+      result.errors.push(`${shortcode}: insights temporarily unavailable; existing metrics kept`)
+      return
+    }
+
     const publishedAt = await fillPublishDatesIfMissing(admin, {
       clientId,
       postUUID: resolved.postUUID,
@@ -323,9 +362,64 @@ export async function syncInstagramForClient(
       }
       result.synced++
     }
+  }, {
+    concurrency: options.concurrency ?? IG_SYNC_CONCURRENCY,
+    canStart: () => {
+      if (options.deadlineMs && Date.now() >= options.deadlineMs) {
+        result.stoppedReason = 'time_budget'
+        return false
+      }
+      if (graphBlocked()) {
+        result.stoppedReason = 'rate_limit'
+        return false
+      }
+      return true
+    },
+    onError: (err, item) => {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[ig-sync] post failed for media ${item.id}:`, message)
+      result.failed = (result.failed ?? 0) + 1
+      result.errors.push(`${shortcodeFromPermalink(item.permalink) ?? item.id}: ${message}`)
+    },
+  })
+
+  if (pool.stoppedEarly) {
+    const nextItem = media[pool.nextIndex]
+    result.resumeCursor = encodeResumeCursor(nextItem)
+    const remaining = media.length - pool.nextIndex
+    const why = result.stoppedReason === 'rate_limit'
+      ? `Graph usage limit reached (${graphUsagePct()}%)`
+      : 'time budget reached'
+    console.warn(`[ig-sync] stopped early: ${why}; ${remaining} media remaining; resume cursor set`)
+    result.errors.push(`Partial sync: ${why}; ${remaining} of ${allMedia.length} media remaining. Run Sync Now again to continue.`)
+  } else {
+    result.stoppedReason = null
   }
 
   return result
+}
+
+// ── Resume cursor ─────────────────────────────────────────────────────────────
+// Format "<timestamp>|<mediaId>" of the first media item not yet started.
+// /media is newest-first, so on resume we start at that item, or (if it was
+// deleted) at the first item at or before its timestamp.
+
+export function encodeResumeCursor(item: IGMedia | undefined): string | null {
+  if (!item) return null
+  return `${item.timestamp}|${item.id}`
+}
+
+export function resolveResumeIndex(media: IGMedia[], cursor: string | null): number {
+  if (!cursor) return 0
+  const sep = cursor.lastIndexOf('|')
+  const timestamp = sep > 0 ? cursor.slice(0, sep) : ''
+  const mediaId = sep > 0 ? cursor.slice(sep + 1) : cursor
+  const byId = media.findIndex(item => item.id === mediaId)
+  if (byId >= 0) return byId
+  const cutoff = Date.parse(timestamp)
+  if (Number.isNaN(cutoff)) return 0
+  const byTime = media.findIndex(item => Date.parse(item.timestamp) <= cutoff)
+  return byTime >= 0 ? byTime : media.length
 }
 
 export async function syncSingleIGVideo(
@@ -369,6 +463,9 @@ export async function syncSingleIGVideo(
   }
 
   const insights = await fetchIGMediaInsights(item.id, activeToken, item.media_type)
+  if (!insights) {
+    return { synced: 0, error: `Instagram insights temporarily unavailable for ${igVideoId}; existing metrics kept` }
+  }
   const publishedAt = await fillPublishDatesIfMissing(admin, {
     clientId,
     postUUID: resolved.postUUID,

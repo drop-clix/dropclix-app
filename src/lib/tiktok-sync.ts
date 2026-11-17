@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { scheduleSnapshotsIfNew } from '@/lib/video-polling'
 import { fillPublishDatesIfMissing } from '@/lib/publish-date'
 import { recordUnlinkedVideoDiscovery } from '@/lib/unlinked-discoveries'
+import { runPool } from '@/lib/concurrency'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -201,6 +202,8 @@ export async function refreshTikTokToken(clientId: string): Promise<TikTokConnec
 
 // TikTok video/query accepts 1–20 IDs per request (filters.video_ids).
 export const TIKTOK_VIDEO_QUERY_MAX_IDS = 20
+// Parallel per-video DB writes in the full sync (no TikTok API calls per item).
+const TT_SYNC_CONCURRENCY = 4
 
 async function queryTikTokVideoChunk(
   accessToken: string,
@@ -466,17 +469,19 @@ export async function syncTikTokForClient(clientId: string): Promise<TikTokSyncR
   result.errors.push(...chunkErrors)
   const statsById = new Map(videos.map(video => [video.id, video]))
 
-  for (const videoId of videoIds) {
+  // Per-item work is Supabase writes only (TikTok stats were fetched above in
+  // chunks), so a small pool is safe and one failure never aborts the sync.
+  await runPool(videoIds, async videoId => {
     if (failedIds.has(videoId)) {
       result.skipped++
-      continue
+      return
     }
     const resolved = postByVideoId.get(videoId)
     const video = statsById.get(videoId)
     if (!resolved || !video) {
       console.warn(`[tt-sync] no TikTok stats returned for video_id=${videoId}`)
       result.skipped++
-      continue
+      return
     }
 
     const views = video.view_count ?? 0
@@ -529,7 +534,7 @@ export async function syncTikTokForClient(clientId: string): Promise<TikTokSyncR
     if (upsertErr) {
       console.error(`[tt-sync] upsert failed for ${videoId}:`, upsertErr.message, upsertErr.code, upsertErr.details)
       result.errors.push(`${videoId}: ${upsertErr.message}`)
-      continue
+      return
     }
 
     const snapshotPostedAt = resolved.item.posted_at ?? publishedAt?.iso
@@ -539,7 +544,15 @@ export async function syncTikTokForClient(clientId: string): Promise<TikTokSyncR
 
     console.log(`[tt-sync] ✓ ${videoId} — views=${views} likes=${likes} comments=${comments} shares=${shares}`)
     result.synced++
-  }
+  }, {
+    concurrency: TT_SYNC_CONCURRENCY,
+    onError: (err, videoId) => {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[tt-sync] item failed for ${videoId}:`, message)
+      result.errors.push(`${videoId}: ${message}`)
+      result.skipped++
+    },
+  })
 
   return result
 }

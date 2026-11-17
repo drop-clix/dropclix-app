@@ -4,7 +4,15 @@ import { createClient } from '@/lib/supabase/server'
 import { syncInstagramForClient } from '@/lib/instagram-sync'
 import { FACEBOOK_RECONNECT_REQUIRED } from '@/lib/facebook-auth'
 
+// Vercel Hobby + Fluid Compute: 300s is both the project default and the plan maximum.
+export const maxDuration = 300
+
+// Stop starting new posts after this long so in-flight posts (including one
+// rate-limit retry of up to 30s) and the bookkeeping below finish before 300s.
+const IG_SYNC_TIME_BUDGET_MS = 230_000
+
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now()
   // Auth: admin session required
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -21,6 +29,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}))
   const clientId: string = body.client_id
+  const resumeCursor: string | null = typeof body.resume_cursor === 'string' ? body.resume_cursor : null
   if (!clientId) return NextResponse.json({ error: 'client_id required' }, { status: 400 })
 
   const admin = createAdminClient()
@@ -47,7 +56,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Run sync
-  const result = await syncInstagramForClient(admin, clientId, accessToken, igAccountId)
+  const result = await syncInstagramForClient(admin, clientId, accessToken, igAccountId, {
+    deadlineMs: startedAt + IG_SYNC_TIME_BUDGET_MS,
+    resumeCursor,
+  })
   if (result.reconnectNeeded) {
     return NextResponse.json(
       { error: FACEBOOK_RECONNECT_REQUIRED, synced: 0, skipped: 0, errors: result.errors },
@@ -73,7 +85,13 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     synced:          result.synced,
     skipped:         result.skipped,
+    failed:          result.failed ?? 0,
+    processed:       result.processed ?? 0,
+    mediaTotal:      result.mediaTotal ?? 0,
     errors:          result.errors,
+    complete:        !result.resumeCursor,
+    resumeCursor:    result.resumeCursor ?? null,
+    stoppedReason:   result.stoppedReason ?? null,
     followersCount:  (updatedConn as any)?.subscriber_count ?? result.followersCount,
     lastSyncedAt:    (updatedConn as any)?.last_synced_at ?? now,
     tokenExpiresAt:  (updatedConn as any)?.token_expires_at ?? (conn as any).token_expires_at ?? null,

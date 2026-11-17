@@ -3,6 +3,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { syncTikTokForClient } from '@/lib/tiktok-sync'
 
+// Vercel Hobby + Fluid Compute: 300s is the project default and plan maximum.
+export const maxDuration = 300
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

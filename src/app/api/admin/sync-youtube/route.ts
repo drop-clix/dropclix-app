@@ -3,6 +3,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getYouTubeConnection, fetchChannelInfo } from '@/lib/youtube-auth'
 import { discoverYouTubeUnlinkedUploads } from '@/lib/video-polling'
+import { runPool } from '@/lib/concurrency'
+
+// Vercel Hobby + Fluid Compute: 300s is the project default and plan maximum.
+export const maxDuration = 300
+
+const YT_SYNC_CONCURRENCY = 1
 
 type SyncResult = {
   synced: number
@@ -131,13 +137,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ...result, message: 'No posts with yt_id found. Run the YouTube CSV importer first.' })
   }
 
-  for (const post of posts) {
+  // Concurrency 1: the loop already runs ~10 Analytics queries/s sequentially and
+  // the Analytics per-minute quota is not visible to us, so we only add per-post
+  // error isolation here, not parallelism.
+  const channelId = conn.channel_id
+  await runPool(posts, async post => {
     const videoId    = post.yt_id
     const publishDate = post.date
     const endDate = new Date().toISOString().slice(0, 10)
     const metrics = await fetchYTAnalytics(
       conn.access_token,
-      conn.channel_id,
+      channelId,
       videoId,
       publishDate,
       endDate,
@@ -145,7 +155,7 @@ export async function POST(req: NextRequest) {
 
     if (!metrics) {
       result.skipped++
-      continue
+      return
     }
 
     const { error: uErr } = await admin
@@ -178,7 +188,15 @@ export async function POST(req: NextRequest) {
     } else {
       result.synced++
     }
-  }
+  }, {
+    concurrency: YT_SYNC_CONCURRENCY,
+    onError: (err, post) => {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[yt-sync] post failed for ${post.post_id}:`, message)
+      result.errors.push(`${post.post_id} live: ${message}`)
+      result.skipped++
+    },
+  })
 
   const now = new Date().toISOString()
   result.lastSyncedAt = now

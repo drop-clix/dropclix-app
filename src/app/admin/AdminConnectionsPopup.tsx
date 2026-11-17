@@ -129,6 +129,19 @@ const PLATFORM_CONFIG: Record<PlatformKey, {
   },
 }
 
+type SyncResponse = {
+  error?: string
+  synced?: number
+  skipped?: number
+  failed?: number
+  resumeCursor?: string | null
+  stoppedReason?: 'time_budget' | 'rate_limit' | null
+  subscriberCount?: number | null
+  followersCount?: number | null
+  lastSyncedAt?: string | null
+  tokenExpiresAt?: string | null
+}
+
 const PLATFORM_ORDER: PlatformKey[] = ['instagram', 'tiktok', 'youtube', 'meta_ads']
 
 function fmt(n: number) {
@@ -344,30 +357,54 @@ export function AdminConnectionsPopup({
     const config = PLATFORM_CONFIG[platform]
     setMessage(platform, '', 'syncing')
     try {
-      const res = await fetch(config.syncEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: client.id }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Sync failed')
+      // A sync that hits its time budget returns resumeCursor; continue from it
+      // automatically (bounded). A rate-limit stop is not auto-continued.
+      const MAX_ROUNDS = 5
+      let resumeCursor: string | null = null
+      let synced = 0
+      let skipped = 0
+      let data: SyncResponse | null = null
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        const res: Response = await fetch(config.syncEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client_id: client.id, ...(resumeCursor ? { resume_cursor: resumeCursor } : {}) }),
+        })
+        const body = await res.json() as SyncResponse
+        data = body
+        if (!res.ok) throw new Error(body.error ?? 'Sync failed')
+        synced += Number(body.synced ?? 0)
+        skipped += Number(body.skipped ?? 0)
+        resumeCursor = typeof body.resumeCursor === 'string' ? body.resumeCursor : null
+        if (!resumeCursor || body.stoppedReason === 'rate_limit') break
+        setMessage(platform, `${synced} posts synced so far · continuing…`, 'syncing')
+      }
+
+      if (!data) throw new Error('Sync failed')
+      const final: SyncResponse = data
+      const partial = resumeCursor
+        ? final.stoppedReason === 'rate_limit'
+          ? ' · paused: Instagram rate limit, run Sync Now again later'
+          : ' · partial, run Sync Now again to finish'
+        : ''
+      const failedNote = Number(final.failed ?? 0) > 0 ? ` · ${final.failed} failed` : ''
 
       const result =
         platform === 'youtube'
-          ? `${data.synced} windows synced · ${data.skipped} skipped`
+          ? `${synced} windows synced · ${skipped} skipped`
           : platform === 'meta_ads'
-            ? `${data.synced} campaigns synced`
-            : `${data.synced} posts synced · ${data.skipped} skipped`
+            ? `${synced} campaigns synced`
+            : `${synced} posts synced · ${skipped} skipped${failedNote}${partial}`
 
       setMessage(platform, result, 'done')
       setPlatformConnection(platform, {
         count: platform === 'youtube'
-          ? data.subscriberCount
+          ? final.subscriberCount
           : platform === 'instagram'
-            ? data.followersCount
+            ? final.followersCount
             : undefined,
-        lastSyncedAt: 'lastSyncedAt' in data ? data.lastSyncedAt ?? null : undefined,
-        tokenExpiresAt: 'tokenExpiresAt' in data ? data.tokenExpiresAt ?? null : undefined,
+        lastSyncedAt: 'lastSyncedAt' in final ? final.lastSyncedAt ?? null : undefined,
+        tokenExpiresAt: 'tokenExpiresAt' in final ? final.tokenExpiresAt ?? null : undefined,
       })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
