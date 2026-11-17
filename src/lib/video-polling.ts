@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchYouTubePublicVideo, type YouTubePublicVideo } from '@/lib/youtube-public'
 import { fillPublishDatesIfMissing } from '@/lib/publish-date'
 import { recordUnlinkedVideoDiscovery } from '@/lib/unlinked-discoveries'
+import { recomputeStoredDecision } from '@/lib/decision-store'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 type MetricWindow = 'live' | 'w24' | 'w3' | 'w7' | 'eom'
@@ -107,6 +108,8 @@ export async function upsertPolledStats(
   }
 
   console.log('[poll] upsert ok:', { postUUID, platform, metricWindow })
+  // S78: covers cron live polling and snapshot locked-window copies. Never fails the write.
+  await recomputeStoredDecision(admin, postUUID)
   return true
 }
 

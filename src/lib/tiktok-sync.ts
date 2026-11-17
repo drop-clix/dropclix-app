@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { scheduleSnapshotsIfNew } from '@/lib/video-polling'
 import { fillPublishDatesIfMissing } from '@/lib/publish-date'
 import { recordUnlinkedVideoDiscovery } from '@/lib/unlinked-discoveries'
+import { recomputeStoredDecision } from '@/lib/decision-store'
 import { runPool } from '@/lib/concurrency'
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -542,6 +543,8 @@ export async function syncTikTokForClient(clientId: string): Promise<TikTokSyncR
       await scheduleSnapshotsIfNew(admin, resolved.post.id, clientId, resolved.item.id, snapshotPostedAt)
     }
 
+    // S78: keep posts.decision current; never fails the sync.
+    await recomputeStoredDecision(admin, resolved.post.id)
     console.log(`[tt-sync] ✓ ${videoId} — views=${views} likes=${likes} comments=${comments} shares=${shares}`)
     result.synced++
   }, {
@@ -653,6 +656,8 @@ export async function syncSingleTTVideo(
     await scheduleSnapshotsIfNew(admin, post.id, clientId, item.id, snapshotPostedAt)
   }
 
+  // S78: keep posts.decision current; never fails the sync.
+  await recomputeStoredDecision(admin, post.id)
   console.log(`[tt-sync] single ✓ ${ttVideoId} — views=${views} likes=${likes} comments=${comments} shares=${shares}`)
   return { synced: 1 }
 }

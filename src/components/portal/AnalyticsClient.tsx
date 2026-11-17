@@ -310,7 +310,7 @@ function EditableCell({
     setSaving(true)
     const result = await updateAnalyticsMetric(postUUID, platform, metricWindow, field, n)
     setSaving(false)
-    if (!result.error) onSave(field, n, result.decision)
+    if (!result.error) onSave(field, n, result.decision === null ? "" : result.decision)
     setEditing(false)
   }
 

@@ -3,6 +3,7 @@ import { FACEBOOK_RECONNECT_REQUIRED, refreshFacebookToken } from '@/lib/faceboo
 import { fillPublishDatesIfMissing } from '@/lib/publish-date'
 import { scheduleSnapshotsIfNew } from '@/lib/video-polling'
 import { recordUnlinkedVideoDiscovery } from '@/lib/unlinked-discoveries'
+import { recomputeStoredDecision } from '@/lib/decision-store'
 import { runPool } from '@/lib/concurrency'
 import { graphBlocked, graphFetch, graphUsagePct } from '@/lib/graph-rate-limit'
 
@@ -360,6 +361,8 @@ export async function syncInstagramForClient(
       if (publishedAt?.iso && resolved.pipelineItemId) {
         await scheduleSnapshotsIfNew(admin, resolved.postUUID, clientId, resolved.pipelineItemId, publishedAt.iso)
       }
+      // S78: keep posts.decision current; never fails the sync.
+      await recomputeStoredDecision(admin, resolved.postUUID)
       result.synced++
     }
   }, {
@@ -504,6 +507,8 @@ export async function syncSingleIGVideo(
     await scheduleSnapshotsIfNew(admin, resolved.postUUID, clientId, resolved.pipelineItemId, publishedAt.iso)
   }
 
+  // S78: keep posts.decision current; never fails the sync.
+  await recomputeStoredDecision(admin, resolved.postUUID)
   console.log(`[ig-sync] single ✓ ${igVideoId} — reach=${views} graph_views=${insights.views} likes=${likes} comments=${comments} shares=${shares} saves=${saves}`)
   return { synced: 1 }
 }

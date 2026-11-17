@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cookies } from 'next/headers'
-import { erToDecision } from '@/lib/decision'
+import { recomputeStoredDecision } from '@/lib/decision-store'
 import { fetchYouTubePublicVideo } from '@/lib/youtube-public'
 import { syncSingleIGVideo } from '@/lib/instagram-sync'
 import { syncSingleTTVideo } from '@/lib/tiktok-sync'
@@ -163,7 +163,7 @@ export async function updateAnalyticsMetric(
   metricWindow: string,
   field: string,
   value: number,
-): Promise<{ error?: string; decision?: string }> {
+): Promise<{ error?: string; decision?: string | null }> {
   const c = await getCtx()
   if (!c) return { error: 'Not authenticated' }
   if (!VALID_ANALYTICS.has(field)) return { error: 'Invalid field' }
@@ -175,29 +175,11 @@ export async function updateAnalyticsMetric(
   const { error } = await c.admin.from('post_analytics').update({ [field]: value }).match(filter)
   if (error) return { error: error.message }
 
-  // Re-compute Decision from best available window (eom > w7 > w3 > w24) and persist it.
+  // S78: recompute Decision with the shared rule (platform from the posts row's
+  // own ID prefix; live window first, then eom → w7 → w3 → w24) and persist it.
   // postUUID is post_analytics.post_id = posts.id (UUID FK).
-  let decision: string | undefined
-  const { data: analyticsRows } = await c.admin
-    .from('post_analytics')
-    .select('metric_window, views, likes, comments, shares, saves')
-    .eq('post_id', postUUID)
-    .eq('platform', platform)
-    .in('metric_window', ['eom', 'w7', 'w3', 'w24'])
-
-  if (analyticsRows?.length) {
-    const byWindow: Record<string, typeof analyticsRows[0]> = {}
-    for (const row of analyticsRows) byWindow[row.metric_window] = row
-    for (const wk of ['eom', 'w7', 'w3', 'w24']) {
-      const row = byWindow[wk]
-      if (row?.views > 0) {
-        const er = ((row.likes + row.comments + row.shares + row.saves) / row.views) * 100
-        decision = erToDecision(er)
-        await c.admin.from('posts').update({ decision }).eq('id', postUUID)
-        break
-      }
-    }
-  }
+  const recomputed = await recomputeStoredDecision(c.admin, postUUID)
+  const decision: string | null | undefined = recomputed ? recomputed.decision : undefined
 
   revalidatePath('/analytics')
   return { decision }

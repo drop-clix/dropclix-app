@@ -3,7 +3,7 @@
 import { useState, useTransition, useActionState, useEffect, useRef } from 'react'
 import { impersonateClient, createNewClient, resendClientInvite, updateClientInfo, adminImportPosts, adminCheckExistingPostIds, deleteClient } from './actions'
 import type { NewPostData } from '@/app/(dashboard)/studio/actions'
-import { erToDecision } from '@/lib/decision'
+import { decisionFromWindows, platformFromPostId } from '@/lib/decision'
 import { AdminConnectionsPopup, type AdminConnectionsBundle } from './AdminConnectionsPopup'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -495,7 +495,8 @@ function AdminImportModal({ client, onClose }: { client: ClientRow; onClose: () 
                     const isExisting  = existing.has(p.postId)
                     const isOverwrite = overwrite.has(p.postId)
                     const eomViews    = p.windows?.eom?.views ?? 0
-                    const decision    = erToDecision(eomViews > 0 ? ((p.windows?.eom?.likes ?? 0) + (p.windows?.eom?.comments ?? 0) + (p.windows?.eom?.shares ?? 0) + (p.windows?.eom?.saves ?? 0)) / eomViews * 100 : 0)
+                    // S78: shared rule; CSV preview has locked windows only. '—' when no data.
+                    const decision    = decisionFromWindows(platformFromPostId(p.postId), p.windows ?? {}) ?? '—'
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid #0d0d0d', opacity: isExisting && !isOverwrite ? 0.4 : 1 }}>
                         <td style={{ padding: '5px 8px' }}>

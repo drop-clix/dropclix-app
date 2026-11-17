@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cookies } from 'next/headers'
-import { computeDecision } from '@/lib/decision'
+import { decisionFromWindows, platformFromPostId } from '@/lib/decision'
 
 const IMPERSONATE = 'dropclix_impersonate_client_id'
 
@@ -147,12 +147,10 @@ async function ensurePipelineAndCalendar(
   return { pipelineCreated, calendarCreated }
 }
 
+// S78: shared rule. Studio imports carry locked windows only (no live), so this
+// resolves eom → w7 → w3 → w24 with the platform from the post ID prefix.
 function resolveDecision(data: NewPostData): string | null {
-  for (const winKey of ['eom', 'w7', 'w3', 'w24'] as const) {
-    const m = data.windows[winKey]
-    if (m && m.views > 0) return computeDecision(m.likes, m.comments, m.shares, m.saves, m.views)
-  }
-  return data.decision || null
+  return decisionFromWindows(platformFromPostId(data.postId), data.windows) ?? (data.decision || null)
 }
 
 // Internal: create post without auth lookup or revalidation

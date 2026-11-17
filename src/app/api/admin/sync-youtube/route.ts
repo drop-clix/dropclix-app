@@ -6,6 +6,7 @@ import { discoverYouTubeUnlinkedUploads } from '@/lib/video-polling'
 import { runPool } from '@/lib/concurrency'
 import { fetchYTAnalytics, fetchYTLifetimeBatch, ytLifetimeStart, type YTVideoMetrics } from '@/lib/youtube-analytics'
 import { erToDecision } from '@/lib/decision'
+import { recomputeStoredDecision } from '@/lib/decision-store'
 
 // Vercel Hobby + Fluid Compute: 300s is the project default and plan maximum.
 export const maxDuration = 300
@@ -129,6 +130,8 @@ export async function POST(req: NextRequest) {
     if (uErr) {
       result.errors.push(`${post.post_id} live: ${uErr.message}`)
     } else {
+      // S78: keep posts.decision current; never fails the sync.
+      await recomputeStoredDecision(admin, post.id)
       result.synced++
     }
   }, {
