@@ -73,21 +73,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ...result, message: 'No posts with yt_id found. Run the YouTube CSV importer first.' })
   }
 
-  // Concurrency 1: the loop already runs ~10 Analytics queries/s sequentially and
-  // the Analytics per-minute quota is not visible to us, so we only add per-post
-  // error isolation here, not parallelism.
+  // S77: lifetime range, one batched dimensions=video call. Analytics reports
+  // days in Pacific time and posts.date is the UTC publish date, so starting at
+  // posts.date dropped the publish day for videos posted 00:00–06:59 UTC.
   const channelId = conn.channel_id
+  const endDate = new Date().toISOString().slice(0, 10)
+  const earliest = posts.map(p => p.date).filter(Boolean).sort()[0] ?? null
+  const startDate = ytLifetimeStart(earliest)
+  const batch = await fetchYTLifetimeBatch(conn.access_token, channelId, posts.map(p => p.yt_id), startDate, endDate)
+  // Non-transient batch failures (4xx: auth, quota) skip those videos rather
+  // than retrying each one; 5xx and "missing from batch" fall back per video.
+  const noFallback = new Set(batch.batchErrors.filter(e => e.status < 500).flatMap(e => e.ids))
+  for (const e of batch.batchErrors) result.errors.push(`lifetime batch failed (${e.status}) for ${e.ids.length} videos`)
+  console.log(`[yt-sync] lifetime ${startDate}→${endDate}: ${batch.metrics.size} in batch, ${batch.missing.length} missing`)
+
+  // Concurrency 1: per-post error isolation; fallback calls stay sequential
+  // because the Analytics per-minute quota is not visible to us.
   await runPool(posts, async post => {
-    const videoId    = post.yt_id
-    const publishDate = post.date
-    const endDate = new Date().toISOString().slice(0, 10)
-    const metrics = await fetchYTAnalytics(
-      conn.access_token,
-      channelId,
-      videoId,
-      publishDate,
-      endDate,
-    )
+    const videoId = post.yt_id
+    let metrics: YTVideoMetrics | null = batch.metrics.get(videoId) ?? null
+    if (!metrics && !noFallback.has(videoId)) {
+      metrics = await fetchYTAnalytics(conn.access_token, channelId, videoId, startDate, endDate)
+    }
 
     if (!metrics) {
       result.skipped++
