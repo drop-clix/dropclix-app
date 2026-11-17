@@ -1,7 +1,7 @@
 # FIRE: Stored Decision used the wrong formula, window and platform
 **Date:** November 17, 2026
 **Severity:** HIGH
-**Status:** RESOLVED, except 24 Nick Nascimento flips held for owner review.
+**Status:** RESOLVED, except 5 Nick Nascimento YouTube flips held for owner review.
 
 ## What Happened
 `posts.decision`, the text shown on Analytics, Dashboard, Report Card, Angles, Goals and the AI routes, was wrong or missing on most posts:
@@ -30,6 +30,11 @@
 
 - Written 524/524. A full before/after snapshot of all 710 posts rows shows exactly those 524 changed, to the expected values. No other row changed, and no held row changed.
 - Day 1 YouTube flips: #yt0014, 0016, 0029, 0035, 0041, 0045, 0050, 0058, 0061, 0075, 0078. #yt0115 went NULL → Kill.
+
+## Nick IG Release (2026-11-17, ~19:30 UTC)
+- After reviewing the provenance, the owner released the 19 Nick IG flips. They were removed from `DECISION_REVIEW_HOLD`, and the recompute ran with every other pending change skipped.
+- 19/19 were written as Kill → Iterate. A full snapshot of 710 posts rows showed exactly those 19 changed, to the expected values, and no other row changed.
+- Still held: #LF0005, #LF0007, #LF0013 and #LF0014 stay Double Down, and #LF0006 stays Iterate.
 
 ## Nick Nascimento Provenance (for the held review)
 - **IG live rows (50):** written by the May 31 to June 2 imports, at client onboarding. They have never been polled, and no Instagram connection exists for Nick. Every one equals its `eom` row field for field. The flips come from the formula, not the window: the old values were Kill under the eom rule, and the same numbers give 4.0–6.8% today. The cause of the old Kill values is not recorded. The seed file's IDs (`#0031`) don't match the posts IDs.
