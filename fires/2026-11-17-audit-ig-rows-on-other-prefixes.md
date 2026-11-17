@@ -6,7 +6,7 @@
 ## Finding
 - 51 `#ig` posts rows have no `post_analytics` rows at all.
 - 130 Instagram `post_analytics` rows, across all windows, sit on `#tt` or `#yt` posts rows. Day 1 live: 48 on `#tt` and 2 on `#yt`.
-- The cause is `resolveIGPostsUUID()` in `instagram-sync.ts`. For bundled pipeline items it resolves to whichever posts row the pipeline item maps to first, not to the `#ig` segment's row.
+- The cause is `resolveIGPostsUUID()` in `instagram-sync.ts`. For a bundled pipeline `post_id` such as `#tt0012 | #ig0040`, it splits on `|` and uses the first segment that has a posts row, in written order, not the `#ig` segment.
 
 ## Effect
 - The S78 Decision rule takes the platform from the posts row's own prefix, as the owner chose. A `#tt` row's Decision uses only its TikTok data. IG metrics attached to it never produce a stored Decision.
