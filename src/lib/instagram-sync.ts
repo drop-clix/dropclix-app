@@ -42,21 +42,65 @@ export type IGSyncResult = {
 
 // ── Fetch all media for the connected account ─────────────────────────────────
 
-async function fetchIGMedia(accessToken: string, igAccountId: string): Promise<IGMedia[]> {
-  const fields = 'id,permalink,media_type,timestamp,caption,thumbnail_url,like_count,comments_count'
-  const url = `https://graph.facebook.com/v19.0/${igAccountId}/media?fields=${fields}&limit=100&access_token=${accessToken}`
+const IG_MEDIA_PAGE_SIZE = 100
+// Safety cap: 50 pages × 100 = 5,000 media. Hitting it logs a warning and is
+// reported in the sync result so nothing is truncated silently.
+const IG_MEDIA_MAX_PAGES = 50
 
-  const res = await fetch(url)
-  if (!res.ok) {
-    console.error('[ig-sync] /media failed:', res.status, await res.text())
-    return []
+type IGMediaListResult = {
+  media: IGMedia[]
+  pages: number
+  /** Set when listing failed or stopped before the last page (cap hit or page failure). */
+  warning?: string
+}
+
+/**
+ * Lists the account's media, following Graph cursor pagination (paging.next)
+ * until there are no more pages. Pass stopWhen to end early once a wanted item
+ * has been seen. paging.next URLs embed the access token, so they are never logged.
+ */
+export async function fetchIGMedia(
+  accessToken: string,
+  igAccountId: string,
+  stopWhen?: (item: IGMedia) => boolean,
+): Promise<IGMediaListResult> {
+  const fields = 'id,permalink,media_type,timestamp,caption,thumbnail_url,like_count,comments_count'
+  let url: string | null = `https://graph.facebook.com/v19.0/${igAccountId}/media?fields=${fields}&limit=${IG_MEDIA_PAGE_SIZE}&access_token=${accessToken}`
+  const media: IGMedia[] = []
+  let pages = 0
+
+  while (url) {
+    if (pages >= IG_MEDIA_MAX_PAGES) {
+      const warning = `IG /media page cap (${IG_MEDIA_MAX_PAGES}) hit after ${media.length} media; older media were not listed`
+      console.warn(`[ig-sync] ${warning}`)
+      return { media, pages, warning }
+    }
+
+    const res = await fetch(url)
+    pages++
+    if (!res.ok) {
+      console.error(`[ig-sync] /media page ${pages} failed:`, res.status, await res.text())
+      const warning = pages === 1
+        ? `IG /media failed (HTTP ${res.status}); no media listed`
+        : `IG /media page ${pages} failed (HTTP ${res.status}) after ${media.length} media; older media were not listed`
+      return { media, pages, warning }
+    }
+    const json = await res.json() as { data?: IGMedia[]; paging?: { next?: string }; error?: { message: string } }
+    if (json.error) {
+      console.error(`[ig-sync] media error on page ${pages}:`, json.error.message)
+      const warning = pages === 1
+        ? `IG /media error: ${json.error.message}`
+        : `IG /media page ${pages} error after ${media.length} media: ${json.error.message}`
+      return { media, pages, warning }
+    }
+
+    const pageItems = json.data ?? []
+    media.push(...pageItems)
+    if (stopWhen && pageItems.some(stopWhen)) break
+    url = json.paging?.next ?? null
   }
-  const json = await res.json() as { data?: IGMedia[]; error?: { message: string } }
-  if (json.error) {
-    console.error('[ig-sync] media error:', json.error.message)
-    return []
-  }
-  return json.data ?? []
+
+  return { media, pages }
 }
 
 // ── Fetch insights for a single media item ────────────────────────────────────
@@ -199,8 +243,10 @@ export async function syncInstagramForClient(
   const followersCount = await fetchIGFollowersCount(activeToken, igAccountId)
   result.followersCount = followersCount
 
-  const media = await fetchIGMedia(activeToken, igAccountId)
-  console.log(`[ig-sync] fetched ${media.length} media items for client ${clientId}`)
+  const listing = await fetchIGMedia(activeToken, igAccountId)
+  const media = listing.media
+  console.log(`[ig-sync] fetched ${media.length} media items in ${listing.pages} page(s) for client ${clientId}`)
+  if (listing.warning) result.errors.push(listing.warning)
 
   for (const item of media) {
     const shortcode = shortcodeFromPermalink(item.permalink)
@@ -310,8 +356,9 @@ export async function syncSingleIGVideo(
     return { synced: 0, error: FACEBOOK_RECONNECT_REQUIRED }
   }
 
-  const media = await fetchIGMedia(activeToken, igAccountId)
-  const item = media.find(mediaItem => shortcodeFromPermalink(mediaItem.permalink) === igVideoId)
+  const matches = (mediaItem: IGMedia) => shortcodeFromPermalink(mediaItem.permalink) === igVideoId
+  const { media } = await fetchIGMedia(activeToken, igAccountId, matches)
+  const item = media.find(matches)
   if (!item) {
     return { synced: 0, error: `No Instagram media found for ${igVideoId}` }
   }
