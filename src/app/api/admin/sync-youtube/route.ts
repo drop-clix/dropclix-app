@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getYouTubeConnection, fetchChannelInfo } from '@/lib/youtube-auth'
 import { discoverYouTubeUnlinkedUploads } from '@/lib/video-polling'
 import { runPool } from '@/lib/concurrency'
+import { fetchYTAnalytics, fetchYTLifetimeBatch, ytLifetimeStart, type YTVideoMetrics } from '@/lib/youtube-analytics'
+import { erToDecision } from '@/lib/decision'
 
 // Vercel Hobby + Fluid Compute: 300s is the project default and plan maximum.
 export const maxDuration = 300
@@ -16,79 +18,6 @@ type SyncResult = {
   errors: string[]
   lastSyncedAt: string
   discovered?: number
-}
-
-async function fetchYTAnalytics(
-  accessToken: string,
-  channelId: string,
-  videoId: string,
-  startDate: string,
-  endDate: string,
-): Promise<{
-  views: number; likes: number; comments: number; shares: number
-  estimatedMinutesWatched: number; averageViewPercentage: number
-  subscribersGained: number; impressions: number; ctr: number
-} | null> {
-  // Main call: per-video engagement metrics (always supported with yt-analytics.readonly)
-  const params = new URLSearchParams({
-    ids:      `channel==${channelId}`,
-    startDate,
-    endDate,
-    metrics:  'views,likes,comments,shares,estimatedMinutesWatched,averageViewPercentage,subscribersGained',
-    filters:  `video==${videoId}`,
-  })
-
-  const res = await fetch(
-    `https://youtubeanalytics.googleapis.com/v2/reports?${params.toString()}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  )
-
-  if (!res.ok) {
-    console.error(`YT Analytics error for ${videoId}:`, await res.text())
-    return null
-  }
-
-  const json = await res.json()
-  const row = json.rows?.[0]
-  if (!row) return null
-
-  // Secondary call: impressions + CTR — requires dimensions=video; stored as 0 if unavailable
-  let impressions = 0
-  let ctr = 0
-  try {
-    const iParams = new URLSearchParams({
-      ids:        `channel==${channelId}`,
-      startDate,
-      endDate,
-      dimensions: 'video',
-      metrics:    'impressions,impressionsClickThroughRate',
-      filters:    `video==${videoId}`,
-    })
-    const iRes = await fetch(
-      `https://youtubeanalytics.googleapis.com/v2/reports?${iParams.toString()}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } },
-    )
-    if (iRes.ok) {
-      const iJson = await iRes.json()
-      const iRow = iJson.rows?.[0]  // columns: [videoId, impressions, ctr]
-      if (iRow) {
-        impressions = Math.round(iRow[1] ?? 0)
-        ctr         = Math.round((iRow[2] ?? 0) * 10000) / 100
-      }
-    }
-  } catch { /* impressions unavailable — stored as 0 */ }
-
-  return {
-    views:                   Math.round(row[0] ?? 0),
-    likes:                   Math.round(row[1] ?? 0),
-    comments:                Math.round(row[2] ?? 0),
-    shares:                  Math.round(row[3] ?? 0),
-    estimatedMinutesWatched: Math.round(row[4] ?? 0),
-    averageViewPercentage:   Math.round((row[5] ?? 0) * 100) / 100,
-    subscribersGained:       Math.round(row[6] ?? 0),
-    impressions,
-    ctr,
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -116,6 +45,13 @@ export async function POST(req: NextRequest) {
   }
 
   const admin  = createAdminClient()
+
+  // Read-only preview of the lifetime-range fix (S77). Writes nothing to
+  // post_analytics, discoveries or platform_connections.last_synced_at.
+  if (body.dry_run === true) {
+    return NextResponse.json(await youtubeLifetimeDryRun(admin, clientId, conn.access_token, conn.channel_id))
+  }
+
   const result: SyncResult = { synced: 0, skipped: 0, errors: [], lastSyncedAt: '' }
   const discovery = await discoverYouTubeUnlinkedUploads(admin, clientId, conn.access_token)
   if (discovery.error) result.errors.push(`discovery: ${discovery.error}`)
@@ -224,4 +160,98 @@ export async function POST(req: NextRequest) {
     lastSyncedAt: (updatedConn as any)?.last_synced_at ?? now,
     tokenExpiresAt: (updatedConn as any)?.token_expires_at ?? conn.token_expires_at ?? null,
   })
+}
+
+// ── S77 dry run: lifetime batch vs stored live rows ──────────────────────────
+
+type DryRunMetrics = { views: number; likes: number; comments: number; shares: number; subscribersGained: number; er: number | null; decision: string | null; tier: string }
+
+function ytEr(m: { views: number; likes: number; comments: number; shares: number; subscribersGained: number }): number | null {
+  // Locked YT formula: (likes + comments + shares + subscribers gained) / views × 100
+  if (!m.views) return null
+  return Math.round(((m.likes + m.comments + m.shares + m.subscribersGained) / m.views) * 10000) / 100
+}
+
+// Mirrors AnalyticsClient tier(): ≥12 elite, ≥7 strong, ≥4 avg, else kill.
+function ytTier(er: number | null): string {
+  if (er == null) return 'none'
+  if (er >= 12) return 'elite'
+  if (er >= 7) return 'strong'
+  if (er >= 4) return 'avg'
+  return 'kill'
+}
+
+function withDecision(m: Omit<DryRunMetrics, 'er' | 'decision' | 'tier'>): DryRunMetrics {
+  const er = ytEr(m)
+  return { ...m, er, decision: er == null ? null : erToDecision(er), tier: ytTier(er) }
+}
+
+async function youtubeLifetimeDryRun(
+  admin: ReturnType<typeof createAdminClient>,
+  clientId: string,
+  accessToken: string,
+  channelId: string,
+) {
+  const { data: postsData, error: pErr } = await admin
+    .from('posts')
+    .select('id, post_id, date, yt_id')
+    .eq('client_id', clientId)
+    .not('yt_id', 'is', null)
+  if (pErr) return { dryRun: true, error: pErr.message }
+  const posts = (postsData ?? []) as { id: string; post_id: string; date: string | null; yt_id: string }[]
+
+  const { data: liveData } = await admin
+    .from('post_analytics')
+    .select('post_id, views, likes, comments, shares, followers')
+    .eq('client_id', clientId)
+    .eq('platform', 'yt')
+    .eq('metric_window', 'live')
+    .in('post_id', posts.map(p => p.id))
+  const liveByPost = new Map(((liveData ?? []) as { post_id: string; views: number | null; likes: number | null; comments: number | null; shares: number | null; followers: number | null }[]).map(r => [r.post_id, r]))
+
+  const endDate = new Date().toISOString().slice(0, 10)
+  const earliest = posts.map(p => p.date).filter(Boolean).sort()[0] ?? null
+  const startDate = ytLifetimeStart(earliest)
+  const batch = await fetchYTLifetimeBatch(accessToken, channelId, posts.map(p => p.yt_id), startDate, endDate)
+
+  // Per-video fallback only for videos missing from the batch.
+  const fallback = new Map<string, YTVideoMetrics | null>()
+  for (const videoId of batch.missing) {
+    fallback.set(videoId, await fetchYTAnalytics(accessToken, channelId, videoId, startDate, endDate))
+  }
+
+  const rows = posts.map(post => {
+    const live = liveByPost.get(post.id)
+    const next = batch.metrics.get(post.yt_id) ?? fallback.get(post.yt_id) ?? null
+    const before = live ? withDecision({
+      views: live.views ?? 0, likes: live.likes ?? 0, comments: live.comments ?? 0,
+      shares: live.shares ?? 0, subscribersGained: live.followers ?? 0,
+    }) : null
+    const after = next ? withDecision({
+      views: next.views, likes: next.likes, comments: next.comments,
+      shares: next.shares, subscribersGained: next.subscribersGained,
+    }) : null
+    const source = batch.metrics.has(post.yt_id) ? 'batch' : next ? 'fallback' : 'skip (no data; existing row kept)'
+    const changed = !!before && !!after && (
+      before.views !== after.views || before.likes !== after.likes || before.comments !== after.comments ||
+      before.shares !== after.shares || before.subscribersGained !== after.subscribersGained)
+    return { post: post.post_id, videoId: post.yt_id, postsDate: post.date, source, changed, before, after,
+      decisionChanged: !!before && !!after && before.decision !== after.decision,
+      tierChanged: !!before && !!after && before.tier !== after.tier }
+  })
+
+  return {
+    dryRun: true,
+    startDate,
+    endDate,
+    posts: rows.length,
+    inBatch: batch.metrics.size,
+    fallbackUsed: Array.from(fallback.values()).filter(Boolean).length,
+    skipped: rows.filter(r => !r.after).length,
+    batchErrors: batch.batchErrors.map(e => ({ status: e.status, message: e.message, count: e.ids.length })),
+    changed: rows.filter(r => r.changed).length,
+    decisionChanges: rows.filter(r => r.decisionChanged).length,
+    tierChanges: rows.filter(r => r.tierChanged).length,
+    rows,
+  }
 }
