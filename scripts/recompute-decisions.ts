@@ -5,6 +5,7 @@
  *
  *   npx tsx scripts/recompute-decisions.ts [--out <dir>]        dry run (default, no writes)
  *   npx tsx scripts/recompute-decisions.ts --run [--out <dir>]  writes changed rows only
+ *   --skip-file <json>  JSON array of posts UUIDs to leave untouched (reported as held)
  *
  * Needs NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY in the environment.
  * Rows with an unknown ID prefix are reported and never written.
@@ -17,6 +18,8 @@ import { decisionFromWindows, platformFromPostId, platformER, DECISION_WINDOW_OR
 const RUN = process.argv.includes('--run')
 const outIdx = process.argv.indexOf('--out')
 const OUT = outIdx > 0 ? process.argv[outIdx + 1] : '.'
+const skipIdx = process.argv.indexOf('--skip-file')
+const SKIP = new Set<string>(skipIdx > 0 ? JSON.parse(fs.readFileSync(process.argv[skipIdx + 1], 'utf8')) : [])
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const key = process.env.SUPABASE_SECRET_KEY
 if (!url || !key) { console.error('Missing NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SECRET_KEY'); process.exit(1) }
@@ -77,10 +80,13 @@ type Row = DecisionWindow & { post_id: string; platform: string; metric_window: 
 
   if (RUN) {
     let written = 0
+    const held = changes.filter(c => SKIP.has(c.uuid as string))
+    if (held.length) console.log(`held (skip-file): ${held.length}`)
     for (const c of changes) {
+      if (SKIP.has(c.uuid as string)) continue
       const { error } = await admin.from('posts').update({ decision: c.after }).eq('id', c.uuid as string)
       if (error) console.error(`write failed ${c.post}: ${error.message}`); else written++
     }
-    console.log(`written ${written}/${changes.length}`)
+    console.log(`written ${written}/${changes.length - held.length}`)
   }
 })().catch(e => { console.error(e instanceof Error ? e.message : e); process.exit(1) })
