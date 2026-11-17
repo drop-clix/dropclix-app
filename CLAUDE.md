@@ -593,6 +593,17 @@ ER% = `(likes + comments + shares + saves) / views × 100` per window. Decision 
 - Verified 2026-11-17: dry run matched Data API `viewCount` within 0.26% on all 48 changed videos (45 exact). Real Day 1 sync: 92 synced, 0 skipped, ~15s; all 48 changed live rows match the dry run exactly; 687 locked rows and 304 `posts.decision` values byte-identical before/after. IG (112) and TT (100) re-verified.
 - Known stale data (not fixed, by decision): `posts.decision` still says Iterate on 10 of the 11 videos whose lifetime ER is now Kill (#yt0115 is NULL); locked windows for the affected videos hold truncated-query values; `updateAnalyticsMetric()` recomputes YouTube Decision with the saves formula. See `fires/2026-11-17-youtube-analytics-pacific-day.md`.
 
+## S78 Decision Rule Notes (IG / TikTok / YouTube)
+
+- Rule: **Decision = the platform's locked ER formula on the `live` window; only when no live row exists, the first locked window with views > 0 in eom → w7 → w3 → w24.** Thresholds unchanged (≥12 Double Down, ≥4 Iterate, else Kill). A live row with 0 views gives NULL; it does not fall back.
+- Platform comes from the **posts row's own ID prefix** (`#ig` → ig, `#tt` → tt, `#yt` / `#LF` → yt), never from `posts.platform[]` or whichever platform's rows happen to sit on the row. IG ER = (likes + comments + shares + saves) / reach; TT same with NULL saves = 0; YT = (likes + comments + shares + subscribers gained) / views.
+- Code: `decisionFromWindows()`, `platformFromPostId()`, `platformER()` in `src/lib/decision.ts` (pure). `recomputeStoredDecision(admin, postsUUID)` in `src/lib/decision-store.ts` reads the row's windows, writes `posts.decision` only on change, never throws.
+- Writers: manual edit (`updateAnalyticsMetric`), Studio create/update (`resolveDecision`), admin Clients CSV preview, IG full + single sync, TT full + single sync, `sync-youtube` live path, and `upsertPolledStats()` (cron polling + snapshot copies). A Decision failure is logged as `[decision]` and never fails a sync. Do not add a Decision formula anywhere else; call the helper.
+- `DECISION_REVIEW_HOLD` in `decision-store.ts` is a **temporary** list of 24 Nick Nascimento posts (19 IG Kill→Iterate, 5 YT) held for owner review. While listed, no path changes their stored Decision. Remove entries when the review is done, then run `scripts/recompute-decisions.ts --run`.
+- `scripts/recompute-decisions.ts`: dry run by default (writes `decision-recompute.json`), `--run` writes changed rows, `--skip-file <json>` holds posts UUIDs. Needs `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SECRET_KEY`.
+- Not changed (report only): `src/components/portal/PostSlideOver.tsx` is dead code (imported nowhere) with its own fallback formula; the Studio client preview (`StudioClient.tsx`) labels windows with the saves formula, display only; offline scripts `ingest-eom-csv.mjs`, `ingest-yt-csv.mjs`, `migrate-nick.mjs` still carry their own Decision logic.
+- Open audit items: `fires/2026-11-17-audit-ig-rows-on-other-prefixes.md`, `fires/2026-11-17-audit-studio-overwrite-deletes-live.md`.
+
 ## S45 Bug Fix Notes
 
 - Issue: Analytics tab displayed YouTube video captions (from YT API) instead of the admin-curated titles in `pipeline_items.title`. Root cause: `analytics/page.tsx` fetched `posts.title` only and never fetched `pipeline_items.title`. Meanwhile, `video-polling.ts`, `linkYouTubeVideo()`, and `ensureYTPostsRow()` all wrote the raw YT API caption into `pipeline_items.title` on every poll or link save, silently overwriting the admin title.
