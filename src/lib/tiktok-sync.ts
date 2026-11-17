@@ -199,11 +199,17 @@ export async function refreshTikTokToken(clientId: string): Promise<TikTokConnec
 
 // ── TikTok API ───────────────────────────────────────────────────────────────
 
-export async function fetchTikTokVideoStats(
+// TikTok video/query accepts 1–20 IDs per request (filters.video_ids).
+export const TIKTOK_VIDEO_QUERY_MAX_IDS = 20
+
+async function queryTikTokVideoChunk(
   accessToken: string,
   videoIds: string[],
 ): Promise<TikTokVideoStat[]> {
   if (videoIds.length === 0) return []
+  if (videoIds.length > TIKTOK_VIDEO_QUERY_MAX_IDS) {
+    throw new Error(`TikTok video/query chunk too large (${videoIds.length} > ${TIKTOK_VIDEO_QUERY_MAX_IDS})`)
+  }
 
   const url = new URL('https://open.tiktokapis.com/v2/video/query/')
   url.searchParams.set('fields', TIKTOK_VIDEO_FIELDS)
@@ -237,6 +243,48 @@ export async function fetchTikTokVideoStats(
   }
 
   return (json?.data?.videos ?? []) as TikTokVideoStat[]
+}
+
+export interface TikTokVideoStatsResult {
+  videos: TikTokVideoStat[]
+  /** One entry per failed chunk; IDs in failedIds were not returned. */
+  chunkErrors: string[]
+  failedIds: Set<string>
+}
+
+/**
+ * Fetches stats for any number of video IDs by splitting them into chunks of
+ * TIKTOK_VIDEO_QUERY_MAX_IDS. A failed chunk is recorded and the remaining
+ * chunks still run; results from successful chunks are merged.
+ */
+export async function fetchTikTokVideoStats(
+  accessToken: string,
+  videoIds: string[],
+): Promise<TikTokVideoStatsResult> {
+  const result: TikTokVideoStatsResult = { videos: [], chunkErrors: [], failedIds: new Set() }
+  const ids = Array.from(new Set(videoIds.filter(Boolean)))
+  if (ids.length === 0) return result
+
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += TIKTOK_VIDEO_QUERY_MAX_IDS) {
+    chunks.push(ids.slice(i, i + TIKTOK_VIDEO_QUERY_MAX_IDS))
+  }
+
+  for (let index = 0; index < chunks.length; index++) {
+    const chunk = chunks[index]
+    try {
+      result.videos.push(...await queryTikTokVideoChunk(accessToken, chunk))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'TikTok video/query failed'
+      const label = `video/query chunk ${index + 1}/${chunks.length} (${chunk.length} ids, first=${chunk[0]})`
+      console.error(`[tt-sync] ${label} failed:`, message)
+      result.chunkErrors.push(`${label}: ${message}`)
+      chunk.forEach(id => result.failedIds.add(id))
+    }
+  }
+
+  console.log(`[tt-sync] video/query: ${ids.length} ids in ${chunks.length} chunk(s), ${result.videos.length} returned, ${result.chunkErrors.length} chunk(s) failed`)
+  return result
 }
 
 async function fetchTikTokVideoList(accessToken: string): Promise<TikTokVideoStat[]> {
@@ -411,10 +459,18 @@ export async function syncTikTokForClient(clientId: string): Promise<TikTokSyncR
   }
 
   const videoIds = Array.from(postByVideoId.keys())
-  const videos = await fetchTikTokVideoStats(connection.accessToken, videoIds)
+  if (videoIds.length === 0) {
+    return result
+  }
+  const { videos, chunkErrors, failedIds } = await fetchTikTokVideoStats(connection.accessToken, videoIds)
+  result.errors.push(...chunkErrors)
   const statsById = new Map(videos.map(video => [video.id, video]))
 
   for (const videoId of videoIds) {
+    if (failedIds.has(videoId)) {
+      result.skipped++
+      continue
+    }
     const resolved = postByVideoId.get(videoId)
     const video = statsById.get(videoId)
     if (!resolved || !video) {
@@ -518,7 +574,11 @@ export async function syncSingleTTVideo(
     return { synced: 0, error: `No posts row found for TikTok video ${ttVideoId}` }
   }
 
-  const [video] = await fetchTikTokVideoStats(connection.accessToken, [ttVideoId])
+  const { videos: [video], chunkErrors } = await fetchTikTokVideoStats(connection.accessToken, [ttVideoId])
+  if (chunkErrors.length > 0) {
+    // Preserve prior behavior: a failed single-video query throws to the caller.
+    throw new Error(chunkErrors[0])
+  }
   if (!video) {
     return { synced: 0, error: `No TikTok stats returned for ${ttVideoId}` }
   }
